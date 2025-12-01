@@ -104,7 +104,12 @@ public partial class MainWindow : Window
         if (_isLoading) return;
         if (CmbLanguage.SelectedItem is ComboBoxItem item && item.Tag is string lang)
         {
-            _loc.CurrentLanguage = lang == "KO" ? AppLanguage.KO : AppLanguage.EN;
+            _loc.CurrentLanguage = lang switch
+            {
+                "KO" => AppLanguage.KO,
+                "JA" => AppLanguage.JA,
+                _ => AppLanguage.EN
+            };
         }
     }
 
@@ -128,7 +133,12 @@ public partial class MainWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         // 저장된 언어 설정을 UI에 반영
-        CmbLanguage.SelectedIndex = _loc.CurrentLanguage == AppLanguage.KO ? 1 : 0;
+        CmbLanguage.SelectedIndex = _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => 1,
+            AppLanguage.JA => 2,
+            _ => 0
+        };
 
         await LoadAllDataAsync();
 

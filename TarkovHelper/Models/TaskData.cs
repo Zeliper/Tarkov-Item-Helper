@@ -16,6 +16,9 @@ public class TaskData
     [JsonPropertyName("nameKo")]
     public string NameKo { get; set; } = string.Empty;
 
+    [JsonPropertyName("nameJa")]
+    public string NameJa { get; set; } = string.Empty;
+
     [JsonPropertyName("normalizedName")]
     public string NormalizedName { get; set; } = string.Empty;
 

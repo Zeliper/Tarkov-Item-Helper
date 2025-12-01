@@ -16,6 +16,9 @@ public class HideoutData
     [JsonPropertyName("nameKo")]
     public string NameKo { get; set; } = string.Empty;
 
+    [JsonPropertyName("nameJa")]
+    public string NameJa { get; set; } = string.Empty;
+
     [JsonPropertyName("normalizedName")]
     public string NormalizedName { get; set; } = string.Empty;
 
@@ -46,6 +49,9 @@ public class HideoutLevel
     [JsonPropertyName("descriptionKo")]
     public string DescriptionKo { get; set; } = string.Empty;
 
+    [JsonPropertyName("descriptionJa")]
+    public string DescriptionJa { get; set; } = string.Empty;
+
     [JsonPropertyName("itemRequirements")]
     public List<HideoutItemRequirement> ItemRequirements { get; set; } = [];
 
@@ -73,6 +79,9 @@ public class HideoutItemRequirement
     [JsonPropertyName("itemNameKo")]
     public string ItemNameKo { get; set; } = string.Empty;
 
+    [JsonPropertyName("itemNameJa")]
+    public string ItemNameJa { get; set; } = string.Empty;
+
     [JsonPropertyName("count")]
     public int Count { get; set; }
 
@@ -96,6 +105,9 @@ public class HideoutStationRequirement
 
     [JsonPropertyName("stationNameKo")]
     public string StationNameKo { get; set; } = string.Empty;
+
+    [JsonPropertyName("stationNameJa")]
+    public string StationNameJa { get; set; } = string.Empty;
 
     [JsonPropertyName("level")]
     public int Level { get; set; }

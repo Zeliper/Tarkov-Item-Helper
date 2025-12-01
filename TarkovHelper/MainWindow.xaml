@@ -51,6 +51,7 @@
                               SelectionChanged="CmbLanguage_SelectionChanged" SelectedIndex="0">
                         <ComboBoxItem Content="EN" Tag="EN"/>
                         <ComboBoxItem Content="KO" Tag="KO"/>
+                        <ComboBoxItem Content="JA" Tag="JA"/>
                     </ComboBox>
                     <Button x:Name="BtnSettings" Content="Settings" Click="BtnSettings_Click" Margin="0,0,8,0"/>
                     <Button x:Name="BtnRefreshData" Content="Refresh Data" Click="BtnRefreshData_Click" Margin="0,0,8,0"/>

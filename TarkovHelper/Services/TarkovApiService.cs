@@ -168,21 +168,24 @@ public class TarkovApiService : IDisposable
     }
 
     /// <summary>
-    /// 영어/한글 데이터를 병합하여 TaskDataset을 생성합니다
+    /// 영어/한글/일본어 데이터를 병합하여 TaskDataset을 생성합니다
     /// </summary>
     public async Task<TaskDataset> BuildTaskDatasetAsync()
     {
-        // 영어, 한글 데이터 동시에 가져오기
+        // 영어, 한글, 일본어 데이터 동시에 가져오기
         var enTask = GetTasksAsync("en");
         var koTask = GetTasksAsync("ko");
+        var jaTask = GetTasksAsync("ja");
 
-        await Task.WhenAll(enTask, koTask);
+        await Task.WhenAll(enTask, koTask, jaTask);
 
         var enTasks = enTask.Result;
         var koTasks = koTask.Result;
+        var jaTasks = jaTask.Result;
 
-        // 한글 데이터 매핑 (ID -> 한글 Task)
+        // 한글/일본어 데이터 매핑 (ID -> 해당 언어 Task)
         var koTaskMap = koTasks.ToDictionary(t => t.Id);
+        var jaTaskMap = jaTasks.ToDictionary(t => t.Id);
 
         // 중복 제거: 같은 이름의 퀘스트가 여러 개 있으면 ID가 나중인 것(더 큰 값)만 유지
         // 중복된 ID를 새 ID로 매핑하는 딕셔너리 생성
@@ -236,6 +239,7 @@ public class TarkovApiService : IDisposable
             Id = t.Id,
             NameEn = t.Name,
             NameKo = koTaskMap.GetValueOrDefault(t.Id)?.Name ?? t.Name,
+            NameJa = jaTaskMap.GetValueOrDefault(t.Id)?.Name ?? t.Name,
             NormalizedName = t.NormalizedName,
             TraderName = t.Trader?.Name ?? "Unknown",
             MinPlayerLevel = t.MinPlayerLevel,
@@ -275,21 +279,24 @@ public class TarkovApiService : IDisposable
     }
 
     /// <summary>
-    /// 영어/한글 데이터를 병합하여 ItemDataset을 생성합니다
+    /// 영어/한글/일본어 데이터를 병합하여 ItemDataset을 생성합니다
     /// </summary>
     public async Task<ItemDataset> BuildItemDatasetAsync()
     {
-        // 영어, 한글 데이터 동시에 가져오기
+        // 영어, 한글, 일본어 데이터 동시에 가져오기
         var enTask = GetItemsAsync("en");
         var koTask = GetItemsAsync("ko");
+        var jaTask = GetItemsAsync("ja");
 
-        await Task.WhenAll(enTask, koTask);
+        await Task.WhenAll(enTask, koTask, jaTask);
 
         var enItems = enTask.Result;
         var koItems = koTask.Result;
+        var jaItems = jaTask.Result;
 
-        // 한글 데이터 매핑 (ID -> 한글 Item)
+        // 한글/일본어 데이터 매핑 (ID -> 해당 언어 Item)
         var koItemMap = koItems.ToDictionary(i => i.Id);
+        var jaItemMap = jaItems.ToDictionary(i => i.Id);
 
         // ItemData 목록 생성
         var items = enItems.Select(i => new ItemData
@@ -297,8 +304,10 @@ public class TarkovApiService : IDisposable
             Id = i.Id,
             NameEn = i.Name ?? "",
             NameKo = koItemMap.GetValueOrDefault(i.Id)?.Name ?? i.Name ?? "",
+            NameJa = jaItemMap.GetValueOrDefault(i.Id)?.Name ?? i.Name ?? "",
             ShortNameEn = i.ShortName ?? "",
             ShortNameKo = koItemMap.GetValueOrDefault(i.Id)?.ShortName ?? i.ShortName ?? "",
+            ShortNameJa = jaItemMap.GetValueOrDefault(i.Id)?.ShortName ?? i.ShortName ?? "",
             NormalizedName = i.NormalizedName ?? "",
             WikiLink = i.WikiLink,
             IconLink = i.IconLink,
@@ -347,24 +356,30 @@ public class TarkovApiService : IDisposable
     }
 
     /// <summary>
-    /// 영어/한글 데이터를 병합하여 HideoutDataset을 생성합니다
+    /// 영어/한글/일본어 데이터를 병합하여 HideoutDataset을 생성합니다
     /// </summary>
     public async Task<HideoutDataset> BuildHideoutDatasetAsync()
     {
-        // 영어, 한글 데이터 동시에 가져오기
+        // 영어, 한글, 일본어 데이터 동시에 가져오기
         var enTask = GetHideoutStationsAsync("en");
         var koTask = GetHideoutStationsAsync("ko");
+        var jaTask = GetHideoutStationsAsync("ja");
 
-        await Task.WhenAll(enTask, koTask);
+        await Task.WhenAll(enTask, koTask, jaTask);
 
         var enStations = enTask.Result;
         var koStations = koTask.Result;
+        var jaStations = jaTask.Result;
 
-        // 한글 데이터 매핑 (ID -> 한글 Station)
+        // 한글/일본어 데이터 매핑 (ID -> 해당 언어 Station)
         var koStationMap = koStations.ToDictionary(s => s.Id);
+        var jaStationMap = jaStations.ToDictionary(s => s.Id);
 
-        // 한글 레벨 데이터 매핑 (ID -> 한글 Level)
+        // 한글/일본어 레벨 데이터 매핑 (ID -> 해당 언어 Level)
         var koLevelMap = koStations
+            .SelectMany(s => s.Levels)
+            .ToDictionary(l => l.Id);
+        var jaLevelMap = jaStations
             .SelectMany(s => s.Levels)
             .ToDictionary(l => l.Id);
 
@@ -372,17 +387,20 @@ public class TarkovApiService : IDisposable
         var hideouts = enStations.Select(s =>
         {
             var koStation = koStationMap.GetValueOrDefault(s.Id);
+            var jaStation = jaStationMap.GetValueOrDefault(s.Id);
 
             return new HideoutData
             {
                 Id = s.Id,
                 NameEn = s.Name,
                 NameKo = koStation?.Name ?? s.Name,
+                NameJa = jaStation?.Name ?? s.Name,
                 NormalizedName = s.NormalizedName,
                 ImageLink = s.ImageLink,
                 Levels = s.Levels.Select(l =>
                 {
                     var koLevel = koLevelMap.GetValueOrDefault(l.Id);
+                    var jaLevel = jaLevelMap.GetValueOrDefault(l.Id);
 
                     return new HideoutLevel
                     {
@@ -391,11 +409,13 @@ public class TarkovApiService : IDisposable
                         ConstructionTime = l.ConstructionTime,
                         DescriptionEn = l.Description,
                         DescriptionKo = koLevel?.Description ?? l.Description,
+                        DescriptionJa = jaLevel?.Description ?? l.Description,
                         ItemRequirements = l.ItemRequirements.Select(r => new HideoutItemRequirement
                         {
                             ItemId = r.Item.Id,
                             ItemNameEn = r.Item.Name,
                             ItemNameKo = r.Item.Name, // 아이템 이름은 별도 조회 필요
+                            ItemNameJa = r.Item.Name, // 아이템 이름은 별도 조회 필요
                             Count = r.Count > 0 ? r.Count : r.Quantity,
                             // foundInRaid 속성이 있고 value가 "true"인 경우에만 FIR 요구
                             FoundInRaid = r.Attributes?.Any(a =>
@@ -408,6 +428,7 @@ public class TarkovApiService : IDisposable
                             StationId = r.Station.Id,
                             StationNameEn = r.Station.Name,
                             StationNameKo = koStationMap.GetValueOrDefault(r.Station.Id)?.Name ?? r.Station.Name,
+                            StationNameJa = jaStationMap.GetValueOrDefault(r.Station.Id)?.Name ?? r.Station.Name,
                             Level = r.Level
                         }).ToList(),
                         TraderRequirements = l.TraderRequirements.Select(r => new HideoutTraderRequirement
