@@ -1,3 +1,4 @@
+using TarkovHelper.Debug;
 using TarkovHelper.Services;
 
 namespace TarkovHelper;
@@ -7,68 +8,78 @@ public class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        // 콘솔 앱 모드로 데이터셋 생성 테스트
-        if (args.Contains("--fetch"))
+        // CLI mode: --fetch-tasks
+        if (args.Length > 0 && args[0] == "--fetch-tasks")
         {
-            FetchDataAsync().GetAwaiter().GetResult();
+            RunFetchTasksAsync().GetAwaiter().GetResult();
             return;
         }
 
-        // WPF 앱 실행
         var app = new App();
         app.InitializeComponent();
-        app.Run(new MainWindow());
+
+        var mainWindow = new MainWindow();
+
+        // Debug 모드에서 Toolbox 창 표시
+        if (AppEnv.IsDebugMode)
+        {
+            TestMenu.MainWindow = mainWindow;
+            var toolbox = new ToolboxWindow
+            {
+
+            };
+            mainWindow.Loaded += (s, e) => {
+                toolbox.Owner = mainWindow;
+                toolbox.Show();
+            };
+        }
+
+        app.Run(mainWindow);
     }
 
-    private static async Task FetchDataAsync()
+    private static async Task RunFetchTasksAsync()
     {
-        Console.WriteLine("Fetching data from Tarkov API...");
+        Console.WriteLine("Fetching tasks from tarkov.dev API...");
+        var service = TarkovDataService.Instance;
 
-        try
+        var (tasks, missingTasks) = await service.RefreshTasksDataAsync(message =>
         {
-            var (taskDataset, itemDataset, hideoutDataset) = await TaskDatasetManager.FetchAndSaveAllAsync();
+            Console.WriteLine($"  {message}");
+        });
 
-            Console.WriteLine($"\nData fetched successfully!");
-            Console.WriteLine($"- Generated At: {taskDataset.GeneratedAt:yyyy-MM-dd HH:mm:ss} UTC");
+        Console.WriteLine();
+        Console.WriteLine($"=== Results ===");
+        Console.WriteLine($"Total matched tasks: {tasks.Count}");
+        Console.WriteLine($"Missing tasks: {missingTasks.Count}");
+        Console.WriteLine($"Kappa required: {tasks.Count(t => t.ReqKappa)}");
+        Console.WriteLine($"With Korean translation: {tasks.Count(t => !string.IsNullOrEmpty(t.NameKo))}");
+        Console.WriteLine($"With Japanese translation: {tasks.Count(t => !string.IsNullOrEmpty(t.NameJa))}");
+        Console.WriteLine();
+        Console.WriteLine("Sample tasks:");
+        foreach (var task in tasks.Take(5))
+        {
+            Console.WriteLine($"  - {task.Name}");
+            if (!string.IsNullOrEmpty(task.NameKo))
+                Console.WriteLine($"    KO: {task.NameKo}");
+            if (!string.IsNullOrEmpty(task.NameJa))
+                Console.WriteLine($"    JA: {task.NameJa}");
+            Console.WriteLine($"    Kappa: {task.ReqKappa}");
+        }
 
-            // Task 통계
-            Console.WriteLine($"\n[Tasks]");
-            Console.WriteLine($"- Total: {taskDataset.Tasks.Count}");
-            Console.WriteLine($"- Saved to: {TaskDatasetManager.DefaultDataPath}");
-
-            // Item 통계
-            Console.WriteLine($"\n[Items]");
-            Console.WriteLine($"- Total: {itemDataset.Items.Count}");
-            Console.WriteLine($"- Saved to: {TaskDatasetManager.DefaultItemDataPath}");
-
-            // Hideout 통계
-            Console.WriteLine($"\n[Hideouts]");
-            Console.WriteLine($"- Total Stations: {hideoutDataset.Hideouts.Count}");
-            Console.WriteLine($"- Saved to: {TaskDatasetManager.DefaultHideoutDataPath}");
-
-            // Hideout 아이템 요구사항 통계
-            var totalItemReqs = hideoutDataset.Hideouts
-                .SelectMany(h => h.Levels)
-                .SelectMany(l => l.ItemRequirements)
-                .ToList();
-            var firItemReqs = totalItemReqs.Where(r => r.FoundInRaid).ToList();
-
-            Console.WriteLine($"- Total Item Requirements: {totalItemReqs.Count}");
-            Console.WriteLine($"- Found in Raid Requirements: {firItemReqs.Count}");
-
-            Console.WriteLine("\nSample hideout stations:");
-            foreach (var hideout in hideoutDataset.Hideouts.Take(5))
+        if (missingTasks.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"=== Missing Tasks (first 10) ===");
+            foreach (var missing in missingTasks.Take(10))
             {
-                var levelCount = hideout.Levels.Count;
-                var itemCount = hideout.Levels.Sum(l => l.ItemRequirements.Count);
-                Console.WriteLine($"  - {hideout.NameEn} / {hideout.NameKo}");
-                Console.WriteLine($"    Levels: {levelCount}, Item Requirements: {itemCount}");
+                Console.WriteLine($"  - {missing.Name}");
+                Console.WriteLine($"    Reason: {missing.Reason}");
             }
         }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error: {ex.Message}");
-            Console.WriteLine(ex.StackTrace);
-        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Saved to {AppEnv.DataPath}/tasks.json");
+        if (missingTasks.Count > 0)
+            Console.WriteLine($"Missing tasks saved to {AppEnv.DataPath}/tasks_missing.json");
     }
 }

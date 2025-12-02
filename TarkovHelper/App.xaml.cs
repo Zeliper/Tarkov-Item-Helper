@@ -85,16 +85,16 @@ namespace TarkovHelper
         /// </summary>
         private void DeleteCacheDataFiles()
         {
-            var cacheFiles = new[]
+            var ignoreFiles = new[]
             {
-                Path.Combine(DataDirectory, "tasks.json"),
-                Path.Combine(DataDirectory, "items.json"),
-                Path.Combine(DataDirectory, "hideouts.json")
+                Path.Combine(DataDirectory, "progress.json"),
+                Path.Combine(DataDirectory, "settings.json"),
+                Path.Combine(DataDirectory, "game_settings.json")
             };
 
-            foreach (var file in cacheFiles)
+            foreach (var file in Directory.GetFiles(DataDirectory))
             {
-                if (File.Exists(file))
+                if (File.Exists(file) && !ignoreFiles.Contains(file))
                 {
                     try
                     {

@@ -1,0 +1,582 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using TarkovHelper.Debug;
+using TarkovHelper.Models;
+
+namespace TarkovHelper.Services
+{
+    /// <summary>
+    /// Service for fetching and managing task data from tarkov.dev API
+    /// Translations come from tarkov.dev, but reqKappa is parsed from wiki .wiki files
+    /// </summary>
+    public class TarkovDataService : IDisposable
+    {
+        private static TarkovDataService? _instance;
+        public static TarkovDataService Instance => _instance ??= new TarkovDataService();
+
+        private readonly HttpClient _httpClient;
+        private const string GraphQLEndpoint = "https://api.tarkov.dev/graphql";
+        private const string QuestPagesCacheDir = "QuestPages";
+
+        public TarkovDataService()
+        {
+            _httpClient = new HttpClient();
+        }
+
+        #region GraphQL Response DTOs
+
+        private class GraphQLResponse<T>
+        {
+            [JsonPropertyName("data")]
+            public T? Data { get; set; }
+
+            [JsonPropertyName("errors")]
+            public List<GraphQLError>? Errors { get; set; }
+        }
+
+        private class GraphQLError
+        {
+            [JsonPropertyName("message")]
+            public string Message { get; set; } = string.Empty;
+        }
+
+        private class TasksData
+        {
+            [JsonPropertyName("tasks")]
+            public List<ApiTask>? Tasks { get; set; }
+        }
+
+        private class ApiTask
+        {
+            [JsonPropertyName("id")]
+            public string Id { get; set; } = string.Empty;
+
+            [JsonPropertyName("name")]
+            public string Name { get; set; } = string.Empty;
+
+            [JsonPropertyName("normalizedName")]
+            public string NormalizedName { get; set; } = string.Empty;
+
+            [JsonPropertyName("kappaRequired")]
+            public bool? KappaRequired { get; set; }
+
+            [JsonPropertyName("trader")]
+            public ApiTrader? Trader { get; set; }
+        }
+
+        private class ApiTrader
+        {
+            [JsonPropertyName("name")]
+            public string Name { get; set; } = string.Empty;
+        }
+
+        #endregion
+
+        #region Missing Task DTO
+
+        /// <summary>
+        /// Record of a task that couldn't be matched with wiki
+        /// </summary>
+        public class MissingTask
+        {
+            [JsonPropertyName("id")]
+            public string Id { get; set; } = string.Empty;
+
+            [JsonPropertyName("name")]
+            public string Name { get; set; } = string.Empty;
+
+            [JsonPropertyName("nameWithoutPvp")]
+            public string NameWithoutPvp { get; set; } = string.Empty;
+
+            [JsonPropertyName("trader")]
+            public string Trader { get; set; } = string.Empty;
+
+            [JsonPropertyName("reason")]
+            public string Reason { get; set; } = string.Empty;
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Remove [PVP ZONE] suffix from task name for wiki matching
+        /// </summary>
+        private static string RemovePvpZoneSuffix(string name)
+        {
+            // Pattern: " [PVP ZONE]" at the end (case insensitive)
+            return Regex.Replace(name, @"\s*\[PVP ZONE\]\s*$", "", RegexOptions.IgnoreCase).Trim();
+        }
+
+        /// <summary>
+        /// Generate normalizedName from wiki quest name
+        /// Converts to lowercase and replaces spaces with hyphens
+        /// </summary>
+        private static string GenerateNormalizedName(string wikiName)
+        {
+            return wikiName
+                .ToLowerInvariant()
+                .Replace(" ", "-")
+                .Replace("'", "")      // Remove apostrophes: "Huntsman's Path" -> "huntsmans-path"
+                .Replace("'", "")      // Remove right single quotation mark
+                .Replace(":", "")      // Remove colons
+                .Replace("?", "")      // Remove question marks
+                .Replace(".", "")      // Remove periods
+                .Replace(",", "")      // Remove commas
+                .Replace("!", "")      // Remove exclamation marks
+                .Replace("\"", "")     // Remove quotes
+                .Replace("(", "")      // Remove parentheses
+                .Replace(")", "");
+        }
+
+        /// <summary>
+        /// Normalize quest name for file matching
+        /// Handles special characters that may be encoded differently
+        /// </summary>
+        private static string NormalizeQuestName(string name)
+        {
+            return name
+                // Normalize various apostrophe types to standard single quote
+                .Replace("'", "'")  // RIGHT SINGLE QUOTATION MARK (U+2019) -> '
+                .Replace("'", "'")  // LEFT SINGLE QUOTATION MARK (U+2018) -> '
+                .Replace("ʼ", "'")  // MODIFIER LETTER APOSTROPHE -> '
+                // Replace invalid filename characters with underscore
+                .Replace("?", "_")
+                .Replace(":", "_")
+                .Replace("*", "_")
+                .Replace("\"", "_")
+                .Replace("<", "_")
+                .Replace(">", "_")
+                .Replace("|", "_");
+        }
+
+        /// <summary>
+        /// Get wiki file path for a quest name with fallback matching
+        /// </summary>
+        private string? GetWikiFilePath(string questName)
+        {
+            var cacheDir = Path.Combine(AppEnv.CachePath, QuestPagesCacheDir);
+            if (!Directory.Exists(cacheDir))
+                return null;
+
+            // Normalize the quest name
+            var normalizedName = NormalizeQuestName(questName);
+
+            // Try exact match with normalized name first
+            var exactPath = Path.Combine(cacheDir, $"{normalizedName}.wiki");
+            if (File.Exists(exactPath))
+                return exactPath;
+
+            // Try with HTML entity encoding for apostrophe (&#39;)
+            var htmlEncodedName = normalizedName.Replace("'", "&#39;");
+            var htmlEncodedPath = Path.Combine(cacheDir, $"{htmlEncodedName}.wiki");
+            if (File.Exists(htmlEncodedPath))
+                return htmlEncodedPath;
+
+            // Try replacing hyphens with spaces (Half-Empty -> Half Empty)
+            var noHyphenName = normalizedName.Replace("-", " ");
+            var noHyphenPath = Path.Combine(cacheDir, $"{noHyphenName}.wiki");
+            if (File.Exists(noHyphenPath))
+                return noHyphenPath;
+
+            // Try replacing spaces with hyphens
+            var withHyphenName = normalizedName.Replace(" ", "-");
+            var withHyphenPath = Path.Combine(cacheDir, $"{withHyphenName}.wiki");
+            if (File.Exists(withHyphenPath))
+                return withHyphenPath;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Parse reqkappa from a .wiki file content
+        /// Returns true if |reqkappa contains "Yes", false otherwise
+        /// </summary>
+        private bool ParseReqKappaFromWiki(string wikiContent)
+        {
+            // Pattern: |reqkappa = ... Yes ...
+            // Example: |reqkappa     =<font color="red">Yes</font>
+            var match = Regex.Match(wikiContent, @"\|reqkappa\s*=([^\|]*)", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                var value = match.Groups[1].Value;
+                return value.Contains("Yes", StringComparison.OrdinalIgnoreCase);
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Execute a GraphQL query against tarkov.dev API
+        /// </summary>
+        private async Task<T?> ExecuteQueryAsync<T>(string query) where T : class
+        {
+            var requestBody = new { query };
+            var json = JsonSerializer.Serialize(requestBody);
+            var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync(GraphQLEndpoint, content);
+            response.EnsureSuccessStatusCode();
+
+            var responseBytes = await response.Content.ReadAsByteArrayAsync();
+            var responseJson = Encoding.UTF8.GetString(responseBytes);
+
+            var result = JsonSerializer.Deserialize<GraphQLResponse<T>>(responseJson);
+
+            if (result?.Errors != null && result.Errors.Count > 0)
+            {
+                throw new Exception($"GraphQL Error: {string.Join(", ", result.Errors.Select(e => e.Message))}");
+            }
+
+            return result?.Data;
+        }
+
+        /// <summary>
+        /// Fetch tasks in a specific language
+        /// </summary>
+        private async Task<List<ApiTask>> FetchTasksAsync(string lang)
+        {
+            var query = $@"{{
+                tasks(lang: {lang}) {{
+                    id
+                    name
+                    normalizedName
+                    kappaRequired
+                    trader {{ name }}
+                }}
+            }}";
+
+            var data = await ExecuteQueryAsync<TasksData>(query);
+            return data?.Tasks ?? new List<ApiTask>();
+        }
+
+        /// <summary>
+        /// Fetch tasks from tarkov.dev API in EN, KO, JA, merge with wiki reqkappa data
+        /// Also includes wiki-only quests that don't exist in tarkov.dev API
+        /// </summary>
+        /// <param name="progressCallback">Progress callback</param>
+        /// <returns>Tuple of (matched tasks, missing tasks)</returns>
+        public async Task<(List<TarkovTask> Tasks, List<MissingTask> MissingTasks)> FetchAndMergeTasksAsync(
+            Action<string>? progressCallback = null)
+        {
+            progressCallback?.Invoke("Fetching English tasks...");
+            var tasksEn = await FetchTasksAsync("en");
+
+            progressCallback?.Invoke("Fetching Korean tasks...");
+            var tasksKo = await FetchTasksAsync("ko");
+
+            progressCallback?.Invoke("Fetching Japanese tasks...");
+            var tasksJa = await FetchTasksAsync("ja");
+
+            progressCallback?.Invoke("Loading wiki quest list...");
+            var wikiQuests = await WikiDataService.Instance.LoadQuestsFromJsonAsync();
+
+            progressCallback?.Invoke("Merging task data with wiki reqkappa...");
+
+            // Create lookup dictionaries for KO and JA by ID
+            var koById = tasksKo.ToDictionary(t => t.Id, t => t.Name);
+            var jaById = tasksJa.ToDictionary(t => t.Id, t => t.Name);
+
+            var result = new List<TarkovTask>();
+            var missingTasks = new List<MissingTask>();
+
+            // Track which wiki quests were matched to API tasks
+            var matchedWikiQuests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var taskEn in tasksEn)
+            {
+                var nameKo = koById.TryGetValue(taskEn.Id, out var ko) ? ko : null;
+                var nameJa = jaById.TryGetValue(taskEn.Id, out var ja) ? ja : null;
+
+                // Check if translation is same as English (means no translation available)
+                if (nameKo == taskEn.Name) nameKo = null;
+                if (nameJa == taskEn.Name) nameJa = null;
+
+                // Remove [PVP ZONE] suffix for wiki matching
+                var wikiMatchName = RemovePvpZoneSuffix(taskEn.Name);
+                var wikiFilePath = GetWikiFilePath(wikiMatchName);
+
+                bool reqKappa = false;
+
+                if (wikiFilePath != null)
+                {
+                    var wikiContent = await File.ReadAllTextAsync(wikiFilePath, Encoding.UTF8);
+                    reqKappa = ParseReqKappaFromWiki(wikiContent);
+                    matchedWikiQuests.Add(wikiMatchName);
+                }
+
+                if (wikiFilePath != null)
+                {
+                    result.Add(new TarkovTask
+                    {
+                        Ids = new List<string> { taskEn.Id },
+                        Name = wikiMatchName,  // Use wiki-based name (without [PVP ZONE])
+                        NameKo = nameKo,
+                        NameJa = nameJa,
+                        ReqKappa = reqKappa,
+                        Trader = taskEn.Trader?.Name ?? string.Empty,
+                        NormalizedName = GenerateNormalizedName(wikiMatchName)  // Generate from wiki name
+                    });
+                }
+                else
+                {
+                    missingTasks.Add(new MissingTask
+                    {
+                        Id = taskEn.Id,
+                        Name = taskEn.Name,
+                        NameWithoutPvp = wikiMatchName,
+                        Trader = taskEn.Trader?.Name ?? string.Empty,
+                        Reason = $"Wiki file not found: {wikiMatchName}.wiki"
+                    });
+                }
+            }
+
+            // Add wiki-only quests that don't exist in tarkov.dev API
+            if (wikiQuests != null)
+            {
+                progressCallback?.Invoke("Adding wiki-only quests...");
+                int wikiOnlyCount = 0;
+
+                foreach (var (trader, quests) in wikiQuests)
+                {
+                    foreach (var quest in quests)
+                    {
+                        // Skip if already matched with API task
+                        if (matchedWikiQuests.Contains(quest.Name))
+                            continue;
+
+                        // Check if wiki file exists for this quest
+                        var wikiFilePath = GetWikiFilePath(quest.Name);
+                        bool reqKappa = false;
+
+                        if (wikiFilePath != null)
+                        {
+                            var wikiContent = await File.ReadAllTextAsync(wikiFilePath, Encoding.UTF8);
+                            reqKappa = ParseReqKappaFromWiki(wikiContent);
+                        }
+
+                        // Add as wiki-only task (no API id, no translations)
+                        result.Add(new TarkovTask
+                        {
+                            Ids = null, // No API ID
+                            Name = quest.Name,
+                            NameKo = null, // No translation without API
+                            NameJa = null,
+                            ReqKappa = reqKappa,
+                            Trader = trader,
+                            NormalizedName = GenerateNormalizedName(quest.Name)  // Generate from wiki name
+                        });
+
+                        wikiOnlyCount++;
+                        matchedWikiQuests.Add(quest.Name);
+                    }
+                }
+
+                progressCallback?.Invoke($"Added {wikiOnlyCount} wiki-only quests");
+            }
+
+            progressCallback?.Invoke($"Merged {result.Count} tasks total, {missingTasks.Count} API tasks without wiki");
+            return (result, missingTasks);
+        }
+
+        /// <summary>
+        /// Save tasks to JSON file
+        /// </summary>
+        public async Task SaveTasksToJsonAsync(List<TarkovTask> tasks, string? fileName = null)
+        {
+            fileName ??= "tasks.json";
+            var filePath = Path.Combine(AppEnv.DataPath, fileName);
+            Directory.CreateDirectory(AppEnv.DataPath);
+
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+            };
+
+            var json = JsonSerializer.Serialize(tasks, options);
+            await File.WriteAllTextAsync(filePath, json, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Save missing tasks to JSON file
+        /// </summary>
+        public async Task SaveMissingTasksToJsonAsync(List<MissingTask> missingTasks, string? fileName = null)
+        {
+            fileName ??= "tasks_missing.json";
+            var filePath = Path.Combine(AppEnv.DataPath, fileName);
+            Directory.CreateDirectory(AppEnv.DataPath);
+
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+            };
+
+            var json = JsonSerializer.Serialize(missingTasks, options);
+            await File.WriteAllTextAsync(filePath, json, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Load tasks from JSON file
+        /// </summary>
+        public async Task<List<TarkovTask>?> LoadTasksFromJsonAsync(string? fileName = null)
+        {
+            fileName ??= "tasks.json";
+            var filePath = Path.Combine(AppEnv.DataPath, fileName);
+
+            if (!File.Exists(filePath))
+            {
+                return null;
+            }
+
+            var json = await File.ReadAllTextAsync(filePath, Encoding.UTF8);
+            return JsonSerializer.Deserialize<List<TarkovTask>>(json);
+        }
+
+        /// <summary>
+        /// Load missing tasks from JSON file
+        /// </summary>
+        public async Task<List<MissingTask>?> LoadMissingTasksFromJsonAsync(string? fileName = null)
+        {
+            fileName ??= "tasks_missing.json";
+            var filePath = Path.Combine(AppEnv.DataPath, fileName);
+
+            if (!File.Exists(filePath))
+            {
+                return null;
+            }
+
+            var json = await File.ReadAllTextAsync(filePath, Encoding.UTF8);
+            return JsonSerializer.Deserialize<List<MissingTask>>(json);
+        }
+
+        /// <summary>
+        /// Fetch, merge, and save tasks in one call
+        /// </summary>
+        public async Task<(List<TarkovTask> Tasks, List<MissingTask> MissingTasks)> RefreshTasksDataAsync(
+            Action<string>? progressCallback = null)
+        {
+            var (tasks, missingTasks) = await FetchAndMergeTasksAsync(progressCallback);
+
+            await SaveTasksToJsonAsync(tasks);
+            progressCallback?.Invoke($"Saved {tasks.Count} tasks to tasks.json");
+
+            if (missingTasks.Count > 0)
+            {
+                await SaveMissingTasksToJsonAsync(missingTasks);
+                progressCallback?.Invoke($"Saved {missingTasks.Count} missing tasks to tasks_missing.json");
+            }
+
+            return (tasks, missingTasks);
+        }
+
+        /// <summary>
+        /// Complete data refresh: WikiQuestData download, Quest Pages fetch, and API merge
+        /// This is the main entry point for refreshing all task data
+        /// </summary>
+        /// <param name="progressCallback">Progress callback for UI updates</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>Result summary</returns>
+        public async Task<RefreshDataResult> RefreshAllDataAsync(
+            Action<string>? progressCallback = null,
+            CancellationToken cancellationToken = default)
+        {
+            var result = new RefreshDataResult();
+            var wikiService = WikiDataService.Instance;
+
+            try
+            {
+                // Step 1: Download WikiQuestData (quest list from wiki)
+                progressCallback?.Invoke("[1/3] Downloading Wiki quest list...");
+                var quests = await wikiService.RefreshQuestsDataAsync();
+                result.TotalQuestsInWiki = quests.Values.Sum(q => q.Count);
+                progressCallback?.Invoke($"[1/3] Downloaded {result.TotalQuestsInWiki} quests from wiki");
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Step 2: Fetch all Quest Pages (.wiki files)
+                progressCallback?.Invoke("[2/3] Downloading quest pages...");
+                var (downloaded, skipped, failed, failedQuests) = await wikiService.DownloadAllQuestPagesAsync(
+                    forceDownload: false,
+                    progress: (current, total, message) =>
+                    {
+                        progressCallback?.Invoke($"[2/3] ({current}/{total}) {message}");
+                    },
+                    cancellationToken: cancellationToken);
+
+                result.QuestPagesDownloaded = downloaded;
+                result.QuestPagesSkipped = skipped;
+                result.QuestPagesFailed = failed;
+                result.FailedQuestPages = failedQuests;
+                progressCallback?.Invoke($"[2/3] Quest pages: {downloaded} downloaded, {skipped} skipped, {failed} failed");
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Step 3: Merge with tarkov.dev API
+                progressCallback?.Invoke("[3/3] Fetching and merging with tarkov.dev API...");
+                var (tasks, missingTasks) = await RefreshTasksDataAsync(message =>
+                {
+                    progressCallback?.Invoke($"[3/3] {message}");
+                });
+
+                result.TotalTasksMerged = tasks.Count;
+                result.TasksWithApiId = tasks.Count(t => t.Ids != null && t.Ids.Count > 0);
+                result.WikiOnlyTasks = tasks.Count(t => t.Ids == null || t.Ids.Count == 0);
+                result.KappaRequiredTasks = tasks.Count(t => t.ReqKappa);
+                result.MissingApiTasks = missingTasks.Count;
+
+                progressCallback?.Invoke($"[Complete] {result.TotalTasksMerged} tasks merged successfully");
+                result.Success = true;
+            }
+            catch (OperationCanceledException)
+            {
+                progressCallback?.Invoke("[Cancelled] Data refresh was cancelled");
+                result.ErrorMessage = "Operation cancelled";
+            }
+            catch (Exception ex)
+            {
+                progressCallback?.Invoke($"[Error] {ex.Message}");
+                result.ErrorMessage = ex.Message;
+            }
+
+            return result;
+        }
+
+        public void Dispose()
+        {
+            _httpClient.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Result of RefreshAllDataAsync operation
+    /// </summary>
+    public class RefreshDataResult
+    {
+        public bool Success { get; set; }
+        public string? ErrorMessage { get; set; }
+
+        // Wiki quest list stats
+        public int TotalQuestsInWiki { get; set; }
+
+        // Quest pages download stats
+        public int QuestPagesDownloaded { get; set; }
+        public int QuestPagesSkipped { get; set; }
+        public int QuestPagesFailed { get; set; }
+        public List<string> FailedQuestPages { get; set; } = new();
+
+        // Merged tasks stats
+        public int TotalTasksMerged { get; set; }
+        public int TasksWithApiId { get; set; }
+        public int WikiOnlyTasks { get; set; }
+        public int KappaRequiredTasks { get; set; }
+        public int MissingApiTasks { get; set; }
+    }
+}
