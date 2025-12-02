@@ -1,0 +1,440 @@
+<UserControl x:Class="TarkovHelper.Pages.ItemsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="900"
+             Background="{StaticResource BackgroundDarkBrush}">
+
+    <UserControl.Resources>
+        <!-- Item List Item Template -->
+        <DataTemplate x:Key="ItemListTemplate">
+            <Border x:Name="ItemBorder" Padding="12,8" BorderThickness="0,0,0,1"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    Background="Transparent">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="40"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="90"/>
+                        <ColumnDefinition Width="90"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Item Icon -->
+                    <Border Grid.Column="0" Width="36" Height="36"
+                            CornerRadius="4" Background="{StaticResource BackgroundLightBrush}"
+                            VerticalAlignment="Center">
+                        <Image Source="{Binding IconSource}"
+                               Width="32" Height="32"
+                               Stretch="Uniform"
+                               RenderOptions.BitmapScalingMode="HighQuality"/>
+                    </Border>
+
+                    <!-- Item Name -->
+                    <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding DisplayName}" FontSize="14"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       TextTrimming="CharacterEllipsis"/>
+                            <Border Padding="5,2" CornerRadius="2" Margin="8,0,0,0"
+                                    Background="{StaticResource WarningBrush}"
+                                    Visibility="{Binding FirVisibility}">
+                                <TextBlock Text="FIR" FontSize="10" Foreground="White"/>
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="{Binding SubtitleName}" FontSize="11"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Visibility="{Binding SubtitleVisibility}"
+                                   TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+
+                    <!-- Quest Count -->
+                    <StackPanel Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="Quest" FontSize="10"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding QuestDisplay}" FontSize="14"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   HorizontalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+
+                    <!-- Hideout Count -->
+                    <StackPanel Grid.Column="4" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="Hideout" FontSize="10"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding HideoutDisplay}" FontSize="14"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   HorizontalAlignment="Center" FontWeight="SemiBold"/>
+                    </StackPanel>
+
+                    <!-- Total Count -->
+                    <StackPanel Grid.Column="5" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <TextBlock Text="Total" FontSize="10"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="{Binding TotalDisplay}" FontSize="14"
+                                   Foreground="{StaticResource AccentBrush}"
+                                   HorizontalAlignment="Center" FontWeight="Bold"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
+                </Trigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+
+        <!-- ListBox Item Container Style -->
+        <Style x:Key="ItemListBoxItem" TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <ContentPresenter/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Main Content -->
+        <Grid x:Name="MainContent" Margin="16">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- Filter Bar -->
+        <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}"
+                CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Search Box -->
+                <TextBox x:Name="TxtSearch" Grid.Column="0"
+                         TextChanged="TxtSearch_TextChanged"
+                         Margin="0,0,16,0">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                            <Setter Property="Tag" Value="Search items..."/>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <!-- Filter Toggles -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <!-- Source Filter -->
+                    <ComboBox x:Name="CmbSource" Width="120" Margin="0,0,16,0"
+                              SelectionChanged="CmbSource_SelectionChanged">
+                        <ComboBoxItem Content="All" Tag="All" IsSelected="True"/>
+                        <ComboBoxItem Content="Quest" Tag="Quest"/>
+                        <ComboBoxItem Content="Hideout" Tag="Hideout"/>
+                    </ComboBox>
+
+                    <!-- FIR Filter -->
+                    <CheckBox x:Name="ChkFirOnly" Content="FIR Only"
+                              Foreground="{StaticResource TextPrimaryBrush}"
+                              VerticalContentAlignment="Center"
+                              Margin="0,0,16,0" Cursor="Hand"
+                              Checked="Filter_Changed" Unchecked="Filter_Changed"/>
+
+                    <!-- Sort By -->
+                    <ComboBox x:Name="CmbSort" Width="120"
+                              SelectionChanged="CmbSort_SelectionChanged">
+                        <ComboBoxItem Content="Name" Tag="Name" IsSelected="True"/>
+                        <ComboBoxItem Content="Total Count" Tag="Total"/>
+                        <ComboBoxItem Content="Quest Count" Tag="Quest"/>
+                        <ComboBoxItem Content="Hideout Count" Tag="Hideout"/>
+                    </ComboBox>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Statistics Bar -->
+        <Border Grid.Row="1" Padding="12,6" Margin="0,0,0,12">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="TxtStats" FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="400"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="350" MinWidth="250"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Item List with Header -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Column Headers -->
+                <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}"
+                        CornerRadius="6,6,0,0" Padding="12,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="90"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <TextBlock Grid.Column="1" Text="Item Name" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,0,0"/>
+                        <TextBlock Grid.Column="3" Text="Quest" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                        <TextBlock Grid.Column="4" Text="Hideout" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
+                        <TextBlock Grid.Column="5" Text="Total" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
+                <!-- Item List -->
+                <Border Grid.Row="1" Background="{StaticResource BackgroundMediumBrush}"
+                        CornerRadius="0,0,6,6">
+                    <ListBox x:Name="LstItems"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ItemTemplate="{StaticResource ItemListTemplate}"
+                             ItemContainerStyle="{StaticResource ItemListBoxItem}"
+                             SelectionChanged="LstItems_SelectionChanged"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+                </Border>
+            </Grid>
+
+            <!-- Splitter -->
+            <GridSplitter Grid.Column="1" Width="8" Background="Transparent"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+
+            <!-- Detail Panel -->
+            <Border Grid.Column="2" Background="{StaticResource BackgroundMediumBrush}"
+                    CornerRadius="6" Padding="16">
+                <Grid>
+                    <!-- Empty State -->
+                    <TextBlock x:Name="TxtSelectItem"
+                               Text="Select an item to view details"
+                               FontSize="14" Foreground="{StaticResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="DetailPanel" Visibility="Collapsed">
+                            <!-- Item Header -->
+                            <Grid Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Item Icon -->
+                                <Border Grid.Column="0" Width="56" Height="56"
+                                        CornerRadius="6" Background="{StaticResource BackgroundDarkBrush}">
+                                    <Image x:Name="ImgDetailIcon"
+                                           Width="48" Height="48"
+                                           Stretch="Uniform"
+                                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                                </Border>
+
+                                <!-- Item Name -->
+                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
+                                    <TextBlock x:Name="TxtDetailName" FontSize="16" FontWeight="SemiBold"
+                                               Foreground="{StaticResource AccentBrush}"
+                                               TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="TxtDetailSubtitle" FontSize="12"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Wiki Button -->
+                            <Button x:Name="BtnWiki" Content="Open Wiki" Padding="12,6"
+                                    Margin="0,0,0,16" HorizontalAlignment="Left"
+                                    Click="BtnWiki_Click"/>
+
+                            <!-- Summary -->
+                            <Border Background="{StaticResource BackgroundDarkBrush}"
+                                    CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                                        <TextBlock Text="Quest" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtDetailQuestCount" FontSize="18" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   HorizontalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                                        <TextBlock Text="Hideout" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtDetailHideoutCount" FontSize="18" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   HorizontalAlignment="Center"/>
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                                        <TextBlock Text="Total" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center"/>
+                                        <TextBlock x:Name="TxtDetailTotalCount" FontSize="18" FontWeight="Bold"
+                                                   Foreground="{StaticResource AccentBrush}"
+                                                   HorizontalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Quest Requirements Section -->
+                            <StackPanel x:Name="QuestSection">
+                                <TextBlock Text="Required for Quests" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           Margin="0,0,0,8"/>
+                                <Border Background="{StaticResource BackgroundDarkBrush}"
+                                        CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                    <ItemsControl x:Name="QuestRequirementsList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Padding="4" Margin="0,2"
+                                                        Background="{StaticResource BackgroundMediumBrush}"
+                                                        CornerRadius="4">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <StackPanel Grid.Column="0" Margin="4,0">
+                                                            <TextBlock Text="{Binding QuestName}"
+                                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                                       FontSize="12" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding TraderName}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="10"/>
+                                                        </StackPanel>
+
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                                    VerticalAlignment="Center" Margin="8,0,4,0">
+                                                            <TextBlock Text="{Binding AmountDisplay}"
+                                                                       Foreground="{StaticResource AccentBrush}"
+                                                                       FontSize="14" FontWeight="Bold"
+                                                                       VerticalAlignment="Center"/>
+                                                            <Border Padding="4,2" CornerRadius="2" Margin="6,0,0,0"
+                                                                    Background="{StaticResource WarningBrush}"
+                                                                    Visibility="{Binding FirVisibility}">
+                                                                <TextBlock Text="FIR" FontSize="9" Foreground="White"/>
+                                                            </Border>
+                                                        </StackPanel>
+
+                                                        <Button Grid.Column="2" Content="Wiki" Padding="6,2"
+                                                                FontSize="10" MinWidth="40" Margin="4,0,0,0"
+                                                                Click="BtnQuestWiki_Click"
+                                                                Tag="{Binding}"
+                                                                Visibility="{Binding WikiButtonVisibility}"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Hideout Requirements Section -->
+                            <StackPanel x:Name="HideoutSection">
+                                <TextBlock Text="Required for Hideout" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           Margin="0,0,0,8"/>
+                                <Border Background="{StaticResource BackgroundDarkBrush}"
+                                        CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                    <ItemsControl x:Name="HideoutRequirementsList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Padding="4" Margin="0,2"
+                                                        Background="{StaticResource BackgroundMediumBrush}"
+                                                        CornerRadius="4">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+
+                                                        <StackPanel Grid.Column="0" Margin="4,0">
+                                                            <TextBlock Text="{Binding ModuleName}"
+                                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                                       FontSize="12" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="{Binding LevelDisplay}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="10"/>
+                                                        </StackPanel>
+
+                                                        <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                                    VerticalAlignment="Center" Margin="8,0,4,0">
+                                                            <TextBlock Text="{Binding AmountDisplay}"
+                                                                       Foreground="{StaticResource AccentBrush}"
+                                                                       FontSize="14" FontWeight="Bold"
+                                                                       VerticalAlignment="Center"/>
+                                                            <Border Padding="4,2" CornerRadius="2" Margin="6,0,0,0"
+                                                                    Background="{StaticResource WarningBrush}"
+                                                                    Visibility="{Binding FirVisibility}">
+                                                                <TextBlock Text="FIR" FontSize="9" Foreground="White"/>
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+        </Grid>
+
+        <!-- Loading Overlay -->
+        <Grid x:Name="LoadingOverlay" Visibility="Visible" Background="{StaticResource BackgroundDarkBrush}">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                <ProgressBar Height="4" Width="200" IsIndeterminate="True"
+                             Foreground="{StaticResource AccentBrush}"
+                             Background="{StaticResource BackgroundMediumBrush}"/>
+                <TextBlock x:Name="LoadingStatusText"
+                           Text="Loading items data..."
+                           FontSize="14" Margin="0,16,0,0"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

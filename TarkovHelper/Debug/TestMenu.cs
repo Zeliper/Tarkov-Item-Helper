@@ -1,4 +1,4 @@
-using System.Text;
+using System.IO;
 using System.Windows;
 using TarkovHelper.Services;
 
@@ -18,60 +18,34 @@ public static class TestMenu
     [TestMenu("Refresh Data")]
     public static async Task RefreshData()
     {
-        try
+        if (MainWindow is TarkovHelper.MainWindow mainWindow)
         {
-            var tarkovService = TarkovDataService.Instance;
-            var sb = new StringBuilder();
-
-            sb.AppendLine("Starting data refresh...\n");
-
-            var result = await tarkovService.RefreshAllDataAsync(message =>
-            {
-                sb.AppendLine(message);
-            });
-
-            sb.AppendLine();
-            sb.AppendLine("=== Result Summary ===");
-
-            if (result.Success)
-            {
-                sb.AppendLine($"Wiki Quests: {result.TotalQuestsInWiki}");
-                sb.AppendLine($"Quest Pages: {result.QuestPagesDownloaded} downloaded, {result.QuestPagesSkipped} skipped, {result.QuestPagesFailed} failed");
-                sb.AppendLine($"Total Tasks: {result.TotalTasksMerged}");
-                sb.AppendLine($"  - With API ID: {result.TasksWithApiId}");
-                sb.AppendLine($"  - Wiki-only: {result.WikiOnlyTasks}");
-                sb.AppendLine($"  - Kappa Required: {result.KappaRequiredTasks}");
-
-                if (result.MissingApiTasks > 0)
-                {
-                    sb.AppendLine($"  - API tasks without wiki: {result.MissingApiTasks}");
-                }
-
-                if (result.FailedQuestPages.Count > 0)
-                {
-                    sb.AppendLine();
-                    sb.AppendLine("=== Failed Quest Pages ===");
-                    foreach (var quest in result.FailedQuestPages.Take(10))
-                    {
-                        sb.AppendLine($"  - {quest}");
-                    }
-                    if (result.FailedQuestPages.Count > 10)
-                    {
-                        sb.AppendLine($"  ... and {result.FailedQuestPages.Count - 10} more");
-                    }
-                }
-            }
-            else
-            {
-                sb.AppendLine($"Error: {result.ErrorMessage}");
-            }
-
-            MessageBox.Show(sb.ToString(), "Refresh Data", MessageBoxButton.OK,
-                result.Success ? MessageBoxImage.Information : MessageBoxImage.Error);
+            await mainWindow.RefreshDataWithOverlayAsync();
         }
-        catch (Exception ex)
+        else
         {
-            MessageBox.Show($"Error refreshing data:\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show("MainWindow not available", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
         }
+    }
+
+    [TestMenu("Test Documents Parser")]
+    public static Task TestDocumentsParser()
+    {
+        var wikiPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Cache", "QuestPages", "Documents.wiki");
+        if (!File.Exists(wikiPath))
+        {
+            MessageBox.Show($"File not found: {wikiPath}", "Error");
+            return Task.CompletedTask;
+        }
+
+        var content = File.ReadAllText(wikiPath);
+        var items = WikiQuestParser.ParseRequiredItems(content);
+
+        var result = items == null
+            ? "No items found (all quest items correctly filtered)"
+            : $"Found {items.Count} items:\n" + string.Join("\n", items.Select(i => $"- {i.ItemNormalizedName} x{i.Amount}"));
+
+        MessageBox.Show(result, "Documents Parser Test");
+        return Task.CompletedTask;
     }
 }

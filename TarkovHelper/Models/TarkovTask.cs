@@ -46,10 +46,124 @@ namespace TarkovHelper.Models
         public string Trader { get; set; } = string.Empty;
 
         /// <summary>
+        /// Maps where this quest takes place (normalized names)
+        /// </summary>
+        [JsonPropertyName("maps")]
+        public List<string>? Maps { get; set; }
+
+        /// <summary>
         /// Normalized name (URL-friendly format)
         /// Null for wiki-only quests that don't exist in tarkov.dev API
         /// </summary>
         [JsonPropertyName("normalizedName")]
         public string? NormalizedName { get; set; }
+
+        /// <summary>
+        /// Prerequisite quests (normalized names)
+        /// </summary>
+        [JsonPropertyName("previous")]
+        public List<string>? Previous { get; set; }
+
+        /// <summary>
+        /// Follow-up quests (normalized names)
+        /// </summary>
+        [JsonPropertyName("leadsTo")]
+        public List<string>? LeadsTo { get; set; }
+
+        /// <summary>
+        /// Required player level to start this quest
+        /// </summary>
+        [JsonPropertyName("requiredLevel")]
+        public int? RequiredLevel { get; set; }
+
+        /// <summary>
+        /// Required skills for this quest
+        /// </summary>
+        [JsonPropertyName("requiredSkills")]
+        public List<SkillRequirement>? RequiredSkills { get; set; }
+
+        /// <summary>
+        /// Required items for this quest
+        /// </summary>
+        [JsonPropertyName("requiredItems")]
+        public List<QuestItem>? RequiredItems { get; set; }
+
+        /// <summary>
+        /// Guide text from wiki (description of how to complete the quest)
+        /// </summary>
+        [JsonPropertyName("guideText")]
+        public string? GuideText { get; set; }
+
+        /// <summary>
+        /// Guide images from wiki gallery (file names)
+        /// </summary>
+        [JsonPropertyName("guideImages")]
+        public List<GuideImage>? GuideImages { get; set; }
+    }
+
+    /// <summary>
+    /// Image from wiki guide gallery
+    /// </summary>
+    public class GuideImage
+    {
+        /// <summary>
+        /// Wiki file name (e.g., "Delivery from the past Customs.png")
+        /// </summary>
+        [JsonPropertyName("fileName")]
+        public string FileName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Caption for the image
+        /// </summary>
+        [JsonPropertyName("caption")]
+        public string? Caption { get; set; }
+    }
+
+    /// <summary>
+    /// Skill requirement for a quest
+    /// </summary>
+    public class SkillRequirement
+    {
+        /// <summary>
+        /// Skill normalized name for lookup in skills.json
+        /// </summary>
+        [JsonPropertyName("skillNormalizedName")]
+        public string SkillNormalizedName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Required skill level
+        /// </summary>
+        [JsonPropertyName("level")]
+        public int Level { get; set; }
+    }
+
+    /// <summary>
+    /// Item requirement for a quest
+    /// </summary>
+    public class QuestItem
+    {
+        /// <summary>
+        /// Item normalized name for lookup in items.json
+        /// </summary>
+        [JsonPropertyName("itemNormalizedName")]
+        public string ItemNormalizedName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Required quantity
+        /// </summary>
+        [JsonPropertyName("amount")]
+        public int Amount { get; set; }
+
+        /// <summary>
+        /// Requirement type: "Handover", "Required", "Optional"
+        /// </summary>
+        [JsonPropertyName("requirement")]
+        public string Requirement { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Whether the item must be Found in Raid
+        /// </summary>
+        [JsonPropertyName("foundInRaid")]
+        public bool FoundInRaid { get; set; }
     }
 }

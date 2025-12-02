@@ -1,0 +1,665 @@
+# PRD: Quest Data Parser - Item Requirements & Quest Prerequisites
+
+## Overview
+
+This document describes the feature to parse `.wiki` files and extract:
+1. Required items for each quest (with FIR status)
+2. Quest prerequisite relationships (previous/leads to)
+3. Level & skill requirements
+
+The parsed data will be merged into `tasks.json` to enable:
+- Item tracking across all quests
+- Quest dependency graph visualization
+- Optimal quest progression planning
+
+---
+
+## Data Sources
+
+### Primary Data Source: tarkov.dev API
+- **Role**: Master data source for all item/skill information
+- **Data Fetched**:
+  - All items with multilingual names (EN/KO/JA)
+  - Item icons (iconLink, gridImageLink)
+  - Skill names with translations
+  - Level requirements localization
+- **Output**: `Data/items.json` (new file)
+
+### Validation Source: Wiki Files
+- **Location**: `Cache/QuestPages/*.wiki`
+- **Format**: MediaWiki markup
+- **Role**: Validate actual quest requirements against API data
+- **Already Exists**: Downloaded via `RefreshData` feature
+
+### Output
+- **Location**: `Data/tasks.json` (enhanced with new fields)
+- **Location**: `Data/items.json` (new - item master data)
+- **Format**: JSON
+
+---
+
+## Wiki File Structure
+
+Each `.wiki` file contains a MediaWiki template with quest information:
+
+```wiki
+{{Infobox quest
+|previous     =[[Background Check]]
+|leads to     =[[BP Depot]]<br/>[[Another Quest]]
+|reqkappa     =<font color="red">Yes</font>
+}}
+
+==Objectives==
+* Obtain and hand over 2 [[MP-133 12ga pump-action shotgun|MP-133 12ga shotguns]]
+
+==Guide==
+{|class="wikitable"
+! colspan="5" |Related Quest Items
+|-
+!Icon !Item name !Amount !Requirement !Find in raid
+|-
+|[[File:...]]
+|[[MP-133 12ga pump-action shotgun]]
+|2
+|Handover item
+|<font color="green">No</font>
+|}
+```
+
+---
+
+## Data to Extract
+
+### 1. Quest Prerequisites (Infobox)
+
+| Field | Wiki Pattern | Example | Notes |
+|-------|--------------|---------|-------|
+| `previous` | `\|previous\s*=(.*)` | `[[Background Check]]` | Single quest link |
+| `leadsTo` | `\|leads to\s*=(.*)` | `[[BP Depot]]<br/>[[Quest2]]` | Multiple quests separated by `<br/>` |
+
+**Link Parsing**: Extract quest name from `[[Quest Name]]` or `[[Quest Name|Display Name]]`
+
+### 2. Required Items (Related Quest Items Table)
+
+| Field | Source | Example |
+|-------|--------|---------|
+| `itemName` | Item name column | `MP-133 12ga pump-action shotgun` |
+| `amount` | Amount column | `2` |
+| `requirement` | Requirement column | `Handover item`, `Required`, `Optional` |
+| `foundInRaid` | FIR column | `Yes` / `No` |
+
+### 3. Level & Skill Requirements (Infobox)
+
+| Field | Wiki Pattern | Example | Notes |
+|-------|--------------|---------|-------|
+| `level` | `\|level\s*=(.*)` | `15` | Player level requirement |
+| `skills` | Skill level patterns | `Sniper level 7` | Various skill requirements |
+
+---
+
+## Data Models
+
+### TarkovItem Model (from tarkov.dev API) ✅ IMPLEMENTED
+
+```csharp
+// File: Models/TarkovItem.cs
+public class TarkovItem
+{
+    public string Id { get; set; }              // tarkov.dev item ID
+    public string Name { get; set; }            // English name
+    public string? NameKo { get; set; }         // Korean name
+    public string? NameJa { get; set; }         // Japanese name
+    public string? ShortName { get; set; }      // Short name (e.g., "M4A1")
+    public string NormalizedName { get; set; }  // For matching with wiki data
+    public string? IconLink { get; set; }       // Small icon URL
+    public string? GridImageLink { get; set; }  // Grid image URL
+    public string? WikiLink { get; set; }       // Wiki page link
+}
+```
+
+### TarkovSkill Model (from tarkov.dev API) ✅ IMPLEMENTED
+
+```csharp
+// File: Models/TarkovSkill.cs
+public class TarkovSkill
+{
+    public string Id { get; set; }              // Skill ID (e.g., "Sniper", "Health")
+    public string Name { get; set; }            // English skill name
+    public string? NameKo { get; set; }         // Korean name
+    public string? NameJa { get; set; }         // Japanese name
+    public string NormalizedName { get; set; }  // Generated from name for matching
+    public string? ImageLink { get; set; }      // Skill icon URL
+}
+```
+
+### Enhanced TarkovTask Model
+
+```csharp
+public class TarkovTask
+{
+    // Existing fields
+    public List<string>? Ids { get; set; }
+    public string Name { get; set; }
+    public string? NameKo { get; set; }
+    public string? NameJa { get; set; }
+    public bool ReqKappa { get; set; }
+    public string Trader { get; set; }
+    public string NormalizedName { get; set; }
+
+    // NEW: Quest relationships
+    public List<string>? Previous { get; set; }      // Prerequisite quests (normalized names)
+    public List<string>? LeadsTo { get; set; }       // Follow-up quests (normalized names)
+
+    // NEW: Level requirement
+    public int? RequiredLevel { get; set; }
+
+    // NEW: Skill requirements
+    public List<SkillRequirement>? RequiredSkills { get; set; }
+
+    // NEW: Required items
+    public List<QuestItem>? RequiredItems { get; set; }
+}
+
+public class SkillRequirement
+{
+    public string SkillNormalizedName { get; set; }  // Reference to TarkovSkill
+    public int Level { get; set; }
+}
+
+public class QuestItem
+{
+    public string ItemNormalizedName { get; set; }  // Reference to TarkovItem (for lookup)
+    public int Amount { get; set; }                 // Required quantity
+    public string Requirement { get; set; }         // "Handover", "Required", "Optional"
+    public bool FoundInRaid { get; set; }           // FIR requirement
+}
+```
+
+---
+
+## tarkov.dev API Integration ✅ IMPLEMENTED
+
+### GraphQL Query for Items
+
+Note: The API does not support a `translation` field. Instead, we fetch items separately for each language.
+
+```graphql
+# Fetch EN items
+query { items(lang: en) { id name normalizedName shortName iconLink gridImageLink wikiLink } }
+
+# Fetch KO items
+query { items(lang: ko) { id name } }
+
+# Fetch JA items
+query { items(lang: ja) { id name } }
+```
+
+Implementation in `Services/TarkovDevApiService.cs`:
+- Fetches all three languages in parallel
+- Merges by item ID
+- If translated name equals English name, it's treated as "no translation"
+
+### GraphQL Query for Skills
+
+Note: Skills do not have `normalizedName` in the API. We generate it from the English name.
+
+```graphql
+# Fetch EN skills
+query { skills(lang: en) { id name imageLink } }
+
+# Fetch KO skills
+query { skills(lang: ko) { id name } }
+
+# Fetch JA skills
+query { skills(lang: ja) { id name } }
+```
+
+Implementation:
+- `normalizedName` is generated using `NormalizedNameGenerator.Generate(skillName)`
+
+### NormalizedName Generation ✅ IMPLEMENTED
+
+Implemented in `Services/NormalizedNameGenerator.cs`:
+
+```csharp
+// Primary method
+public static string Generate(string name)
+{
+    return name
+        .ToLowerInvariant()
+        .Replace(" ", "-")
+        .Replace("'", "")      // Remove apostrophes
+        .Replace("'", "")      // Remove Unicode apostrophes
+        .Replace(":", "")      // Remove colons
+        .Replace("?", "")      // Remove question marks
+        .Replace(".", "")      // Remove periods
+        .Replace(",", "")      // Remove commas
+        .Replace("!", "")      // Remove exclamation marks
+        .Replace("\"", "")     // Remove quotes
+        .Replace("(", "")      // Remove parentheses
+        .Replace(")", "")
+        .Replace("[", "")      // Remove brackets
+        .Replace("]", "")
+        .Replace("&", "and")   // Replace ampersand
+        .Replace("--", "-")    // Fix double hyphens
+        .Trim('-');
+}
+
+// For fuzzy matching
+public static List<string> GenerateAlternatives(string name)
+// Returns multiple possible normalizedNames for better matching
+```
+
+Example:
+- "MP-133 12ga pump-action shotgun" -> "mp-133-12ga-pump-action-shotgun"
+- "Secure Folder 0022" -> "secure-folder-0022"
+
+### Data Flow
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  tarkov.dev API │────>│   items.json     │────>│   Lookup by     │
+│  (Master Data)  │     │   skills.json    │     │  NormalizedName │
+└─────────────────┘     └──────────────────┘     └────────┬────────┘
+                                                          │
+┌─────────────────┐     ┌──────────────────┐              │
+│   .wiki files   │────>│  Parse & Extract │──────────────┘
+│  (Validation)   │     │  NormalizedNames │     ┌─────────────────┐
+└─────────────────┘     └──────────────────┘────>│   tasks.json    │
+                                                  │  (Enhanced)     │
+                                                  └─────────────────┘
+```
+
+---
+
+## Parsing Logic
+
+### Phase 0: Fetch API Data (RefreshData)
+
+```
+1. Query tarkov.dev API for all items
+2. Query tarkov.dev API for all skills
+3. Save to Data/items.json and Data/skills.json
+4. Build normalizedName lookup dictionary
+```
+
+### Phase 1: Parse Infobox (Quest Relationships)
+
+```
+Regex patterns:
+- Previous: \|previous\s*=([^\|]*?)(?=\||\}\})
+- Leads To: \|leads to\s*=([^\|]*?)(?=\||\}\})
+
+Link extraction:
+- Pattern: \[\[([^\|\]]+)(?:\|[^\]]+)?\]\]
+- Example: [[Background Check]] -> "Background Check"
+- Example: [[Quest Name|Display]] -> "Quest Name"
+
+Multiple links:
+- Split by <br/> or <br />
+- Parse each link separately
+```
+
+### Phase 2: Parse Related Quest Items Table
+
+```
+1. Find section: ==Guide== or ==Objectives==
+2. Locate wikitable: {|class="wikitable"
+3. Parse rows after header (|-):
+   - Column 2: Item name (wiki link)
+   - Column 3: Amount (integer)
+   - Column 4: Requirement type
+   - Column 5: Found in raid (Yes/No)
+```
+
+### Phase 3: Match Wiki Data to API Data
+
+```
+1. For each item name extracted from wiki:
+   a. Generate normalizedName from wiki item name
+   b. Look up in items.json by normalizedName
+   c. If found: use API data (id, translations, icons)
+   d. If not found: log warning, store raw wiki name
+
+2. For each skill requirement:
+   a. Parse skill name and level from wiki text
+   b. Look up in skills.json by normalizedName
+   c. Link to skill data for translations
+```
+
+### Phase 4: Validate & Merge
+
+```
+1. Wiki is source of truth for:
+   - Which items are required for each quest
+   - Item quantities
+   - FIR requirements
+   - Skill level requirements
+   - Player level requirements
+
+2. API provides:
+   - Item/skill metadata (translations, icons)
+   - Normalized identifiers for consistency
+```
+
+---
+
+## Implementation Steps
+
+### Step 1: Create TarkovDevApiService ✅ COMPLETED
+- [x] Add `TarkovDevApiService.cs` in `Services/`
+- [x] Implement GraphQL query for items (with translations)
+- [x] Implement GraphQL query for skills (with translations)
+- [x] Add `TarkovItem` and `TarkovSkill` models
+- [x] Save to `Data/items.json` and `Data/skills.json`
+
+**Files Created:**
+- `Services/TarkovDevApiService.cs` - Main API service
+- `Models/TarkovItem.cs` - Item model
+- `Models/TarkovSkill.cs` - Skill model
+
+**CLI Command Added:**
+```bash
+dotnet run -- --fetch-master-data
+```
+
+**Results (as of implementation):**
+- 4807 items fetched (2572 with Korean, 1614 with Japanese translations)
+- 49 skills fetched (49 with Korean, 49 with Japanese translations)
+
+### Step 2: Create NormalizedName Utility ✅ COMPLETED
+- [x] Add `NormalizedNameGenerator.cs` in `Services/`
+- [x] Implement `Generate(string name)`
+- [x] Implement `GenerateAlternatives(string name)` for fuzzy matching
+- [x] Handle edge cases (special chars, Unicode apostrophes, etc.)
+- [x] Build lookup dictionary helpers (`BuildItemLookup`, `BuildSkillLookup`)
+
+**Files Created:**
+- `Services/NormalizedNameGenerator.cs`
+
+### Step 3: Integrate Master Data into RefreshData ✅ COMPLETED
+- [x] Added master data fetch as Step 1 in `RefreshAllDataAsync`
+- [x] Updated `RefreshDataResult` with item/skill stats
+- [x] Flow: Master Data → Wiki Quest List → Quest Pages → Task Merge
+
+**Updated Files:**
+- `Services/TarkovDataService.cs` - Added master data integration
+
+### Step 4: Create WikiQuestParser Service ✅ COMPLETED
+- [x] Add `WikiQuestParser.cs` in `Services/`
+- [x] Implement `ParsePreviousQuests(string wikiContent)` - Parses |previous = field
+- [x] Implement `ParseLeadsToQuests(string wikiContent)` - Parses |leads to = field
+- [x] Implement `ParseRequiredItems(string wikiContent)` - Parses Related Quest Items table
+- [x] Implement `ParseRequiredLevel(string wikiContent)` - Parses "Must be level X"
+- [x] Implement `ParseSkillRequirements(string wikiContent)` - Parses skill level requirements
+- [x] `ParseAll(string wikiContent)` - Combined parser
+
+**Files Created:**
+- `Services/WikiQuestParser.cs` - Main wiki parser with regex patterns
+
+**Regex Patterns Used:**
+```
+Quest Relationships: \|previous\s*=\s*([^\|\}]*?)(?=\||\}\})
+Quest Links: \[\[([^\]]+)\]\] with [[Name|Display]] handling
+Level: Must\s+be\s+level\s+(\d+)\s+to\s+start
+Skills: Reach\s+the\s+required\s+\[\[([^\]|]+)...\]\]\s*level\s+of\s+(\d+)
+Items: Wikitable parsing with column detection
+```
+
+### Step 5: Update TarkovTask Model ✅ COMPLETED
+- [x] Add `Previous`, `LeadsTo` fields (List<string>?)
+- [x] Add `RequiredLevel` field (int?)
+- [x] Add `RequiredSkills` field (List<SkillRequirement>?)
+- [x] Add `RequiredItems` field (List<QuestItem>?)
+- [x] Add `SkillRequirement` class with `SkillNormalizedName`, `Level`
+- [x] Add `QuestItem` class with `ItemNormalizedName`, `Amount`, `Requirement`, `FoundInRaid`
+
+**Updated Files:**
+- `Models/TarkovTask.cs` - Added new fields and related classes
+
+### Step 6: Integrate Wiki Parsing into RefreshData ✅ COMPLETED
+- [x] Parse all .wiki files during task merge
+- [x] Use `WikiQuestParser.ParseAll()` for each wiki file
+- [x] Populate all new fields in TarkovTask objects
+- [x] Save enhanced tasks.json
+
+**Test Results:**
+- 504 tasks parsed successfully
+- Previous/LeadsTo relationships: Working
+- RequiredLevel: Working (e.g., "Must be level 5")
+- RequiredSkills: Working (e.g., Charisma level 10, Bolt-action Rifles level 7)
+- RequiredItems: Working with Handover/Required types and FIR flags
+
+### Step 7: Build Quest Dependency Graph ✅ COMPLETED
+- [x] Create `QuestGraphService` class in `Services/`
+- [x] Implement `GetAllPrerequisites(questName)` - Recursive prerequisite chain
+- [x] Implement `GetAllFollowUps(questName)` - Recursive follow-up chain
+- [x] Implement `GetOptimalPath(targetQuest)` - Topological sort for completion order
+- [x] Implement `DetectCircularDependencies()` - Cycle detection
+- [x] Implement `GetKappaPath()` - All quests needed for Kappa container
+- [x] Implement `GetStats()` - Quest graph statistics
+
+**Files Created:**
+- `Services/QuestGraphService.cs`
+
+**CLI Command Added:**
+```bash
+dotnet run -- --quest-graph                    # Show overall stats
+dotnet run -- --quest-graph "delivery-from-the-past"  # Show specific quest
+```
+
+### Step 8: Build Item Requirement Aggregator ✅ COMPLETED
+- [x] Create `ItemRequirementService` class in `Services/`
+- [x] Implement `GetAllRequiredItems()` - All items across all quests with totals
+- [x] Implement `GetRequiredItems(questName)` - Items for specific quest
+- [x] Implement `GetQuestsRequiringItem(itemName)` - Quests needing an item
+- [x] Implement `GetFIRItems()` - Filter to Found-in-Raid only
+- [x] Implement `GetKappaItems()` - Items needed for Kappa path
+- [x] Implement `SearchItems(query)` - Search by name (EN/KO/JA)
+
+**Files Created:**
+- `Services/ItemRequirementService.cs`
+
+**CLI Commands Added:**
+```bash
+dotnet run -- --item-requirements              # Show overall stats
+dotnet run -- --item-requirements "flash drive"  # Search for item
+dotnet run -- --kappa-path                     # Show Kappa path and items
+```
+
+**Test Results:**
+- 504 quests loaded
+- 377 unique items required across all quests
+- 1,642 total items needed (785 FIR)
+- 258 quests for Kappa container
+- 214 unique items for Kappa (541 total, 331 FIR)
+
+---
+
+## Edge Cases
+
+### Quest Relationships
+- No previous quest (starter quest)
+- Multiple previous quests (branching)
+- Multiple leads to (branching)
+- Self-referencing (should be ignored)
+- Circular dependencies (should be detected)
+
+### Item Requirements
+- No items required (kill quest)
+- Same item in multiple quests
+- Optional vs required items
+- Items without FIR requirement
+- Key items (one-time use)
+- Quest items (special items that spawn only when quest is active)
+
+### API Matching
+- Wiki item name doesn't match any API normalizedName
+- Multiple API items with similar normalizedNames
+- API missing translation for certain language
+- API item data changes between updates
+
+### Parsing
+- Unicode characters in names (apostrophes, special chars)
+- HTML entities in wiki markup
+- Missing table columns
+- Malformed wiki syntax
+
+### Level & Skill Requirements
+- No level requirement
+- Multiple skill requirements for same quest
+- Skill name variations in wiki text
+
+---
+
+## Sample Output (Actual Data)
+
+### items.json (Generated)
+
+```json
+[
+  {
+    "id": "5447a9cd4bdc2dbd208b4567",
+    "name": "Colt M4A1 5.56x45 assault rifle",
+    "nameKo": "Colt M4A1 5.56x45 돌격소총 ",
+    "nameJa": "M4A1 5.56x45 アサルトライフル",
+    "shortName": "M4A1",
+    "normalizedName": "colt-m4a1-556x45-assault-rifle",
+    "iconLink": "https://assets.tarkov.dev/5447a9cd4bdc2dbd208b4567-icon.webp",
+    "gridImageLink": "https://assets.tarkov.dev/5447a9cd4bdc2dbd208b4567-grid-image.webp",
+    "wikiLink": "https://escapefromtarkov.fandom.com/wiki/Colt_M4A1_5.56x45_assault_rifle"
+  },
+  {
+    "id": "5448be9a4bdc2dfd2f8b456a",
+    "name": "RGD-5 hand grenade",
+    "nameKo": "RGD-5 수류탄 ",
+    "nameJa": "RGD-5 手榴弾",
+    "shortName": "RGD-5",
+    "normalizedName": "rgd-5-hand-grenade",
+    "iconLink": "https://assets.tarkov.dev/5448be9a4bdc2dfd2f8b456a-icon.webp",
+    "gridImageLink": "https://assets.tarkov.dev/5448be9a4bdc2dfd2f8b456a-grid-image.webp",
+    "wikiLink": "https://escapefromtarkov.fandom.com/wiki/RGD-5_hand_grenade"
+  }
+]
+```
+
+### skills.json (Generated)
+
+```json
+[
+  {
+    "id": "Sniper",
+    "name": "Bolt-action Rifles",
+    "nameKo": "볼트액션 소총",
+    "nameJa": "スナイパーライフル",
+    "normalizedName": "bolt-action-rifles",
+    "imageLink": "https://assets.tarkov.dev/skill-Sniper-icon.webp"
+  },
+  {
+    "id": "Health",
+    "name": "Health",
+    "nameKo": "체력",
+    "nameJa": "体力",
+    "normalizedName": "health",
+    "imageLink": "https://assets.tarkov.dev/skill-Health-icon.webp"
+  }
+]
+```
+
+### tasks.json (Enhanced)
+
+```json
+[
+  {
+    "ids": ["5936da9e86f7742d65037edf"],
+    "name": "Debut",
+    "nameKo": "데뷔",
+    "nameJa": "デビュー",
+    "reqKappa": true,
+    "trader": "Prapor",
+    "normalizedName": "debut",
+    "previous": ["shooting-cans"],
+    "leadsTo": ["search-mission", "luxurious-life"],
+    "requiredLevel": 2,
+    "requiredSkills": null,
+    "requiredItems": [
+      {
+        "itemNormalizedName": "mp-133-12ga-pump-action-shotgun",
+        "amount": 2,
+        "requirement": "Handover",
+        "foundInRaid": false
+      }
+    ]
+  },
+  {
+    "ids": ["5936d90786f7742b1420ba5b"],
+    "name": "Delivery From the Past",
+    "nameKo": "과거로부터의 배달",
+    "reqKappa": true,
+    "trader": "Prapor",
+    "normalizedName": "delivery-from-the-past",
+    "previous": ["background-check"],
+    "leadsTo": ["bp-depot"],
+    "requiredLevel": 10,
+    "requiredSkills": null,
+    "requiredItems": [
+      {
+        "itemNormalizedName": "tarcone-directors-office-key",
+        "amount": 1,
+        "requirement": "Required",
+        "foundInRaid": false
+      },
+      {
+        "itemNormalizedName": "secure-folder-0022",
+        "amount": 1,
+        "requirement": "Required",
+        "foundInRaid": true
+      }
+    ]
+  },
+  {
+    "ids": ["5c0bde0986f77479cf22c2f8"],
+    "name": "Psycho Sniper",
+    "nameKo": "싸이코 스나이퍼",
+    "reqKappa": true,
+    "trader": "Peacekeeper",
+    "normalizedName": "psycho-sniper",
+    "previous": ["wet-job-part-6"],
+    "leadsTo": null,
+    "requiredLevel": 20,
+    "requiredSkills": [
+      {
+        "skillNormalizedName": "sniper-rifles",
+        "level": 9
+      }
+    ],
+    "requiredItems": null
+  }
+]
+```
+
+---
+
+## Success Criteria
+
+1. `items.json` contains all items from tarkov.dev API with EN/KO/JA names and icons
+2. `skills.json` contains all skills with EN/KO/JA names
+3. All quests have `previous` and `leadsTo` fields populated (using normalizedNames)
+4. All quests have `requiredItems` list (null if no items)
+5. All quests have `requiredLevel` populated from wiki
+6. All quests have `requiredSkills` populated from wiki
+7. No circular dependencies in quest graph
+8. FIR status accurately parsed from wiki
+9. Item amounts are correct integers
+10. Wiki item names successfully match to API items via normalizedName (>95% match rate)
+
+---
+
+## Future Enhancements
+
+- [ ] Parse hideout requirements from wiki
+- [ ] Parse trader loyalty level requirements
+- [ ] Create visual quest dependency graph
+- [ ] Create item checklist with progress tracking
+- [ ] Add fuzzy matching for wiki->API item name resolution
+- [ ] Cache API responses to reduce load times

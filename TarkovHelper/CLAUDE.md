@@ -16,6 +16,20 @@ dotnet run -- --fetch
 
 # Fetch task data with wiki reqkappa matching
 dotnet run -- --fetch-tasks
+
+# Fetch master data (items, skills, traders) from tarkov.dev API
+dotnet run -- --fetch-master-data
+
+# Quest graph analysis (shows stats if no quest name)
+dotnet run -- --quest-graph
+dotnet run -- --quest-graph "delivery-from-the-past"
+
+# Item requirements analysis (shows stats if no item name)
+dotnet run -- --item-requirements
+dotnet run -- --item-requirements "flash drive"
+
+# Kappa container quest path and required items
+dotnet run -- --kappa-path
 ```
 
 ## Architecture Overview
@@ -39,17 +53,31 @@ MainWindow (UI display)
 ### Key Components
 
 **Models/**
-- `TaskData.cs` - Quest model with EN/KO names, prerequisites, follow-ups, and objectives
-- `ItemData.cs` - Item model with EN/KO names, wiki links, icons
-- `TaskObjective.cs` - Quest objective with required items, counts, and FIR (Found in Raid) flag
-- `GraphQL/TarkovApiResponse.cs` - API response DTOs
+- `TarkovTask.cs` - Quest model with EN/KO/JA names, prerequisites, required items/skills
+- `TarkovItem.cs` - Item model with EN/KO/JA names, wiki links, icons
+- `TarkovSkill.cs` - Skill model with EN/KO/JA names
+- `TarkovTrader.cs` - Trader model with EN/KO/JA names, images
+- `HideoutModule.cs` - Hideout station/module with levels, requirements, EN/KO/JA names
+- `WikiQuest.cs` - Quest data parsed from wiki
 
 **Services/**
-- `TarkovApiService.cs` - GraphQL client for tarkov.dev API, handles bilingual data fetching
-- `TaskDatasetManager.cs` - JSON persistence, prerequisite chain resolution (`GetAllPrerequisites`, `GetTasksToAutoComplete`)
+- `TarkovDataService.cs` - Main data service, coordinates task data fetching
+- `TarkovDevApiService.cs` - Master data (items, skills, traders, hideout) fetching from tarkov.dev API
+- `HideoutProgressService.cs` - Hideout construction progress tracking and persistence
+- `WikiDataService.cs` - Wiki page fetching and parsing
+- `WikiQuestParser.cs` - Parses quest relationships, items, level/skill requirements from wiki
+- `NormalizedNameGenerator.cs` - Utility for generating normalized names for matching
+- `LocalizationService.cs` - UI localization support
+- `QuestGraphService.cs` - Quest dependency graph traversal (prerequisites, follow-ups, optimal path)
+- `ItemRequirementService.cs` - Item requirement aggregation across quests
+
+**Pages/**
+- `QuestListPage.xaml` - Quest list view with filtering and detail panel
+- `HideoutPage.xaml` - Hideout module management with level controls and requirements
+- `ItemsPage.xaml` - Aggregated item requirements from quests and hideout
 
 **Entry Point**
-- `Program.cs` - Custom Main with `[STAThread]` for WPF; supports `--fetch` CLI mode
+- `Program.cs` - Custom Main with `[STAThread]` for WPF; supports CLI modes
 
 ### Important Patterns
 
@@ -68,6 +96,10 @@ MainWindow (UI display)
 
 **Wiki (.wiki files) is the source of truth for:**
 - `reqKappa` (Kappa container requirement) - ALWAYS parse from wiki, never trust API's `kappaRequired` field
+- `previous` / `leadsTo` - Quest relationships from Infobox
+- `requiredLevel` - "Must be level X" requirements
+- `requiredSkills` - Skill level requirements (e.g., Charisma 10)
+- `requiredItems` - Items needed with FIR status and amounts
 - The API's kappa data is outdated; wiki is authoritative
 
 ### Task Name Matching Rules
@@ -92,3 +124,9 @@ When matching tarkov.dev tasks to wiki files:
 
 - `Data/tasks.json` - Matched tasks with wiki-parsed reqKappa
 - `Data/tasks_missing.json` - Tasks that couldn't be matched to wiki (new quests, need wiki download)
+- `Data/items.json` - All items from tarkov.dev API with EN/KO/JA translations (4807+ items)
+- `Data/skills.json` - All skills from tarkov.dev API with EN/KO/JA translations (49 skills)
+- `Data/traders.json` - All traders from tarkov.dev API with EN/KO/JA translations
+- `Data/hideout.json` - Hideout stations with levels and requirements from tarkov.dev API
+- `Data/quest_progress.json` - User's quest progress (completed/failed quests)
+- `Data/hideout_progress.json` - User's hideout construction progress (module levels)

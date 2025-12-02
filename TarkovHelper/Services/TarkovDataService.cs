@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -116,23 +117,11 @@ namespace TarkovHelper.Services
 
         /// <summary>
         /// Generate normalizedName from wiki quest name
-        /// Converts to lowercase and replaces spaces with hyphens
+        /// Uses NormalizedNameGenerator for consistency with previous/leadsTo references
         /// </summary>
         private static string GenerateNormalizedName(string wikiName)
         {
-            return wikiName
-                .ToLowerInvariant()
-                .Replace(" ", "-")
-                .Replace("'", "")      // Remove apostrophes: "Huntsman's Path" -> "huntsmans-path"
-                .Replace("'", "")      // Remove right single quotation mark
-                .Replace(":", "")      // Remove colons
-                .Replace("?", "")      // Remove question marks
-                .Replace(".", "")      // Remove periods
-                .Replace(",", "")      // Remove commas
-                .Replace("!", "")      // Remove exclamation marks
-                .Replace("\"", "")     // Remove quotes
-                .Replace("(", "")      // Remove parentheses
-                .Replace(")", "");
+            return NormalizedNameGenerator.Generate(wikiName);
         }
 
         /// <summary>
@@ -273,6 +262,13 @@ namespace TarkovHelper.Services
             progressCallback?.Invoke("Fetching Japanese tasks...");
             var tasksJa = await FetchTasksAsync("ja");
 
+            progressCallback?.Invoke("Loading items for item ID resolution...");
+            var items = await TarkovDevApiService.Instance.LoadItemsFromJsonAsync();
+            var itemIdToNormalizedName = items?
+                .Where(i => !string.IsNullOrEmpty(i.Id) && !string.IsNullOrEmpty(i.NormalizedName))
+                .ToDictionary(i => i.Id, i => i.NormalizedName)
+                ?? new Dictionary<string, string>();
+
             progressCallback?.Invoke("Loading wiki quest list...");
             var wikiQuests = await WikiDataService.Instance.LoadQuestsFromJsonAsync();
 
@@ -308,19 +304,32 @@ namespace TarkovHelper.Services
                     var wikiContent = await File.ReadAllTextAsync(wikiFilePath, Encoding.UTF8);
                     reqKappa = ParseReqKappaFromWiki(wikiContent);
                     matchedWikiQuests.Add(wikiMatchName);
-                }
 
-                if (wikiFilePath != null)
-                {
+                    // Parse additional data from wiki
+                    var wikiData = WikiQuestParser.ParseAll(wikiContent);
+
                     result.Add(new TarkovTask
                     {
                         Ids = new List<string> { taskEn.Id },
-                        Name = wikiMatchName,  // Use wiki-based name (without [PVP ZONE])
+                        Name = WebUtility.HtmlDecode(wikiMatchName),  // Use wiki-based name (without [PVP ZONE]), decode HTML entities
                         NameKo = nameKo,
                         NameJa = nameJa,
                         ReqKappa = reqKappa,
                         Trader = taskEn.Trader?.Name ?? string.Empty,
-                        NormalizedName = GenerateNormalizedName(wikiMatchName)  // Generate from wiki name
+                        NormalizedName = NormalizedNameGenerator.ApplyQuestOverride(
+                            GenerateNormalizedName(wikiMatchName)),  // Generate from wiki name with quest overrides
+                        Maps = wikiData.Maps,
+                        Previous = wikiData.Previous,
+                        LeadsTo = wikiData.LeadsTo,
+                        RequiredLevel = wikiData.RequiredLevel,
+                        RequiredSkills = wikiData.RequiredSkills,
+                        RequiredItems = ResolveItemIds(wikiData.RequiredItems, itemIdToNormalizedName),
+                        GuideText = wikiData.GuideText,
+                        GuideImages = wikiData.GuideImages?.Select(g => new GuideImage
+                        {
+                            FileName = g.FileName,
+                            Caption = g.Caption
+                        }).ToList()
                     });
                 }
                 else
@@ -353,23 +362,38 @@ namespace TarkovHelper.Services
                         // Check if wiki file exists for this quest
                         var wikiFilePath = GetWikiFilePath(quest.Name);
                         bool reqKappa = false;
+                        WikiQuestData? wikiData = null;
 
                         if (wikiFilePath != null)
                         {
                             var wikiContent = await File.ReadAllTextAsync(wikiFilePath, Encoding.UTF8);
                             reqKappa = ParseReqKappaFromWiki(wikiContent);
+                            wikiData = WikiQuestParser.ParseAll(wikiContent);
                         }
 
                         // Add as wiki-only task (no API id, no translations)
                         result.Add(new TarkovTask
                         {
                             Ids = null, // No API ID
-                            Name = quest.Name,
+                            Name = WebUtility.HtmlDecode(quest.Name),
                             NameKo = null, // No translation without API
                             NameJa = null,
                             ReqKappa = reqKappa,
                             Trader = trader,
-                            NormalizedName = GenerateNormalizedName(quest.Name)  // Generate from wiki name
+                            NormalizedName = NormalizedNameGenerator.ApplyQuestOverride(
+                                GenerateNormalizedName(quest.Name)),  // Generate from wiki name with quest overrides
+                            Maps = wikiData?.Maps,
+                            Previous = wikiData?.Previous,
+                            LeadsTo = wikiData?.LeadsTo,
+                            RequiredLevel = wikiData?.RequiredLevel,
+                            RequiredSkills = wikiData?.RequiredSkills,
+                            RequiredItems = ResolveItemIds(wikiData?.RequiredItems, itemIdToNormalizedName),
+                            GuideText = wikiData?.GuideText,
+                            GuideImages = wikiData?.GuideImages?.Select(g => new GuideImage
+                            {
+                                FileName = g.FileName,
+                                Caption = g.Caption
+                            }).ToList()
                         });
 
                         wikiOnlyCount++;
@@ -381,7 +405,83 @@ namespace TarkovHelper.Services
             }
 
             progressCallback?.Invoke($"Merged {result.Count} tasks total, {missingTasks.Count} API tasks without wiki");
+
+            // Build bidirectional relationships (leadsTo -> previous)
+            BuildBidirectionalRelationships(result);
+            progressCallback?.Invoke("Built bidirectional quest relationships");
+
             return (result, missingTasks);
+        }
+
+        /// <summary>
+        /// Resolve item IDs in required items to normalized names
+        /// WikiQuestParser stores item IDs as "id:itemId" when wiki uses {{itemId}} template format
+        /// </summary>
+        private static List<QuestItem>? ResolveItemIds(List<QuestItem>? items, Dictionary<string, string> itemIdToNormalizedName)
+        {
+            if (items == null || items.Count == 0)
+                return items;
+
+            var resolved = new List<QuestItem>();
+            foreach (var item in items)
+            {
+                if (item.ItemNormalizedName.StartsWith("id:"))
+                {
+                    // Extract item ID and look up normalized name
+                    var itemId = item.ItemNormalizedName.Substring(3);
+                    if (itemIdToNormalizedName.TryGetValue(itemId, out var normalizedName))
+                    {
+                        resolved.Add(new QuestItem
+                        {
+                            ItemNormalizedName = normalizedName,
+                            Amount = item.Amount,
+                            Requirement = item.Requirement,
+                            FoundInRaid = item.FoundInRaid
+                        });
+                    }
+                    // Skip items with unknown IDs
+                }
+                else
+                {
+                    resolved.Add(item);
+                }
+            }
+
+            return resolved.Count > 0 ? resolved : null;
+        }
+
+        /// <summary>
+        /// Build bidirectional relationships between quests
+        /// If A.leadsTo contains B, then B.previous should contain A
+        /// This handles cases where wiki uses "related2" (Requirement for) instead of proper previous/leadsTo
+        /// </summary>
+        private static void BuildBidirectionalRelationships(List<TarkovTask> tasks)
+        {
+            // Create lookup dictionary (handle duplicates by keeping first occurrence)
+            var tasksByName = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+            foreach (var task in tasks.Where(t => !string.IsNullOrEmpty(t.NormalizedName)))
+            {
+                tasksByName.TryAdd(task.NormalizedName!, task);
+            }
+
+            foreach (var task in tasks)
+            {
+                if (task.LeadsTo == null || string.IsNullOrEmpty(task.NormalizedName))
+                    continue;
+
+                foreach (var nextQuestName in task.LeadsTo)
+                {
+                    if (tasksByName.TryGetValue(nextQuestName, out var nextTask))
+                    {
+                        // Add current task to nextTask's previous list if not already there
+                        nextTask.Previous ??= new List<string>();
+                        if (!nextTask.Previous.Contains(task.NormalizedName, StringComparer.OrdinalIgnoreCase))
+                        {
+                            nextTask.Previous.Add(task.NormalizedName);
+                        }
+                    }
+                }
+            }
         }
 
         /// <summary>
@@ -490,24 +590,47 @@ namespace TarkovHelper.Services
         {
             var result = new RefreshDataResult();
             var wikiService = WikiDataService.Instance;
+            var masterDataService = TarkovDevApiService.Instance;
 
             try
             {
-                // Step 1: Download WikiQuestData (quest list from wiki)
-                progressCallback?.Invoke("[1/3] Downloading Wiki quest list...");
-                var quests = await wikiService.RefreshQuestsDataAsync();
-                result.TotalQuestsInWiki = quests.Values.Sum(q => q.Count);
-                progressCallback?.Invoke($"[1/3] Downloaded {result.TotalQuestsInWiki} quests from wiki");
+                // Step 1: Fetch master data (items, skills) from tarkov.dev API
+                progressCallback?.Invoke("[1/4] Fetching master data from tarkov.dev API...");
+                var masterDataResult = await masterDataService.RefreshMasterDataAsync(msg =>
+                {
+                    progressCallback?.Invoke($"[1/4] {msg}");
+                });
+
+                if (!masterDataResult.Success)
+                {
+                    throw new Exception($"Failed to fetch master data: {masterDataResult.ErrorMessage}");
+                }
+
+                result.ItemCount = masterDataResult.ItemCount;
+                result.ItemsWithKorean = masterDataResult.ItemsWithKorean;
+                result.ItemsWithJapanese = masterDataResult.ItemsWithJapanese;
+                result.SkillCount = masterDataResult.SkillCount;
+                result.SkillsWithKorean = masterDataResult.SkillsWithKorean;
+                result.SkillsWithJapanese = masterDataResult.SkillsWithJapanese;
+                progressCallback?.Invoke($"[1/4] Fetched {masterDataResult.ItemCount} items, {masterDataResult.SkillCount} skills");
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Step 2: Fetch all Quest Pages (.wiki files)
-                progressCallback?.Invoke("[2/3] Downloading quest pages...");
+                // Step 2: Download WikiQuestData (quest list from wiki)
+                progressCallback?.Invoke("[2/4] Downloading Wiki quest list...");
+                var quests = await wikiService.RefreshQuestsDataAsync();
+                result.TotalQuestsInWiki = quests.Values.Sum(q => q.Count);
+                progressCallback?.Invoke($"[2/4] Downloaded {result.TotalQuestsInWiki} quests from wiki");
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Step 3: Fetch all Quest Pages (.wiki files)
+                progressCallback?.Invoke("[3/4] Downloading quest pages...");
                 var (downloaded, skipped, failed, failedQuests) = await wikiService.DownloadAllQuestPagesAsync(
                     forceDownload: false,
                     progress: (current, total, message) =>
                     {
-                        progressCallback?.Invoke($"[2/3] ({current}/{total}) {message}");
+                        progressCallback?.Invoke($"[3/4] ({current}/{total}) {message}");
                     },
                     cancellationToken: cancellationToken);
 
@@ -515,15 +638,15 @@ namespace TarkovHelper.Services
                 result.QuestPagesSkipped = skipped;
                 result.QuestPagesFailed = failed;
                 result.FailedQuestPages = failedQuests;
-                progressCallback?.Invoke($"[2/3] Quest pages: {downloaded} downloaded, {skipped} skipped, {failed} failed");
+                progressCallback?.Invoke($"[3/4] Quest pages: {downloaded} downloaded, {skipped} skipped, {failed} failed");
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Step 3: Merge with tarkov.dev API
-                progressCallback?.Invoke("[3/3] Fetching and merging with tarkov.dev API...");
+                // Step 4: Merge with tarkov.dev API
+                progressCallback?.Invoke("[4/4] Fetching and merging with tarkov.dev API...");
                 var (tasks, missingTasks) = await RefreshTasksDataAsync(message =>
                 {
-                    progressCallback?.Invoke($"[3/3] {message}");
+                    progressCallback?.Invoke($"[4/4] {message}");
                 });
 
                 result.TotalTasksMerged = tasks.Count;
@@ -532,7 +655,7 @@ namespace TarkovHelper.Services
                 result.KappaRequiredTasks = tasks.Count(t => t.ReqKappa);
                 result.MissingApiTasks = missingTasks.Count;
 
-                progressCallback?.Invoke($"[Complete] {result.TotalTasksMerged} tasks merged successfully");
+                progressCallback?.Invoke($"[Complete] {result.TotalTasksMerged} tasks, {result.ItemCount} items, {result.SkillCount} skills");
                 result.Success = true;
             }
             catch (OperationCanceledException)
@@ -562,6 +685,14 @@ namespace TarkovHelper.Services
     {
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
+
+        // Master data stats (items/skills)
+        public int ItemCount { get; set; }
+        public int ItemsWithKorean { get; set; }
+        public int ItemsWithJapanese { get; set; }
+        public int SkillCount { get; set; }
+        public int SkillsWithKorean { get; set; }
+        public int SkillsWithJapanese { get; set; }
 
         // Wiki quest list stats
         public int TotalQuestsInWiki { get; set; }

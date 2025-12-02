@@ -12,38 +12,354 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
+            <RowDefinition Height="131*"/>
+            <RowDefinition Height="161*"/>
         </Grid.RowDefinitions>
+        <!-- Main Content with Blur Effect -->
+        <Grid x:Name="MainContent" Grid.RowSpan="2">
+            <Grid.Effect>
+                <BlurEffect x:Name="BlurEffect" Radius="0"/>
+            </Grid.Effect>
 
-        <!-- Title Bar -->
-        <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-                <TextBlock Grid.Column="0" Text="TARKOV HELPER" FontSize="20" FontWeight="Bold"
-                           Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+            <!-- Title Bar -->
+            <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <!-- Language Selector -->
-                <ComboBox Grid.Column="2" x:Name="CmbLanguage" Width="60"
-                          SelectionChanged="CmbLanguage_SelectionChanged">
-                    <ComboBoxItem Content="EN" Tag="EN"/>
-                    <ComboBoxItem Content="KO" Tag="KO"/>
-                    <ComboBoxItem Content="JA" Tag="JA"/>
-                </ComboBox>
+                    <TextBlock Grid.Column="0" Text="TARKOV HELPER" FontSize="20" FontWeight="Bold"
+                               Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+
+                    <!-- Right Side Controls -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Buy me a coffee -->
+                        <Button x:Name="BtnCoffee" Content="☕ Support" Padding="10,6"
+                                Margin="0,0,8,0" Click="BtnCoffee_Click"
+                                ToolTip="Buy me a coffee"/>
+
+                        <!-- Refresh Data -->
+                        <Button x:Name="BtnRefreshData" Content="🔄 Refresh" Padding="10,6"
+                                Margin="0,0,8,0" Click="BtnRefreshData_Click"
+                                ToolTip="Refresh data from API"/>
+
+                        <!-- Reset Progress -->
+                        <Button x:Name="BtnResetProgress" Content="↩ Reset" Padding="10,6"
+                                Margin="0,0,8,0" Click="BtnResetProgress_Click"
+                                ToolTip="Reset all progress"/>
+
+                        <!-- Settings -->
+                        <Button x:Name="BtnSettings" Content="⚙" Padding="10,6"
+                                Margin="0,0,12,0" Click="BtnSettings_Click"
+                                FontSize="16"
+                                ToolTip="Settings"/>
+
+                        <!-- Language Selector -->
+                        <ComboBox x:Name="CmbLanguage" Width="60"
+                                  SelectionChanged="CmbLanguage_SelectionChanged">
+                            <ComboBoxItem Content="EN" Tag="EN"/>
+                            <ComboBoxItem Content="KO" Tag="KO"/>
+                            <ComboBoxItem Content="JA" Tag="JA"/>
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Main Content Area -->
+            <Grid Grid.Row="1">
+                <!-- Welcome Text (shown when no data) -->
+                <TextBlock x:Name="TxtWelcome" Text="Welcome to Tarkov Helper"
+                           FontSize="24" FontWeight="Light"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Collapsed"/>
+
+                <!-- Tab Content Area -->
+                <Grid x:Name="TabContentArea" Visibility="Collapsed">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Tab Navigation -->
+                    <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,0">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="TabQuests" Content="Quests"
+                                         Style="{StaticResource TabButtonStyle}"
+                                         IsChecked="True"
+                                         Checked="Tab_Checked"/>
+                            <RadioButton x:Name="TabHideout" Content="Hideout"
+                                         Style="{StaticResource TabButtonStyle}"
+                                         Checked="Tab_Checked"/>
+                            <RadioButton x:Name="TabItems" Content="Items"
+                                         Style="{StaticResource TabButtonStyle}"
+                                         Checked="Tab_Checked"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Tab Content -->
+                    <ContentControl x:Name="PageContent" Grid.Row="1"/>
+                </Grid>
             </Grid>
-        </Border>
+        </Grid>
 
-        <!-- Main Content Area -->
-        <Grid Grid.Row="1" Margin="16">
-            <TextBlock x:Name="TxtWelcome" Text="Welcome to Tarkov Helper"
-                       FontSize="24" FontWeight="Light"
-                       Foreground="{StaticResource TextSecondaryBrush}"
-                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        <!-- Loading Overlay -->
+        <Grid x:Name="LoadingOverlay" Visibility="Collapsed" Background="#AA1A1A1A" Grid.RowSpan="2">
+            <Border Background="{StaticResource BackgroundDarkBrush}"
+                    CornerRadius="8" Padding="32,24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MinWidth="320">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+                </Border.Effect>
+                <StackPanel>
+                    <TextBlock Text="Loading Data" FontSize="18" FontWeight="SemiBold"
+                               Foreground="{StaticResource AccentBrush}"
+                               HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                    <ProgressBar x:Name="LoadingProgressBar"
+                                 Height="6" IsIndeterminate="True"
+                                 Foreground="{StaticResource AccentBrush}"
+                                 Background="{StaticResource BackgroundMediumBrush}"/>
+                    <TextBlock x:Name="LoadingStatusText"
+                               Text="Initializing..."
+                               FontSize="12" Margin="0,12,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               HorizontalAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="280"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Settings Overlay -->
+        <Grid x:Name="SettingsOverlay" Visibility="Collapsed" Background="#AA1A1A1A" Grid.RowSpan="2"
+              MouseDown="SettingsOverlay_MouseDown">
+            <Border Background="{StaticResource BackgroundDarkBrush}"
+                    CornerRadius="8" Padding="24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MinWidth="500" MaxWidth="600">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+                </Border.Effect>
+                <StackPanel>
+                    <!-- Header -->
+                    <Grid Margin="0,0,0,20">
+                        <TextBlock x:Name="TxtSettingsTitle" Text="Settings" FontSize="20" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                        <Button x:Name="BtnCloseSettings" Content="✕"
+                                HorizontalAlignment="Right"
+                                Padding="8,4" FontSize="14"
+                                Click="BtnCloseSettings_Click"/>
+                    </Grid>
+
+                    <!-- Log Folder Section -->
+                    <TextBlock x:Name="TxtLogFolderLabel" Text="Tarkov Log Folder"
+                               FontSize="14" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextPrimaryBrush}"
+                               Margin="0,0,0,8"/>
+
+                    <TextBlock x:Name="TxtLogFolderDesc"
+                               Text="Set the path to Tarkov's Logs folder for automatic quest completion tracking."
+                               FontSize="12"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,0,0,12"/>
+
+                    <!-- Current Path Display -->
+                    <Border Background="{StaticResource BackgroundMediumBrush}"
+                            CornerRadius="4" Padding="12,8" Margin="0,0,0,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="TxtCurrentLogPath"
+                                       Text="Not configured"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <TextBlock x:Name="TxtDetectionMethod"
+                                           Text=""
+                                           FontSize="10"
+                                           Foreground="{StaticResource AccentBrush}"
+                                           VerticalAlignment="Center"
+                                           Margin="8,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Status Indicator -->
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <Ellipse x:Name="LogFolderStatusIndicator"
+                                 Width="8" Height="8"
+                                 Fill="#FF4444"
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,8,0"/>
+                        <TextBlock x:Name="TxtLogFolderStatus"
+                                   Text="Invalid path"
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+
+                    <!-- Action Buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                        <Button x:Name="BtnAutoDetect" Content="Auto Detect"
+                                Padding="12,8" Margin="0,0,8,0"
+                                Click="BtnAutoDetect_Click"/>
+                        <Button x:Name="BtnBrowseLogFolder" Content="Browse..."
+                                Padding="12,8" Margin="0,0,8,0"
+                                Click="BtnBrowseLogFolder_Click"/>
+                        <Button x:Name="BtnResetLogFolder" Content="Reset"
+                                Padding="12,8"
+                                Click="BtnResetLogFolder_Click"/>
+                    </StackPanel>
+
+                    <!-- Quest Sync Section -->
+                    <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                            Margin="0,20,0,0" Padding="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock x:Name="TxtQuestSyncLabel" Text="Quest Log Sync"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       Margin="0,0,0,8"/>
+
+                            <TextBlock x:Name="TxtQuestSyncDesc"
+                                       Text="Synchronize quest progress from game log files. This will analyze your Tarkov logs and update completed quests."
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12"/>
+
+                            <!-- Monitoring Status -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <Ellipse x:Name="MonitoringStatusIndicator"
+                                         Width="8" Height="8"
+                                         Fill="#FF4444"
+                                         VerticalAlignment="Center"
+                                         Margin="0,0,8,0"/>
+                                <TextBlock x:Name="TxtMonitoringStatus"
+                                           Text="Not monitoring"
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                <Button x:Name="BtnSyncQuest" Content="Sync Quest"
+                                        Padding="12,8" Margin="0,0,8,0"
+                                        Click="BtnSyncQuest_Click"/>
+                                <Button x:Name="BtnToggleMonitoring" Content="Start Monitoring"
+                                        Padding="12,8"
+                                        Click="BtnToggleMonitoring_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Sync Result Confirmation Overlay -->
+        <Grid x:Name="SyncResultOverlay" Visibility="Collapsed" Background="#AA1A1A1A" Grid.RowSpan="2">
+            <Border Background="{StaticResource BackgroundDarkBrush}"
+                    CornerRadius="8" Padding="24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MinWidth="500" MaxWidth="700" MaxHeight="500">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <TextBlock x:Name="TxtSyncResultTitle" Text="Quest Sync Result" FontSize="20" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                        <Button x:Name="BtnCloseSyncResult" Content="✕"
+                                HorizontalAlignment="Right"
+                                Padding="8,4" FontSize="14"
+                                Click="BtnCloseSyncResult_Click"/>
+                    </Grid>
+
+                    <!-- Summary -->
+                    <StackPanel Grid.Row="1" Margin="0,0,0,12">
+                        <TextBlock x:Name="TxtSyncSummary"
+                                   Text="The following quests will be marked as completed:"
+                                   FontSize="13"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   TextWrapping="Wrap"/>
+                        <TextBlock x:Name="TxtSyncStats"
+                                   Text=""
+                                   FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   Margin="0,4,0,0"/>
+                    </StackPanel>
+
+                    <!-- Quest List -->
+                    <Border Grid.Row="2" Background="{StaticResource BackgroundMediumBrush}"
+                            CornerRadius="4" Margin="0,0,0,16">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="280">
+                            <ItemsControl x:Name="SyncQuestList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrush}"
+                                                Padding="12,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                          VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding QuestName}"
+                                                               FontSize="13"
+                                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                    <TextBlock Text="{Binding Trader}"
+                                                               FontSize="11"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                </StackPanel>
+                                                <Border Grid.Column="2"
+                                                        Background="{StaticResource AccentBrush}"
+                                                        CornerRadius="3" Padding="6,2"
+                                                        VerticalAlignment="Center"
+                                                        Visibility="{Binding IsPrerequisite, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                    <TextBlock Text="Prerequisite" FontSize="10"
+                                                               Foreground="{StaticResource BackgroundDarkBrush}"/>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- Action Buttons -->
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="BtnCancelSync" Content="Cancel"
+                                Padding="16,8" Margin="0,0,8,0"
+                                Click="BtnCancelSync_Click"/>
+                        <Button x:Name="BtnConfirmSync" Content="Confirm"
+                                Padding="16,8"
+                                Click="BtnConfirmSync_Click"
+                                Background="{StaticResource AccentBrush}"
+                                Foreground="{StaticResource BackgroundDarkBrush}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 
