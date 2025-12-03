@@ -179,6 +179,29 @@ namespace TarkovHelper.Pages
         }
 
         /// <summary>
+        /// Reload all quest data from QuestProgressService
+        /// Call this after data has been refreshed from API
+        /// </summary>
+        public async Task ReloadDataAsync()
+        {
+            // Reload map and item data
+            await LoadMapsAsync();
+
+            // Reload quests from the updated progress service
+            LoadQuests();
+
+            // Repopulate filters
+            PopulateTraderFilter();
+            PopulateMapFilter();
+
+            // Refresh display names with current locale
+            RefreshQuestDisplayNames();
+
+            // Apply filters to update the list
+            ApplyFilters();
+        }
+
+        /// <summary>
         /// Select a quest by its normalized name (for cross-tab navigation)
         /// </summary>
         public void SelectQuest(string questNormalizedName)

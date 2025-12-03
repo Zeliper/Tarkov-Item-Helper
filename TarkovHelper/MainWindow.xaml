@@ -290,6 +290,44 @@
                                     Click="BtnInProgressQuestInput_Click"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- Cache Management Section -->
+                    <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                            Margin="0,20,0,0" Padding="0,16,0,0">
+                        <StackPanel>
+                            <TextBlock Text="Cache Management"
+                                       FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       Margin="0,0,0,8"/>
+
+                            <TextBlock Text="Clear cached wiki pages and downloaded data. Use this if you encounter data issues or want to re-download everything."
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,12"/>
+
+                            <!-- Cache Size Display -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="Cache Size: "
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtCacheSize"
+                                           Text="Calculating..."
+                                           FontSize="12"
+                                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </StackPanel>
+
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                <Button x:Name="BtnClearCache" Content="Clear Cache"
+                                        Padding="12,8" Margin="0,0,8,0"
+                                        Click="BtnClearCache_Click"/>
+                                <Button x:Name="BtnClearAllData" Content="Clear All Data"
+                                        Padding="12,8"
+                                        Click="BtnClearAllData_Click"
+                                        ToolTip="Clear cache and all downloaded data (tasks, items, etc.)"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
         </Grid>

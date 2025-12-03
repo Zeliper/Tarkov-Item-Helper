@@ -26,6 +26,8 @@ namespace TarkovHelper.Services
         private readonly HttpClient _httpClient;
         private const string GraphQLEndpoint = "https://api.tarkov.dev/graphql";
         private const string QuestPagesCacheDir = "QuestPages";
+        private const string CacheMetadataFileName = "cache_metadata.json";
+        private const int CacheValidityMinutes = 30;
 
         public TarkovDataService()
         {
@@ -142,7 +144,10 @@ namespace TarkovHelper.Services
                 .Replace("\"", "_")
                 .Replace("<", "_")
                 .Replace(">", "_")
-                .Replace("|", "_");
+                .Replace("|", "_")
+                .Replace("#", "_")  // Hash causes path issues
+                .Replace("/", "_")  // Forward slash
+                .Replace("\\", "_"); // Backslash
         }
 
         /// <summary>
@@ -595,6 +600,101 @@ namespace TarkovHelper.Services
             return JsonSerializer.Deserialize<List<MissingTask>>(json);
         }
 
+        #region Cache Lifecycle Management
+
+        /// <summary>
+        /// Load cache metadata from JSON file
+        /// </summary>
+        public async Task<DataCacheMetadata?> LoadCacheMetadataAsync()
+        {
+            var filePath = Path.Combine(AppEnv.DataPath, CacheMetadataFileName);
+
+            if (!File.Exists(filePath))
+            {
+                return null;
+            }
+
+            try
+            {
+                var json = await File.ReadAllTextAsync(filePath, Encoding.UTF8);
+                return JsonSerializer.Deserialize<DataCacheMetadata>(json);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Save cache metadata to JSON file
+        /// </summary>
+        public async Task SaveCacheMetadataAsync(DataCacheMetadata metadata)
+        {
+            var filePath = Path.Combine(AppEnv.DataPath, CacheMetadataFileName);
+            Directory.CreateDirectory(AppEnv.DataPath);
+
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true
+            };
+
+            var json = JsonSerializer.Serialize(metadata, options);
+            await File.WriteAllTextAsync(filePath, json, Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Check if cached data is still valid (within 30 minutes)
+        /// </summary>
+        /// <returns>Tuple of (isValid, metadata, remainingMinutes)</returns>
+        public async Task<(bool IsValid, DataCacheMetadata? Metadata, int RemainingMinutes)> IsCacheValidAsync()
+        {
+            var metadata = await LoadCacheMetadataAsync();
+
+            if (metadata == null)
+            {
+                return (false, null, 0);
+            }
+
+            var elapsed = DateTime.UtcNow - metadata.LastRefreshTime;
+            var remainingMinutes = CacheValidityMinutes - (int)elapsed.TotalMinutes;
+
+            if (remainingMinutes > 0)
+            {
+                // Cache is still valid
+                return (true, metadata, remainingMinutes);
+            }
+
+            // Cache has expired
+            return (false, metadata, 0);
+        }
+
+        /// <summary>
+        /// Get cache status information for display
+        /// </summary>
+        public async Task<string> GetCacheStatusAsync()
+        {
+            var (isValid, metadata, remainingMinutes) = await IsCacheValidAsync();
+
+            if (metadata == null)
+            {
+                return "No cached data available";
+            }
+
+            var localTime = metadata.LastRefreshTime.ToLocalTime();
+            var ageMinutes = (int)(DateTime.UtcNow - metadata.LastRefreshTime).TotalMinutes;
+
+            if (isValid)
+            {
+                return $"Cache valid ({remainingMinutes}min remaining) - Last refresh: {localTime:HH:mm:ss}";
+            }
+            else
+            {
+                return $"Cache expired ({ageMinutes}min ago) - Last refresh: {localTime:HH:mm:ss}";
+            }
+        }
+
+        #endregion
+
         /// <summary>
         /// Fetch, merge, and save tasks in one call
         /// </summary>
@@ -620,10 +720,12 @@ namespace TarkovHelper.Services
         /// This is the main entry point for refreshing all task data
         /// </summary>
         /// <param name="progressCallback">Progress callback for UI updates</param>
+        /// <param name="forceRefresh">Force refresh even if cache is valid</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Result summary</returns>
         public async Task<RefreshDataResult> RefreshAllDataAsync(
             Action<string>? progressCallback = null,
+            bool forceRefresh = false,
             CancellationToken cancellationToken = default)
         {
             var result = new RefreshDataResult();
@@ -632,6 +734,51 @@ namespace TarkovHelper.Services
 
             try
             {
+                // Check cache validity first (unless force refresh)
+                if (!forceRefresh)
+                {
+                    var (isCacheValid, cacheMetadata, remainingMinutes) = await IsCacheValidAsync();
+
+                    if (isCacheValid && cacheMetadata != null)
+                    {
+                        progressCallback?.Invoke($"[Cache] Using cached data ({remainingMinutes}min remaining until expiry)");
+
+                        // Load cached data and return
+                        var cachedTasks = await LoadTasksFromJsonAsync();
+                        var cachedItems = await TarkovDevApiService.Instance.LoadItemsFromJsonAsync();
+                        var cachedSkills = await TarkovDevApiService.Instance.LoadSkillsFromJsonAsync();
+
+                        if (cachedTasks != null)
+                        {
+                            result.Success = true;
+                            result.UsedCache = true;
+                            result.CacheTimestamp = cacheMetadata.LastRefreshTime;
+                            result.TotalTasksMerged = cachedTasks.Count;
+                            result.TasksWithApiId = cachedTasks.Count(t => t.Ids != null && t.Ids.Count > 0);
+                            result.WikiOnlyTasks = cachedTasks.Count(t => t.Ids == null || t.Ids.Count == 0);
+                            result.KappaRequiredTasks = cachedTasks.Count(t => t.ReqKappa);
+                            result.ItemCount = cachedItems?.Count ?? 0;
+                            result.SkillCount = cachedSkills?.Count ?? 0;
+
+                            var localTime = cacheMetadata.LastRefreshTime.ToLocalTime();
+                            progressCallback?.Invoke($"[Cache] Loaded {result.TotalTasksMerged} tasks, {result.ItemCount} items (Last refresh: {localTime:HH:mm:ss})");
+                            return result;
+                        }
+
+                        // Cache file missing, proceed with refresh
+                        progressCallback?.Invoke("[Cache] Cache metadata exists but data files missing, refreshing...");
+                    }
+                    else
+                    {
+                        var reason = cacheMetadata == null ? "No cache" : "Cache expired";
+                        progressCallback?.Invoke($"[Cache] {reason}, fetching fresh data...");
+                    }
+                }
+                else
+                {
+                    progressCallback?.Invoke("[Cache] Force refresh requested...");
+                }
+
                 // Step 1: Fetch master data (items, skills) from tarkov.dev API
                 progressCallback?.Invoke("[1/4] Fetching master data from tarkov.dev API...");
                 var masterDataResult = await masterDataService.RefreshMasterDataAsync(msg =>
@@ -662,15 +809,35 @@ namespace TarkovHelper.Services
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Step 3: Fetch all Quest Pages (.wiki files)
-                progressCallback?.Invoke("[3/4] Downloading quest pages...");
-                var (downloaded, skipped, failed, failedQuests) = await wikiService.DownloadAllQuestPagesAsync(
+                // Step 3: Fetch all Quest Pages (.wiki files) using Special:Export (fast, no 503 errors)
+                progressCallback?.Invoke("[3/4] Downloading quest pages via Special:Export...");
+                var (downloaded, skipped, failed, failedQuests) = await wikiService.DownloadAllQuestPagesViaExportAsync(
                     forceDownload: false,
                     progress: (current, total, message) =>
                     {
                         progressCallback?.Invoke($"[3/4] ({current}/{total}) {message}");
                     },
                     cancellationToken: cancellationToken);
+
+                progressCallback?.Invoke($"[3/4] Export: {downloaded} downloaded, {skipped} cached, {failed} not found");
+
+                // Step 3b: Retry failed pages using MediaWiki API (Special:Export has page limits on Fandom)
+                if (failedQuests.Count > 0)
+                {
+                    progressCallback?.Invoke($"[3/4] Retrying {failedQuests.Count} pages via MediaWiki API...");
+                    var (apiDownloaded, apiFailed, apiFailedQuests) = await wikiService.DownloadSpecificQuestPagesAsync(
+                        failedQuests,
+                        progress: (current, total, message) =>
+                        {
+                            progressCallback?.Invoke($"[3/4] API ({current}/{total}) {message}");
+                        },
+                        cancellationToken: cancellationToken);
+
+                    downloaded += apiDownloaded;
+                    failed = apiFailed;  // Update to final failure count
+                    failedQuests = apiFailedQuests;  // Update to final failed list
+                    progressCallback?.Invoke($"[3/4] API retry: {apiDownloaded} downloaded, {apiFailed} not found");
+                }
 
                 result.QuestPagesDownloaded = downloaded;
                 result.QuestPagesSkipped = skipped;
@@ -692,6 +859,17 @@ namespace TarkovHelper.Services
                 result.WikiOnlyTasks = tasks.Count(t => t.Ids == null || t.Ids.Count == 0);
                 result.KappaRequiredTasks = tasks.Count(t => t.ReqKappa);
                 result.MissingApiTasks = missingTasks.Count;
+
+                // Save cache metadata for lifecycle management
+                var newCacheMetadata = new DataCacheMetadata
+                {
+                    LastRefreshTime = DateTime.UtcNow,
+                    TaskCount = result.TotalTasksMerged,
+                    ItemCount = result.ItemCount,
+                    SkillCount = result.SkillCount
+                };
+                await SaveCacheMetadataAsync(newCacheMetadata);
+                result.CacheTimestamp = newCacheMetadata.LastRefreshTime;
 
                 progressCallback?.Invoke($"[Complete] {result.TotalTasksMerged} tasks, {result.ItemCount} items, {result.SkillCount} skills");
                 result.Success = true;
@@ -724,6 +902,10 @@ namespace TarkovHelper.Services
         public bool Success { get; set; }
         public string? ErrorMessage { get; set; }
 
+        // Cache status
+        public bool UsedCache { get; set; }
+        public DateTime? CacheTimestamp { get; set; }
+
         // Master data stats (items/skills)
         public int ItemCount { get; set; }
         public int ItemsWithKorean { get; set; }
@@ -747,5 +929,26 @@ namespace TarkovHelper.Services
         public int WikiOnlyTasks { get; set; }
         public int KappaRequiredTasks { get; set; }
         public int MissingApiTasks { get; set; }
+    }
+
+    /// <summary>
+    /// Metadata for data cache lifecycle management
+    /// </summary>
+    public class DataCacheMetadata
+    {
+        [JsonPropertyName("lastRefreshTime")]
+        public DateTime LastRefreshTime { get; set; }
+
+        [JsonPropertyName("version")]
+        public string Version { get; set; } = "1.0";
+
+        [JsonPropertyName("taskCount")]
+        public int TaskCount { get; set; }
+
+        [JsonPropertyName("itemCount")]
+        public int ItemCount { get; set; }
+
+        [JsonPropertyName("skillCount")]
+        public int SkillCount { get; set; }
     }
 }
