@@ -231,8 +231,18 @@ public partial class MainWindow : Window
                 _hideoutProgressService.Initialize(_hideoutModules);
             }
 
-            // Create pages
-            _questListPage = new QuestListPage();
+            // Check if pages already exist (refresh scenario)
+            if (_questListPage != null)
+            {
+                // Reload data in existing pages to pick up new translations
+                await _questListPage.ReloadDataAsync();
+            }
+            else
+            {
+                // Create pages for the first time
+                _questListPage = new QuestListPage();
+            }
+
             _hideoutPage = _hideoutModules != null && _hideoutModules.Count > 0
                 ? new HideoutPage()
                 : null;
@@ -441,6 +451,9 @@ public partial class MainWindow : Window
 
         // Update quest sync section
         UpdateQuestSyncUI();
+
+        // Update cache size display
+        UpdateCacheSizeDisplay();
 
         // Update path display
         if (!string.IsNullOrEmpty(logPath))
@@ -1285,6 +1298,231 @@ public partial class MainWindow : Window
         HideSettingsOverlay();
         await ShowInProgressQuestInputOverlayAsync();
     }
+
+    #region Cache Management
+
+    /// <summary>
+    /// Calculate total cache size
+    /// </summary>
+    private long CalculateCacheSize()
+    {
+        long totalSize = 0;
+
+        // Cache directory (wiki pages, images, etc.)
+        var cachePath = AppEnv.CachePath;
+        if (Directory.Exists(cachePath))
+        {
+            totalSize += GetDirectorySize(cachePath);
+        }
+
+        return totalSize;
+    }
+
+    /// <summary>
+    /// Calculate total data size (JSON files)
+    /// </summary>
+    private long CalculateDataSize()
+    {
+        long totalSize = 0;
+
+        // Data directory (JSON files)
+        var dataPath = AppEnv.DataPath;
+        if (Directory.Exists(dataPath))
+        {
+            totalSize += GetDirectorySize(dataPath);
+        }
+
+        return totalSize;
+    }
+
+    /// <summary>
+    /// Get directory size recursively
+    /// </summary>
+    private long GetDirectorySize(string path)
+    {
+        long size = 0;
+        try
+        {
+            var dir = new DirectoryInfo(path);
+            foreach (var file in dir.GetFiles("*", SearchOption.AllDirectories))
+            {
+                size += file.Length;
+            }
+        }
+        catch
+        {
+            // Ignore errors (access denied, etc.)
+        }
+        return size;
+    }
+
+    /// <summary>
+    /// Format bytes to human readable string
+    /// </summary>
+    private string FormatBytes(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        int order = 0;
+        double size = bytes;
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    /// <summary>
+    /// Update cache size display
+    /// </summary>
+    private void UpdateCacheSizeDisplay()
+    {
+        var cacheSize = CalculateCacheSize();
+        var dataSize = CalculateDataSize();
+        var totalSize = cacheSize + dataSize;
+        TxtCacheSize.Text = $"{FormatBytes(totalSize)} (Cache: {FormatBytes(cacheSize)}, Data: {FormatBytes(dataSize)})";
+    }
+
+    /// <summary>
+    /// Clear cache button click handler
+    /// </summary>
+    private void BtnClearCache_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            _loc.CurrentLanguage switch
+            {
+                AppLanguage.KO => "캐시를 삭제하시겠습니까?\n(Wiki 페이지, 이미지 등이 삭제됩니다)",
+                AppLanguage.JA => "キャッシュを削除しますか？\n（Wikiページ、画像などが削除されます）",
+                _ => "Clear cache?\n(Wiki pages, images, etc. will be deleted)"
+            },
+            _loc.CurrentLanguage switch { AppLanguage.KO => "캐시 삭제", AppLanguage.JA => "キャッシュ削除", _ => "Clear Cache" },
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes) return;
+
+        try
+        {
+            BtnClearCache.IsEnabled = false;
+            BtnClearAllData.IsEnabled = false;
+
+            var cachePath = AppEnv.CachePath;
+            if (Directory.Exists(cachePath))
+            {
+                Directory.Delete(cachePath, true);
+            }
+
+            UpdateCacheSizeDisplay();
+
+            MessageBox.Show(
+                _loc.CurrentLanguage switch
+                {
+                    AppLanguage.KO => "캐시가 삭제되었습니다.\n데이터를 다시 가져오려면 Refresh 버튼을 누르세요.",
+                    AppLanguage.JA => "キャッシュが削除されました。\nデータを再取得するにはRefreshボタンを押してください。",
+                    _ => "Cache cleared.\nPress Refresh to re-download data."
+                },
+                _loc.CurrentLanguage switch { AppLanguage.KO => "완료", AppLanguage.JA => "完了", _ => "Done" },
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error clearing cache: {ex.Message}",
+                "Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            BtnClearCache.IsEnabled = true;
+            BtnClearAllData.IsEnabled = true;
+        }
+    }
+
+    /// <summary>
+    /// Clear all data button click handler
+    /// </summary>
+    private async void BtnClearAllData_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            _loc.CurrentLanguage switch
+            {
+                AppLanguage.KO => "모든 데이터를 삭제하시겠습니까?\n(캐시, 퀘스트 데이터, 아이템 데이터 등이 삭제됩니다)\n\n⚠️ 퀘스트 진행 상태는 유지됩니다.",
+                AppLanguage.JA => "すべてのデータを削除しますか？\n（キャッシュ、クエストデータ、アイテムデータなどが削除されます）\n\n⚠️ クエスト進行状況は保持されます。",
+                _ => "Clear all data?\n(Cache, quest data, item data, etc. will be deleted)\n\n⚠️ Quest progress will be preserved."
+            },
+            _loc.CurrentLanguage switch { AppLanguage.KO => "데이터 초기화", AppLanguage.JA => "データ初期化", _ => "Clear All Data" },
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result != MessageBoxResult.Yes) return;
+
+        try
+        {
+            BtnClearCache.IsEnabled = false;
+            BtnClearAllData.IsEnabled = false;
+
+            // Clear cache
+            var cachePath = AppEnv.CachePath;
+            if (Directory.Exists(cachePath))
+            {
+                Directory.Delete(cachePath, true);
+            }
+
+            // Clear data files (except quest_progress.json, hideout_progress.json, settings.json)
+            var dataPath = AppEnv.DataPath;
+            if (Directory.Exists(dataPath))
+            {
+                var preserveFiles = new[] { "quest_progress.json", "hideout_progress.json", "settings.json" };
+                foreach (var file in Directory.GetFiles(dataPath))
+                {
+                    var fileName = Path.GetFileName(file);
+                    if (!preserveFiles.Contains(fileName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        File.Delete(file);
+                    }
+                }
+            }
+
+            UpdateCacheSizeDisplay();
+
+            // Hide settings overlay
+            HideSettingsOverlay();
+
+            // Ask if user wants to refresh data now
+            var refreshResult = MessageBox.Show(
+                _loc.CurrentLanguage switch
+                {
+                    AppLanguage.KO => "데이터가 삭제되었습니다.\n지금 새 데이터를 다운로드하시겠습니까?",
+                    AppLanguage.JA => "データが削除されました。\n今すぐ新しいデータをダウンロードしますか？",
+                    _ => "Data cleared.\nDownload new data now?"
+                },
+                _loc.CurrentLanguage switch { AppLanguage.KO => "데이터 새로고침", AppLanguage.JA => "データ更新", _ => "Refresh Data" },
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (refreshResult == MessageBoxResult.Yes)
+            {
+                await RefreshDataWithOverlayAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Error clearing data: {ex.Message}",
+                "Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            BtnClearCache.IsEnabled = true;
+            BtnClearAllData.IsEnabled = true;
+        }
+    }
+
+    #endregion
 
     /// <summary>
     /// Show in-progress quest input overlay
