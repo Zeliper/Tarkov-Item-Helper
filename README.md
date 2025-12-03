@@ -10,6 +10,8 @@ A Windows desktop application for tracking Escape from Tarkov quest and hideout 
 
 ## Key Features
 
+Tarkov 1.0 Fully accepted
+
 ### Quest Management
 - View and search all quests
 - Track quest completion/in-progress status
