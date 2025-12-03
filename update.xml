@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <item>
-    <version>2.2.0</version>
-    <url>https://github.com/Zeliper/Tarkov-Item-Helper/releases/download/v2.2.0/TarkovHelper.zip</url>
+    <version>2.2.1</version>
+    <url>https://github.com/Zeliper/Tarkov-Item-Helper/releases/download/v2.2.1/TarkovHelper.zip</url>
     <changelog>https://github.com/Zeliper/Tarkov-Item-Helper/releases/latest</changelog>
     <mandatory>false</mandatory>
 </item>
