@@ -51,6 +51,17 @@ namespace TarkovHelper.Services
                         _itemLookup[item.NormalizedName] = item;
                     }
                 }
+
+                // Add dogtag aliases for wiki-parsed names -> API names
+                // Wiki parses "BEAR Dogtag" -> "bear-dogtag", API has "dogtag-bear"
+                if (_itemLookup.TryGetValue("dogtag-bear", out var bearDogtag))
+                {
+                    _itemLookup["bear-dogtag"] = bearDogtag;
+                }
+                if (_itemLookup.TryGetValue("dogtag-usec", out var usecDogtag))
+                {
+                    _itemLookup["usec-dogtag"] = usecDogtag;
+                }
             }
 
             if (_tasks != null)
@@ -107,7 +118,8 @@ namespace TarkovHelper.Services
                         QuestName = task.Name,
                         Amount = questItem.Amount,
                         Requirement = questItem.Requirement,
-                        FoundInRaid = questItem.FoundInRaid
+                        FoundInRaid = questItem.FoundInRaid,
+                        DogtagMinLevel = questItem.DogtagMinLevel
                     });
                 }
             }
@@ -136,7 +148,8 @@ namespace TarkovHelper.Services
                 Item = _itemLookup?.TryGetValue(qi.ItemNormalizedName, out var item) == true ? item : null,
                 Amount = qi.Amount,
                 Requirement = qi.Requirement,
-                FoundInRaid = qi.FoundInRaid
+                FoundInRaid = qi.FoundInRaid,
+                DogtagMinLevel = qi.DogtagMinLevel
             }).ToList();
         }
 
@@ -164,7 +177,8 @@ namespace TarkovHelper.Services
                         QuestName = task.Name,
                         Amount = qi.Amount,
                         Requirement = qi.Requirement,
-                        FoundInRaid = qi.FoundInRaid
+                        FoundInRaid = qi.FoundInRaid,
+                        DogtagMinLevel = qi.DogtagMinLevel
                     });
                 }
             }
@@ -263,7 +277,8 @@ namespace TarkovHelper.Services
                         QuestName = task.Name,
                         Amount = questItem.Amount,
                         Requirement = questItem.Requirement,
-                        FoundInRaid = questItem.FoundInRaid
+                        FoundInRaid = questItem.FoundInRaid,
+                        DogtagMinLevel = questItem.DogtagMinLevel
                     });
                 }
             }
@@ -322,7 +337,8 @@ namespace TarkovHelper.Services
                         QuestName = task.Name,
                         Amount = questItem.Amount,
                         Requirement = questItem.Requirement,
-                        FoundInRaid = questItem.FoundInRaid
+                        FoundInRaid = questItem.FoundInRaid,
+                        DogtagMinLevel = questItem.DogtagMinLevel
                     });
                 }
             }
@@ -407,6 +423,10 @@ namespace TarkovHelper.Services
         public int Amount { get; set; }
         public string Requirement { get; set; } = string.Empty;
         public bool FoundInRaid { get; set; }
+        /// <summary>
+        /// Minimum dogtag level required (for dogtag items only)
+        /// </summary>
+        public int? DogtagMinLevel { get; set; }
     }
 
     /// <summary>
@@ -419,6 +439,10 @@ namespace TarkovHelper.Services
         public int Amount { get; set; }
         public string Requirement { get; set; } = string.Empty;
         public bool FoundInRaid { get; set; }
+        /// <summary>
+        /// Minimum dogtag level required (for dogtag items only)
+        /// </summary>
+        public int? DogtagMinLevel { get; set; }
 
         /// <summary>
         /// Get display name (from Item if available, otherwise normalized name)

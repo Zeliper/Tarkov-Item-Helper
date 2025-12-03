@@ -1100,6 +1100,18 @@ namespace TarkovHelper.Services
                 // Skip duplicates, keep first occurrence
                 lookup.TryAdd(item.NormalizedName, item);
             }
+
+            // Add dogtag aliases for wiki-parsed names -> API names
+            // Wiki parses "BEAR Dogtag" -> "bear-dogtag", API has "dogtag-bear"
+            if (lookup.TryGetValue("dogtag-bear", out var bearDogtag))
+            {
+                lookup.TryAdd("bear-dogtag", bearDogtag);
+            }
+            if (lookup.TryGetValue("dogtag-usec", out var usecDogtag))
+            {
+                lookup.TryAdd("usec-dogtag", usecDogtag);
+            }
+
             return lookup;
         }
 

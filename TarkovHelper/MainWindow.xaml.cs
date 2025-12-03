@@ -1269,4 +1269,448 @@ public partial class MainWindow : Window
     }
 
     #endregion
+
+    #region In-Progress Quest Input
+
+    private List<QuestSelectionItem>? _allQuestItems;
+    private List<QuestSelectionItem>? _filteredQuestItems;
+    private System.Windows.Threading.DispatcherTimer? _searchDebounceTimer;
+    private List<TarkovTrader>? _cachedTraders;
+
+    /// <summary>
+    /// Open in-progress quest input button click
+    /// </summary>
+    private async void BtnInProgressQuestInput_Click(object sender, RoutedEventArgs e)
+    {
+        HideSettingsOverlay();
+        await ShowInProgressQuestInputOverlayAsync();
+    }
+
+    /// <summary>
+    /// Show in-progress quest input overlay
+    /// </summary>
+    private async Task ShowInProgressQuestInputOverlayAsync()
+    {
+        var graphService = QuestGraphService.Instance;
+        var progressService = QuestProgressService.Instance;
+
+        // Check if quest data is loaded
+        if (graphService.GetAllTasks() == null || graphService.GetAllTasks().Count == 0)
+        {
+            MessageBox.Show(
+                _loc.QuestDataNotLoaded,
+                _loc.CurrentLanguage switch { AppLanguage.KO => "오류", AppLanguage.JA => "エラー", _ => "Error" },
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        // Load traders data asynchronously (cache it)
+        var apiService = TarkovDevApiService.Instance;
+        _cachedTraders = await apiService.LoadTradersFromJsonAsync();
+
+        // Initialize quest list
+        LoadQuestSelectionList();
+
+        // Initialize trader filter
+        LoadTraderFilter();
+
+        // Clear search
+        TxtQuestSearch.Text = string.Empty;
+
+        // Update localized text
+        UpdateInProgressQuestInputLocalizedText();
+
+        // Clear prerequisites preview
+        PrerequisitesList.ItemsSource = null;
+        UpdateSummaryCounts();
+
+        InProgressQuestInputOverlay.Visibility = Visibility.Visible;
+
+        var blurAnimation = new DoubleAnimation(0, 8, TimeSpan.FromMilliseconds(200));
+        BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
+    }
+
+    /// <summary>
+    /// Hide in-progress quest input overlay
+    /// </summary>
+    private void HideInProgressQuestInputOverlay()
+    {
+        var blurAnimation = new DoubleAnimation(8, 0, TimeSpan.FromMilliseconds(200));
+        blurAnimation.Completed += (s, e) =>
+        {
+            InProgressQuestInputOverlay.Visibility = Visibility.Collapsed;
+        };
+        BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
+    }
+
+    /// <summary>
+    /// Load quest selection list
+    /// </summary>
+    private void LoadQuestSelectionList()
+    {
+        var graphService = QuestGraphService.Instance;
+        var progressService = QuestProgressService.Instance;
+        var tasks = graphService.GetAllTasks();
+
+        _allQuestItems = tasks
+            .Where(t => !string.IsNullOrEmpty(t.NormalizedName))
+            .Select(t => new QuestSelectionItem
+            {
+                Quest = t,
+                DisplayName = GetLocalizedQuestName(t),
+                TraderName = GetLocalizedTraderName(t.Trader),
+                IsCompleted = progressService.GetStatus(t) == QuestStatus.Done,
+                IsSelected = false
+            })
+            .OrderBy(q => q.TraderName)
+            .ThenBy(q => q.DisplayName)
+            .ToList();
+
+        _filteredQuestItems = _allQuestItems.ToList();
+        QuestSelectionList.ItemsSource = _filteredQuestItems;
+    }
+
+    /// <summary>
+    /// Load trader filter combobox
+    /// </summary>
+    private void LoadTraderFilter()
+    {
+        var graphService = QuestGraphService.Instance;
+        var tasks = graphService.GetAllTasks();
+
+        var traders = tasks
+            .Select(t => t.Trader)
+            .Where(t => !string.IsNullOrEmpty(t))
+            .Distinct()
+            .OrderBy(t => t)
+            .ToList();
+
+        CmbQuestTraderFilter.Items.Clear();
+        CmbQuestTraderFilter.Items.Add(new ComboBoxItem { Content = _loc.AllTraders, Tag = "All" });
+
+        foreach (var trader in traders)
+        {
+            CmbQuestTraderFilter.Items.Add(new ComboBoxItem
+            {
+                Content = GetLocalizedTraderName(trader),
+                Tag = trader
+            });
+        }
+
+        CmbQuestTraderFilter.SelectedIndex = 0;
+    }
+
+    /// <summary>
+    /// Get localized quest name
+    /// </summary>
+    private string GetLocalizedQuestName(TarkovTask task)
+    {
+        return _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => task.NameKo ?? task.Name,
+            AppLanguage.JA => task.NameJa ?? task.Name,
+            _ => task.Name
+        };
+    }
+
+    /// <summary>
+    /// Get localized trader name using cached traders data
+    /// </summary>
+    private string GetLocalizedTraderName(string? trader)
+    {
+        if (string.IsNullOrEmpty(trader)) return string.Empty;
+
+        // Use cached traders data
+        if (_cachedTraders != null)
+        {
+            var traderData = _cachedTraders.FirstOrDefault(t =>
+                string.Equals(t.Name, trader, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(t.NormalizedName, trader, StringComparison.OrdinalIgnoreCase));
+
+            if (traderData != null)
+            {
+                return _loc.CurrentLanguage switch
+                {
+                    AppLanguage.KO => traderData.NameKo ?? traderData.Name,
+                    AppLanguage.JA => traderData.NameJa ?? traderData.Name,
+                    _ => traderData.Name
+                };
+            }
+        }
+
+        return trader;
+    }
+
+    /// <summary>
+    /// Update in-progress quest input overlay localized text
+    /// </summary>
+    private void UpdateInProgressQuestInputLocalizedText()
+    {
+        TxtInProgressQuestTitle.Text = _loc.InProgressQuestInputTitle;
+        TxtQuestSelectionHeader.Text = _loc.QuestSelection;
+        TxtTraderFilterLabel.Text = _loc.TraderFilter;
+        TxtPrerequisitesHeader.Text = _loc.PrerequisitesPreview;
+        TxtPrerequisitesDesc.Text = _loc.PrerequisitesDescription;
+        BtnCancelInProgressInput.Content = _loc.Cancel;
+        BtnApplyInProgressInput.Content = _loc.Apply;
+        BtnInProgressQuestInput.Content = _loc.InProgressQuestInputButton;
+
+        // Update "All" item in trader filter
+        if (CmbQuestTraderFilter.Items.Count > 0 && CmbQuestTraderFilter.Items[0] is ComboBoxItem allItem)
+        {
+            allItem.Content = _loc.AllTraders;
+        }
+    }
+
+    /// <summary>
+    /// Filter quests based on search text and trader filter
+    /// </summary>
+    private void FilterQuests()
+    {
+        if (_allQuestItems == null) return;
+
+        var searchText = TxtQuestSearch.Text?.Trim() ?? string.Empty;
+        var selectedTrader = (CmbQuestTraderFilter.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "All";
+
+        _filteredQuestItems = _allQuestItems
+            .Where(q =>
+            {
+                // Search filter
+                var matchesSearch = string.IsNullOrEmpty(searchText) ||
+                    q.Quest.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+                    (q.Quest.NameKo?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false) ||
+                    (q.Quest.NameJa?.Contains(searchText, StringComparison.OrdinalIgnoreCase) ?? false);
+
+                // Trader filter
+                var matchesTrader = selectedTrader == "All" ||
+                    string.Equals(q.Quest.Trader, selectedTrader, StringComparison.OrdinalIgnoreCase);
+
+                return matchesSearch && matchesTrader;
+            })
+            .ToList();
+
+        QuestSelectionList.ItemsSource = _filteredQuestItems;
+    }
+
+    /// <summary>
+    /// Update prerequisite preview based on selected quests
+    /// </summary>
+    private void UpdatePrerequisitePreview()
+    {
+        if (_allQuestItems == null) return;
+
+        var progressService = QuestProgressService.Instance;
+        var graphService = QuestGraphService.Instance;
+
+        var selectedQuests = _allQuestItems
+            .Where(q => q.IsSelected)
+            .Select(q => q.Quest)
+            .ToList();
+
+        var allPrereqs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var quest in selectedQuests)
+        {
+            if (string.IsNullOrEmpty(quest.NormalizedName)) continue;
+
+            var prereqs = graphService.GetAllPrerequisites(quest.NormalizedName);
+            foreach (var prereq in prereqs)
+            {
+                // Exclude already completed quests
+                if (progressService.GetStatus(prereq) != QuestStatus.Done &&
+                    !string.IsNullOrEmpty(prereq.NormalizedName))
+                {
+                    allPrereqs.Add(prereq.NormalizedName);
+                }
+            }
+        }
+
+        // Remove selected quests from prerequisites
+        foreach (var quest in selectedQuests)
+        {
+            if (!string.IsNullOrEmpty(quest.NormalizedName))
+            {
+                allPrereqs.Remove(quest.NormalizedName);
+            }
+        }
+
+        var prereqItems = allPrereqs
+            .Select(name => graphService.GetTask(name))
+            .Where(t => t != null)
+            .Select(t => new PrerequisitePreviewItem
+            {
+                Quest = t!,
+                DisplayName = GetLocalizedQuestName(t!),
+                TraderName = GetLocalizedTraderName(t!.Trader)
+            })
+            .OrderBy(p => p.TraderName)
+            .ThenBy(p => p.DisplayName)
+            .ToList();
+
+        PrerequisitesList.ItemsSource = prereqItems;
+        UpdateSummaryCounts();
+    }
+
+    /// <summary>
+    /// Update summary counts
+    /// </summary>
+    private void UpdateSummaryCounts()
+    {
+        var selectedCount = _allQuestItems?.Count(q => q.IsSelected) ?? 0;
+        var prereqCount = (PrerequisitesList.ItemsSource as IEnumerable<PrerequisitePreviewItem>)?.Count() ?? 0;
+
+        TxtSelectedQuestsCount.Text = string.Format(_loc.SelectedQuestsCount, selectedCount);
+        TxtPrerequisitesCount.Text = string.Format(_loc.PrerequisitesToComplete, prereqCount);
+
+        // Enable/disable Apply button
+        BtnApplyInProgressInput.IsEnabled = selectedCount > 0;
+    }
+
+    /// <summary>
+    /// Search text changed with debounce
+    /// </summary>
+    private void TxtQuestSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _searchDebounceTimer?.Stop();
+        _searchDebounceTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(300)
+        };
+        _searchDebounceTimer.Tick += (s, args) =>
+        {
+            _searchDebounceTimer.Stop();
+            FilterQuests();
+        };
+        _searchDebounceTimer.Start();
+    }
+
+    /// <summary>
+    /// Trader filter selection changed
+    /// </summary>
+    private void CmbQuestTraderFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_allQuestItems == null) return;
+        FilterQuests();
+    }
+
+    /// <summary>
+    /// Quest selection checkbox changed
+    /// </summary>
+    private void QuestSelection_CheckChanged(object sender, RoutedEventArgs e)
+    {
+        UpdatePrerequisitePreview();
+    }
+
+    /// <summary>
+    /// Close button click
+    /// </summary>
+    private void BtnCloseInProgressQuestInput_Click(object sender, RoutedEventArgs e)
+    {
+        HideInProgressQuestInputOverlay();
+    }
+
+    /// <summary>
+    /// Cancel button click
+    /// </summary>
+    private void BtnCancelInProgressInput_Click(object sender, RoutedEventArgs e)
+    {
+        HideInProgressQuestInputOverlay();
+    }
+
+    /// <summary>
+    /// Click outside overlay to close
+    /// </summary>
+    private void InProgressQuestInputOverlay_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource == InProgressQuestInputOverlay)
+        {
+            HideInProgressQuestInputOverlay();
+        }
+    }
+
+    /// <summary>
+    /// Apply button click - set selected quests to Active and complete prerequisites
+    /// </summary>
+    private void BtnApplyInProgressInput_Click(object sender, RoutedEventArgs e)
+    {
+        if (_allQuestItems == null) return;
+
+        var selectedQuests = _allQuestItems
+            .Where(q => q.IsSelected)
+            .Select(q => q.Quest)
+            .ToList();
+
+        if (selectedQuests.Count == 0)
+        {
+            MessageBox.Show(
+                _loc.NoQuestsSelected,
+                _loc.CurrentLanguage switch { AppLanguage.KO => "알림", AppLanguage.JA => "通知", _ => "Notice" },
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var progressService = QuestProgressService.Instance;
+        var graphService = QuestGraphService.Instance;
+
+        // Collect all prerequisites to complete
+        var prerequisitesToComplete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var quest in selectedQuests)
+        {
+            if (string.IsNullOrEmpty(quest.NormalizedName)) continue;
+
+            var prereqs = graphService.GetAllPrerequisites(quest.NormalizedName);
+            foreach (var prereq in prereqs)
+            {
+                if (progressService.GetStatus(prereq) != QuestStatus.Done &&
+                    !string.IsNullOrEmpty(prereq.NormalizedName))
+                {
+                    prerequisitesToComplete.Add(prereq.NormalizedName);
+                }
+            }
+        }
+
+        // Remove selected quests from prerequisites (they will be set to Active, not Done)
+        foreach (var quest in selectedQuests)
+        {
+            if (!string.IsNullOrEmpty(quest.NormalizedName))
+            {
+                prerequisitesToComplete.Remove(quest.NormalizedName);
+            }
+        }
+
+        // Complete all prerequisites
+        var completedCount = 0;
+        foreach (var prereqName in prerequisitesToComplete)
+        {
+            var prereqTask = progressService.GetTask(prereqName);
+            if (prereqTask != null && progressService.GetStatus(prereqTask) != QuestStatus.Done)
+            {
+                progressService.CompleteQuest(prereqTask, completePrerequisites: false);
+                completedCount++;
+            }
+        }
+
+        // Note: Selected quests are left as Active (their prerequisites are now complete)
+        // The QuestProgressService.GetStatus will return Active since:
+        // 1. They are not marked as Done or Failed
+        // 2. All prerequisites are now Done
+        // 3. Level requirement check (if any) will determine final status
+
+        HideInProgressQuestInputOverlay();
+
+        // Refresh quest list
+        _questListPage?.RefreshDisplay();
+
+        // Show success message
+        MessageBox.Show(
+            string.Format(_loc.QuestsAppliedSuccess, selectedQuests.Count, completedCount),
+            _loc.CurrentLanguage switch { AppLanguage.KO => "적용 완료", AppLanguage.JA => "適用完了", _ => "Applied" },
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+    }
+
+    #endregion
 }

@@ -181,6 +181,12 @@ namespace TarkovHelper.Pages
 
         // Navigation identifier
         public string QuestNormalizedName { get; set; } = string.Empty;
+
+        // Dogtag level requirement
+        public int? DogtagMinLevel { get; set; }
+        public bool HasDogtagLevel => DogtagMinLevel.HasValue;
+        public Visibility DogtagLevelVisibility => HasDogtagLevel ? Visibility.Visible : Visibility.Collapsed;
+        public string DogtagLevelDisplay => DogtagMinLevel.HasValue ? $"(Lv.{DogtagMinLevel}+)" : "";
     }
 
     /// <summary>
@@ -263,6 +269,12 @@ namespace TarkovHelper.Pages
 
         private async void ItemsPage_Loaded(object sender, RoutedEventArgs e)
         {
+            // Skip if already loaded (avoid re-initialization on tab switch)
+            if (_isDataLoaded)
+            {
+                return;
+            }
+
             // Show loading overlay
             LoadingOverlay.Visibility = Visibility.Visible;
             MainContent.Visibility = Visibility.Collapsed;
@@ -627,35 +639,69 @@ namespace TarkovHelper.Pages
         /// </summary>
         private void SelectItemInternal(string itemNormalizedName)
         {
-            // Reset filters to ensure the item is visible
-            ResetFiltersForNavigation();
+            // Prevent SelectionChanged from interfering during navigation
+            _isInitializing = true;
 
-            // Find the item view model
-            var itemVm = _allItemViewModels.FirstOrDefault(vm =>
-                string.Equals(vm.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase));
-
-            if (itemVm == null) return;
-
-            // Apply filters to update the list
-            ApplyFilters();
-
-            // Use Dispatcher to ensure UI is updated before selection
-            Dispatcher.BeginInvoke(new Action(() =>
+            try
             {
-                // Select the item in the list
-                LstItems.SelectedItem = itemVm;
+                // Reset filters to ensure the item is visible
+                ResetFiltersForNavigationInternal();
 
-                // Scroll to make it visible
+                // Apply filters to update the list
+                ApplyFilters();
+
+                // Find the item view model from the filtered list (ItemsSource)
+                var filteredItems = LstItems.ItemsSource as IEnumerable<AggregatedItemViewModel>;
+                var itemVm = filteredItems?.FirstOrDefault(vm =>
+                    string.Equals(vm.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase));
+
+                if (itemVm == null) return;
+
+                // For virtualized lists: scroll first, then select
                 LstItems.ScrollIntoView(itemVm);
-
-                // Force UI update
                 LstItems.UpdateLayout();
 
-                // Update detail panel directly
+                // Now select the item
+                LstItems.SelectedItem = itemVm;
+                LstItems.UpdateLayout();
+
+                // Scroll again to ensure visibility after selection
+                LstItems.ScrollIntoView(itemVm);
+
+                // Update state and detail panel directly
                 _selectedItem = itemVm;
                 _selectedItemNormalizedName = itemVm.ItemNormalizedName;
                 ShowItemDetail(itemVm);
-            }), System.Windows.Threading.DispatcherPriority.Loaded);
+
+                // Focus the list to show selection highlight
+                LstItems.Focus();
+            }
+            finally
+            {
+                _isInitializing = false;
+            }
+        }
+
+        /// <summary>
+        /// Reset filters without changing _isInitializing (for internal use)
+        /// </summary>
+        private void ResetFiltersForNavigationInternal()
+        {
+            // Clear search text
+            TxtSearch.Text = "";
+
+            // Reset source filter to "All"
+            CmbSource.SelectedIndex = 0;
+
+            // Reset fulfillment filter to "All"
+            CmbFulfillment.SelectedIndex = 0;
+
+            // Uncheck filter checkboxes
+            ChkFirOnly.IsChecked = false;
+            ChkHideFulfilled.IsChecked = false;
+
+            // Reset sort to "Name"
+            CmbSort.SelectedIndex = 0;
         }
 
         /// <summary>
@@ -753,6 +799,8 @@ namespace TarkovHelper.Pages
 
         private void LstItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (_isInitializing) return;
+
             _selectedItem = LstItems.SelectedItem as AggregatedItemViewModel;
             _selectedItemNormalizedName = _selectedItem?.ItemNormalizedName;
             UpdateDetailPanel();
@@ -832,7 +880,8 @@ namespace TarkovHelper.Pages
                             Amount = questItem.Amount,
                             FoundInRaid = questItem.FoundInRaid,
                             Task = task,
-                            QuestNormalizedName = task.NormalizedName ?? string.Empty // For navigation
+                            QuestNormalizedName = task.NormalizedName ?? string.Empty, // For navigation
+                            DogtagMinLevel = questItem.DogtagMinLevel
                         });
                     }
                 }

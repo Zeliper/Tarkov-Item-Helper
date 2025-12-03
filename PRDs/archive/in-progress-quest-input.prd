@@ -1,0 +1,439 @@
+# In-Progress Quest Input PRD (진행중 퀘스트 입력)
+
+## Implementation Status: COMPLETED
+
+**구현 완료일:** 2025-12-03
+
+### 구현된 파일:
+- `TarkovHelper/Services/LocalizationService.cs` - 다국어 문자열 추가
+- `TarkovHelper/Models/QuestSelectionItem.cs` - 퀘스트 선택 ViewModel 추가
+- `TarkovHelper/MainWindow.xaml` - UI 추가 (버튼 + 오버레이)
+- `TarkovHelper/MainWindow.xaml.cs` - 코드-behind 구현
+
+### 구현된 기능:
+- Settings Overlay에 "Enter In-Progress Quests" 버튼 추가
+- 2컬럼 레이아웃의 퀘스트 선택 팝업
+- 실시간 검색 (300ms debounce)
+- 트레이더별 필터링
+- 선행 퀘스트 실시간 미리보기
+- 적용 시 선행 퀘스트 자동 완료 처리
+- EN/KO/JA 3개 언어 지원
+
+---
+
+## Overview
+설정 메뉴에 "진행중 퀘스트 입력" 버튼을 추가하여, 사용자가 현재 진행 중인 퀘스트를 수동으로 입력할 수 있는 기능 구현. 팝업에서 퀘스트를 검색 및 선택하면 선행 퀘스트 목록이 표시되고, 적용 시 선행 퀘스트들은 자동 완료 처리되고 선택한 퀘스트는 Active 상태가 된다.
+
+## Reference
+- 기존 서비스: `QuestGraphService.cs`, `QuestProgressService.cs`
+- 연계 문서: `PRDs/quest-sync.prd`
+
+---
+
+## Features
+
+### 1. 설정 메뉴 버튼 추가
+
+#### 1.1 버튼 위치
+Settings Overlay 내 Quest Log Sync 섹션 아래에 "진행중 퀘스트 입력" 버튼 추가
+
+#### 1.2 UI 디자인
+
+```
++------------------------------------------------------------------+
+| Quest Log Sync                                                    |
++------------------------------------------------------------------+
+| [Sync Quest]  [Start Monitoring]                                  |
+|                                                                   |
+| [📋 진행중 퀘스트 입력]                                            |
++------------------------------------------------------------------+
+```
+
+#### 1.3 다국어 지원
+
+| 언어 | 버튼 텍스트 |
+|------|-------------|
+| EN | Enter In-Progress Quests |
+| KO | 진행중 퀘스트 입력 |
+| JA | 進行中クエスト入力 |
+
+---
+
+### 2. 진행중 퀘스트 입력 팝업
+
+#### 2.1 팝업 레이아웃
+
+```
++-----------------------------------------------------------------------------------+
+| 진행중 퀘스트 입력                                                         [X]    |
++-----------------------------------------------------------------------------------+
+|                                                                                   |
+|  ┌─────────────────────────────────┐    ┌─────────────────────────────────────┐  |
+|  │ 퀘스트 선택                      │    │ 선행 퀘스트 미리보기                 │  |
+|  ├─────────────────────────────────┤    ├─────────────────────────────────────┤  |
+|  │ [🔍 퀘스트 검색...            ] │    │                                     │  |
+|  │                                 │    │  체크된 퀘스트의 선행 퀘스트가       │  |
+|  │ 트레이더 필터:                  │    │  여기에 표시됩니다.                  │  |
+|  │ [전체 ▼]                        │    │                                     │  |
+|  │                                 │    │  적용 시 아래 퀘스트들이             │  |
+|  │ ☐ Debut (프라퍼)               │    │  자동으로 완료 처리됩니다:           │  |
+|  │ ☐ Checking (프라퍼)            │    │                                     │  |
+|  │ ☐ Shootout Picnic (프라퍼)     │    │  ─────────────────────────────────  │  |
+|  │ ☑ Supplier (프라퍼)            │    │                                     │  |
+|  │ ☐ The Extortionist (프라퍼)    │    │  ✓ Debut                            │  |
+|  │ ☐ Delivery from Past (테라피스트)│   │    프라퍼                            │  |
+|  │ ...                             │    │                                     │  |
+|  │                                 │    │  ✓ Checking                         │  |
+|  │ [스크롤 가능...]                │    │    프라퍼                            │  |
+|  │                                 │    │                                     │  |
+|  └─────────────────────────────────┘    │  ✓ Shootout Picnic                  │  |
+|                                          │    프라퍼                            │  |
+|                                          │                                     │  |
+|                                          │  [스크롤 가능...]                   │  |
+|                                          └─────────────────────────────────────┘  |
+|                                                                                   |
+|  선택된 퀘스트: 1개  |  자동 완료될 선행 퀘스트: 3개                               |
+|                                                                                   |
+|                                              [취소]  [적용]                        |
++-----------------------------------------------------------------------------------+
+```
+
+#### 2.2 좌측 패널: 퀘스트 선택 영역
+
+**검색 기능:**
+- 실시간 검색 (debounce 300ms)
+- 영문/한글/일본어 이름 모두 검색 가능
+- 대소문자 무시
+
+**트레이더 필터:**
+- ComboBox로 트레이더 선택
+- "전체" 옵션으로 모든 퀘스트 표시
+- 트레이더별 필터링
+
+**퀘스트 목록:**
+- CheckBox로 다중 선택 가능
+- 각 퀘스트 이름 + 트레이더 표시
+- 이미 완료된 퀘스트는 비활성화 표시 (회색 + ✓ 아이콘)
+- 레벨 제한 표시 (선택 가능하되 경고)
+
+#### 2.3 우측 패널: 선행 퀘스트 미리보기
+
+**표시 내용:**
+- 체크된 퀘스트들의 모든 선행 퀘스트 통합 표시
+- 중복 제거 (동일 선행 퀘스트는 한 번만 표시)
+- 이미 완료된 선행 퀘스트는 제외
+- 트레이더별 그룹화 또는 알파벳순 정렬
+
+**실시간 업데이트:**
+- 좌측에서 퀘스트 체크/해제 시 즉시 반영
+- 총 개수 하단에 표시
+
+#### 2.4 하단 요약 및 버튼
+
+**요약 정보:**
+```
+선택된 퀘스트: {N}개  |  자동 완료될 선행 퀘스트: {M}개
+```
+
+**버튼:**
+| 버튼 | 동작 |
+|------|------|
+| 취소 | 팝업 닫기, 변경사항 없음 |
+| 적용 | 선행 퀘스트 완료 처리 + 선택 퀘스트 Active 설정 |
+
+---
+
+### 3. 적용 로직
+
+#### 3.1 처리 순서
+
+```
+1. 선택된 퀘스트 목록 수집
+2. 각 퀘스트의 선행 퀘스트 조회 (QuestGraphService.GetAllPrerequisites)
+3. 모든 선행 퀘스트 통합 (중복 제거)
+4. 이미 완료된 퀘스트 필터링
+5. 선행 퀘스트들을 완료 상태(Done)로 설정 (QuestProgressService)
+6. 선택된 퀘스트들을 Active 상태로 설정
+7. UI 갱신
+8. 팝업 닫기
+```
+
+#### 3.2 QuestProgressService 연동
+
+```csharp
+// 선행 퀘스트 완료 처리
+foreach (var prereq in prerequisiteQuests)
+{
+    if (!_progressService.IsQuestDone(prereq.NormalizedName))
+    {
+        _progressService.SetQuestStatus(prereq.NormalizedName, QuestStatus.Done);
+    }
+}
+
+// 선택된 퀘스트 Active 처리
+foreach (var quest in selectedQuests)
+{
+    _progressService.SetQuestStatus(quest.NormalizedName, QuestStatus.Active);
+}
+```
+
+#### 3.3 상태 저장
+
+- `QuestProgressService`가 `quest_progress.json`에 자동 저장
+- 앱 재시작 후에도 상태 유지
+
+---
+
+### 4. UI 구현 세부사항
+
+#### 4.1 XAML 구조
+
+```xml
+<!-- InProgressQuestInputOverlay -->
+<Grid x:Name="InProgressQuestInputOverlay" Visibility="Collapsed"
+      Background="#AA1A1A1A" Grid.RowSpan="2">
+    <Border Background="{StaticResource BackgroundDarkBrush}"
+            CornerRadius="8" Padding="24"
+            HorizontalAlignment="Center" VerticalAlignment="Center"
+            MinWidth="800" MaxWidth="900" MaxHeight="650">
+        <!-- Content -->
+    </Border>
+</Grid>
+```
+
+#### 4.2 ViewModel/Model
+
+```csharp
+public class QuestSelectionItem : INotifyPropertyChanged
+{
+    public TarkovTask Quest { get; set; }
+    public string DisplayName { get; set; }      // 현재 언어 기준 이름
+    public string TraderName { get; set; }       // 현재 언어 기준 트레이더
+    public bool IsSelected { get; set; }         // 체크박스 상태
+    public bool IsCompleted { get; set; }        // 이미 완료 여부
+    public bool IsEnabled => !IsCompleted;       // 완료된 퀘스트는 비활성화
+}
+
+public class PrerequisitePreviewItem
+{
+    public TarkovTask Quest { get; set; }
+    public string DisplayName { get; set; }
+    public string TraderName { get; set; }
+}
+```
+
+#### 4.3 검색 로직
+
+```csharp
+private void FilterQuests(string searchText, string traderFilter)
+{
+    var filtered = _allQuests
+        .Where(q =>
+            (string.IsNullOrEmpty(searchText) ||
+             q.Name.Contains(searchText, StringComparison.OrdinalIgnoreCase) ||
+             q.NameKo?.Contains(searchText) == true ||
+             q.NameJa?.Contains(searchText) == true) &&
+            (traderFilter == "전체" || q.Trader == traderFilter))
+        .OrderBy(q => q.Trader)
+        .ThenBy(q => q.Name)
+        .ToList();
+
+    QuestSelectionList.ItemsSource = filtered;
+}
+```
+
+#### 4.4 선행 퀘스트 수집 로직
+
+```csharp
+private void UpdatePrerequisitePreview()
+{
+    var selectedQuests = _questItems
+        .Where(q => q.IsSelected)
+        .Select(q => q.Quest)
+        .ToList();
+
+    var allPrereqs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+    foreach (var quest in selectedQuests)
+    {
+        var prereqs = QuestGraphService.Instance.GetAllPrerequisites(quest.NormalizedName);
+        foreach (var prereq in prereqs)
+        {
+            // 이미 완료된 퀘스트 제외
+            if (!_progressService.IsQuestDone(prereq.NormalizedName))
+            {
+                allPrereqs.Add(prereq.NormalizedName);
+            }
+        }
+    }
+
+    // 선택된 퀘스트 자체는 선행 퀘스트 목록에서 제외
+    foreach (var quest in selectedQuests)
+    {
+        allPrereqs.Remove(quest.NormalizedName);
+    }
+
+    var prereqTasks = allPrereqs
+        .Select(name => QuestGraphService.Instance.GetTask(name))
+        .Where(t => t != null)
+        .OrderBy(t => t.Trader)
+        .ThenBy(t => t.Name)
+        .ToList();
+
+    PrerequisiteList.ItemsSource = prereqTasks;
+    TxtPrereqCount.Text = $"자동 완료될 선행 퀘스트: {prereqTasks.Count}개";
+}
+```
+
+---
+
+### 5. 다국어 지원
+
+#### 5.1 팝업 제목
+
+| 언어 | 텍스트 |
+|------|--------|
+| EN | Enter In-Progress Quests |
+| KO | 진행중 퀘스트 입력 |
+| JA | 進行中クエスト入力 |
+
+#### 5.2 좌측 패널 레이블
+
+| 언어 | 퀘스트 선택 | 검색 플레이스홀더 | 트레이더 필터 | 전체 |
+|------|-------------|-------------------|---------------|------|
+| EN | Quest Selection | Search quests... | Trader Filter: | All |
+| KO | 퀘스트 선택 | 퀘스트 검색... | 트레이더 필터: | 전체 |
+| JA | クエスト選択 | クエスト検索... | トレーダーフィルター: | 全て |
+
+#### 5.3 우측 패널 레이블
+
+| 언어 | 선행 퀘스트 미리보기 | 안내 문구 |
+|------|---------------------|-----------|
+| EN | Prerequisites Preview | Prerequisites of selected quests will be shown here. These will be auto-completed on apply. |
+| KO | 선행 퀘스트 미리보기 | 체크된 퀘스트의 선행 퀘스트가 여기에 표시됩니다. 적용 시 자동으로 완료 처리됩니다. |
+| JA | 先行クエストプレビュー | 選択されたクエストの先行クエストがここに表示されます。適用時に自動完了されます。 |
+
+#### 5.4 하단 요약
+
+| 언어 | 선택된 퀘스트 | 자동 완료될 선행 퀘스트 |
+|------|---------------|-------------------------|
+| EN | Selected quests: {N} | Prerequisites to complete: {M} |
+| KO | 선택된 퀘스트: {N}개 | 자동 완료될 선행 퀘스트: {M}개 |
+| JA | 選択されたクエスト: {N}件 | 自動完了される先行クエスト: {M}件 |
+
+#### 5.5 버튼
+
+| 언어 | 취소 | 적용 |
+|------|------|------|
+| EN | Cancel | Apply |
+| KO | 취소 | 적용 |
+| JA | キャンセル | 適用 |
+
+---
+
+### 6. 에러 처리
+
+#### 6.1 퀘스트 데이터 미로드
+
+```csharp
+if (QuestGraphService.Instance.GetAllTasks() == null)
+{
+    ShowError("퀘스트 데이터가 로드되지 않았습니다. 먼저 데이터를 새로고침 해주세요.");
+    return;
+}
+```
+
+#### 6.2 선택 없이 적용 클릭
+
+- "적용" 버튼 비활성화 (선택된 퀘스트 0개일 때)
+- 또는 경고 메시지 표시
+
+#### 6.3 순환 의존성
+
+- `QuestGraphService.GetAllPrerequisites`가 순환 의존성 처리 내장
+- 무한 루프 방지됨
+
+---
+
+### 7. 성능 최적화
+
+#### 7.1 검색 디바운스
+
+```csharp
+private DispatcherTimer _searchDebounceTimer;
+
+private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
+{
+    _searchDebounceTimer?.Stop();
+    _searchDebounceTimer = new DispatcherTimer
+    {
+        Interval = TimeSpan.FromMilliseconds(300)
+    };
+    _searchDebounceTimer.Tick += (s, args) =>
+    {
+        _searchDebounceTimer.Stop();
+        FilterQuests(TxtSearch.Text, CmbTrader.SelectedValue?.ToString());
+    };
+    _searchDebounceTimer.Start();
+}
+```
+
+#### 7.2 선행 퀘스트 캐싱
+
+- 동일 퀘스트에 대한 선행 퀘스트 조회 결과 캐싱
+- 팝업 열 때 초기화
+
+---
+
+## Implementation Steps
+
+### Phase 1: UI 구현
+1. Settings Overlay에 "진행중 퀘스트 입력" 버튼 추가
+2. InProgressQuestInputOverlay XAML 구조 생성
+3. 좌측 퀘스트 목록 UI 구현
+4. 우측 선행 퀘스트 미리보기 UI 구현
+
+### Phase 2: 기능 구현
+1. 퀘스트 목록 로드 및 필터링 로직
+2. 검색 기능 구현 (디바운스 포함)
+3. 트레이더 필터 구현
+4. 체크박스 선택 시 선행 퀘스트 실시간 업데이트
+
+### Phase 3: 적용 로직
+1. 선행 퀘스트 수집 및 중복 제거
+2. QuestProgressService 연동하여 상태 업데이트
+3. UI 갱신 및 팝업 닫기
+
+### Phase 4: 다국어 및 완성
+1. LocalizationService 연동
+2. 에러 처리 추가
+3. 테스트 및 버그 수정
+
+---
+
+## Testing
+
+### Test Cases
+1. 퀘스트 검색 (영문/한글/일본어)
+2. 트레이더 필터 동작
+3. 복수 퀘스트 선택 시 선행 퀘스트 통합 표시
+4. 이미 완료된 퀘스트 표시/비활성화
+5. 적용 후 선행 퀘스트 완료 상태 확인
+6. 적용 후 선택 퀘스트 Active 상태 확인
+7. 앱 재시작 후 상태 유지 확인
+8. 선택 없이 적용 시 동작
+9. 빈 검색 결과 표시
+10. 순환 의존성 있는 퀘스트 처리
+
+---
+
+## Dependencies
+
+### Existing
+- `QuestGraphService` - 선행 퀘스트 조회 (`GetAllPrerequisites`)
+- `QuestProgressService` - 퀘스트 상태 관리
+- `TarkovDataService` - 퀘스트 데이터 로드
+- `LocalizationService` - UI 다국어 지원
+
+### No New Services Required
+- 기존 서비스로 모든 기능 구현 가능

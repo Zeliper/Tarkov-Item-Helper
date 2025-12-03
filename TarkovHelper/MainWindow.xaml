@@ -282,6 +282,12 @@
                                         Padding="12,8"
                                         Click="BtnToggleMonitoring_Click"/>
                             </StackPanel>
+
+                            <!-- Enter In-Progress Quests Button -->
+                            <Button x:Name="BtnInProgressQuestInput" Content="Enter In-Progress Quests"
+                                    Padding="12,8" Margin="0,12,0,0"
+                                    HorizontalAlignment="Left"
+                                    Click="BtnInProgressQuestInput_Click"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -529,6 +535,209 @@
                         <Button x:Name="BtnConfirmSync" Content="Confirm"
                                 Padding="16,8"
                                 Click="BtnConfirmSync_Click"
+                                Background="{StaticResource AccentBrush}"
+                                Foreground="{StaticResource BackgroundDarkBrush}"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- In-Progress Quest Input Overlay -->
+        <Grid x:Name="InProgressQuestInputOverlay" Visibility="Collapsed" Background="#AA1A1A1A" Grid.RowSpan="2"
+              MouseDown="InProgressQuestInputOverlay_MouseDown">
+            <Border Background="{StaticResource BackgroundDarkBrush}"
+                    CornerRadius="8" Padding="24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MinWidth="850" MaxWidth="950" MaxHeight="650">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <TextBlock x:Name="TxtInProgressQuestTitle" Text="Enter In-Progress Quests" FontSize="20" FontWeight="SemiBold"
+                                   Foreground="{StaticResource AccentBrush}"/>
+                        <Button x:Name="BtnCloseInProgressQuestInput" Content="✕"
+                                HorizontalAlignment="Right"
+                                Padding="8,4" FontSize="14"
+                                Click="BtnCloseInProgressQuestInput_Click"/>
+                    </Grid>
+
+                    <!-- Two Column Layout -->
+                    <Grid Grid.Row="1" Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="16"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Left Panel: Quest Selection -->
+                        <Border Grid.Column="0" Background="{StaticResource BackgroundMediumBrush}"
+                                CornerRadius="4">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Header -->
+                                <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}"
+                                        CornerRadius="4,4,0,0" Padding="12,8">
+                                    <TextBlock x:Name="TxtQuestSelectionHeader" Text="Quest Selection"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                </Border>
+
+                                <!-- Search and Filter -->
+                                <StackPanel Grid.Row="1" Margin="12,8">
+                                    <!-- Search Box -->
+                                    <TextBox x:Name="TxtQuestSearch"
+                                             Padding="8,6" Margin="0,0,0,8"
+                                             Background="{StaticResource BackgroundDarkBrush}"
+                                             Foreground="{StaticResource TextPrimaryBrush}"
+                                             BorderBrush="{StaticResource BorderBrush}"
+                                             TextChanged="TxtQuestSearch_TextChanged"/>
+
+                                    <!-- Trader Filter -->
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="TxtTraderFilterLabel" Text="Trader:"
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                        <ComboBox x:Name="CmbQuestTraderFilter" Width="140"
+                                                  SelectionChanged="CmbQuestTraderFilter_SelectionChanged"/>
+                                    </StackPanel>
+                                </StackPanel>
+
+                                <!-- Quest List -->
+                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8">
+                                    <ItemsControl x:Name="QuestSelectionList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrush}"
+                                                        Padding="12,6">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                  IsEnabled="{Binding IsEnabled}"
+                                                                  VerticalAlignment="Center" Margin="0,0,8,0"
+                                                                  Checked="QuestSelection_CheckChanged"
+                                                                  Unchecked="QuestSelection_CheckChanged"/>
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding DisplayName}"
+                                                                       FontSize="12"
+                                                                       Foreground="{Binding TextColor}"/>
+                                                            <TextBlock Text="{Binding TraderName}"
+                                                                       FontSize="10"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="2" Text="✓" FontSize="12"
+                                                                   Foreground="{StaticResource AccentBrush}"
+                                                                   VerticalAlignment="Center"
+                                                                   Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+
+                        <!-- Right Panel: Prerequisites Preview -->
+                        <Border Grid.Column="2" Background="{StaticResource BackgroundMediumBrush}"
+                                CornerRadius="4">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Header -->
+                                <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}"
+                                        CornerRadius="4,4,0,0" Padding="12,8">
+                                    <TextBlock x:Name="TxtPrerequisitesHeader" Text="Prerequisites Preview"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                </Border>
+
+                                <!-- Description -->
+                                <TextBlock x:Name="TxtPrerequisitesDesc" Grid.Row="1"
+                                           Text="Prerequisites of selected quests will be shown here.&#x0a;These will be auto-completed on apply."
+                                           FontSize="11" Margin="12,8"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap"/>
+
+                                <!-- Prerequisites List -->
+                                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8">
+                                    <ItemsControl x:Name="PrerequisitesList">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderThickness="0,0,0,1" BorderBrush="{StaticResource BorderBrush}"
+                                                        Padding="12,6">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="✓" FontSize="12"
+                                                                   Foreground="{StaticResource AccentBrush}"
+                                                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding DisplayName}"
+                                                                       FontSize="12"
+                                                                       Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                            <TextBlock Text="{Binding TraderName}"
+                                                                       FontSize="10"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- Summary Stats -->
+                    <Border Grid.Row="2" Background="{StaticResource BackgroundMediumBrush}"
+                            CornerRadius="4" Padding="12,8" Margin="0,0,0,16">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="TxtSelectedQuestsCount"
+                                       Text="Selected quests: 0"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       Margin="0,0,24,0"/>
+                            <TextBlock x:Name="TxtPrerequisitesCount"
+                                       Text="Prerequisites to complete: 0"
+                                       FontSize="12"
+                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Action Buttons -->
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="BtnCancelInProgressInput" Content="Cancel"
+                                Padding="16,8" Margin="0,0,8,0"
+                                Click="BtnCancelInProgressInput_Click"/>
+                        <Button x:Name="BtnApplyInProgressInput" Content="Apply"
+                                Padding="16,8"
+                                Click="BtnApplyInProgressInput_Click"
                                 Background="{StaticResource AccentBrush}"
                                 Foreground="{StaticResource BackgroundDarkBrush}"/>
                     </StackPanel>

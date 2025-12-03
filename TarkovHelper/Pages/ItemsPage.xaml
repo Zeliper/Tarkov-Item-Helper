@@ -563,6 +563,12 @@
                                                                     Visibility="{Binding FirVisibility}">
                                                                 <TextBlock Text="FIR" FontSize="9" Foreground="White"/>
                                                             </Border>
+                                                            <!-- Dogtag Level Requirement -->
+                                                            <Border Padding="4,2" CornerRadius="2" Margin="4,0,0,0"
+                                                                    Background="#6366F1"
+                                                                    Visibility="{Binding DogtagLevelVisibility}">
+                                                                <TextBlock Text="{Binding DogtagLevelDisplay}" FontSize="9" Foreground="White"/>
+                                                            </Border>
                                                         </StackPanel>
 
                                                         <Button Grid.Column="2" Content="Wiki" Padding="6,2"

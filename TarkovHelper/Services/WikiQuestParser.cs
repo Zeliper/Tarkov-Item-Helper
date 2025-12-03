@@ -315,6 +315,7 @@ namespace TarkovHelper.Services
             int amount = 0;
             string requirement = "";
             bool foundInRaid = false;
+            string? notes = null;
 
             int columnIndex = 0;
             foreach (var cell in cells)
@@ -339,10 +340,24 @@ namespace TarkovHelper.Services
                     }
 
                     // Try [[Item Name]] or [[Item Name|Display]] format
-                    var linkMatch = Regex.Match(cell, @"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]");
+                    var linkMatch = Regex.Match(cell, @"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]");
                     if (linkMatch.Success)
                     {
-                        var potentialName = linkMatch.Groups[1].Value.Trim();
+                        var linkName = linkMatch.Groups[1].Value.Trim();
+                        var displayName = linkMatch.Groups[2].Success ? linkMatch.Groups[2].Value.Trim() : null;
+
+                        // Special case: Dogtag uses display name for BEAR/USEC distinction
+                        // Example: [[Dogtag|BEAR Dogtag]] should use "BEAR Dogtag"
+                        string potentialName;
+                        if (displayName != null && linkName.Equals("Dogtag", StringComparison.OrdinalIgnoreCase))
+                        {
+                            potentialName = displayName;
+                        }
+                        else
+                        {
+                            potentialName = linkName;
+                        }
+
                         if (!potentialName.Contains("Found in raid") &&
                             !potentialName.Contains("skill") &&
                             !IsLocationName(potentialName))
@@ -388,14 +403,35 @@ namespace TarkovHelper.Services
                     continue;
                 }
 
-                // Column 5+: Notes (ignore - don't parse links here)
-                // This prevents [[Hideout]], [[Colleagues - Part 3]] etc from being parsed as items
+                // Column 5: Notes - capture for level requirement parsing
+                if (columnIndex == 5)
+                {
+                    notes = cell;
+                    columnIndex++;
+                    continue;
+                }
+
                 columnIndex++;
             }
 
             // Must have either itemId or itemName
             if (string.IsNullOrEmpty(itemId) && string.IsNullOrEmpty(itemName))
                 return null;
+
+            // Use effectiveNotes if available (from rowspan), otherwise use parsed notes
+            var finalNotes = effectiveNotes ?? notes;
+
+            // Parse dogtag level requirement from notes
+            // Pattern: "Needs to be level XX or higher" or "level XX or higher"
+            int? dogtagMinLevel = null;
+            if (!string.IsNullOrEmpty(finalNotes))
+            {
+                var levelMatch = Regex.Match(finalNotes, @"level\s+(\d+)\s+or\s+higher", RegexOptions.IgnoreCase);
+                if (levelMatch.Success && int.TryParse(levelMatch.Groups[1].Value, out var minLevel))
+                {
+                    dogtagMinLevel = minLevel;
+                }
+            }
 
             return new QuestItem
             {
@@ -405,7 +441,8 @@ namespace TarkovHelper.Services
                     : NormalizedNameGenerator.Generate(itemName!),
                 Amount = amount > 0 ? amount : 1,
                 Requirement = string.IsNullOrEmpty(requirement) ? "Required" : requirement,
-                FoundInRaid = foundInRaid
+                FoundInRaid = foundInRaid,
+                DogtagMinLevel = dogtagMinLevel
             };
         }
 

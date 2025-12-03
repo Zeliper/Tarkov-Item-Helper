@@ -165,5 +165,12 @@ namespace TarkovHelper.Models
         /// </summary>
         [JsonPropertyName("foundInRaid")]
         public bool FoundInRaid { get; set; }
+
+        /// <summary>
+        /// Minimum dogtag level required (for dogtag items only)
+        /// Null means no level restriction
+        /// </summary>
+        [JsonPropertyName("dogtagMinLevel")]
+        public int? DogtagMinLevel { get; set; }
     }
 }
