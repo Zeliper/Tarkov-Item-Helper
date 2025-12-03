@@ -80,13 +80,19 @@ namespace TarkovHelper
 
         /// <summary>
         /// API에서 받은 캐시 데이터만 삭제
-        /// tasks.json, items.json, hideouts.json 삭제
-        /// progress.json, settings.json, game_settings.json 등 사용자 데이터는 유지
+        /// tasks.json, items.json, hideout.json 등 캐시 데이터 삭제
+        /// app_settings.json, quest_progress.json, hideout_progress.json 등 사용자 데이터는 유지
         /// </summary>
         private void DeleteCacheDataFiles()
         {
             var ignoreFiles = new[]
             {
+                // 사용자 설정 파일
+                Path.Combine(DataDirectory, "app_settings.json"),
+                // 퀘스트/하이드아웃 진행 상황
+                Path.Combine(DataDirectory, "quest_progress.json"),
+                Path.Combine(DataDirectory, "hideout_progress.json"),
+                // 레거시 파일 (하위 호환성)
                 Path.Combine(DataDirectory, "progress.json"),
                 Path.Combine(DataDirectory, "settings.json"),
                 Path.Combine(DataDirectory, "game_settings.json")
