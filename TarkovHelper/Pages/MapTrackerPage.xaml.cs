@@ -806,7 +806,15 @@ public partial class MapTrackerPage : UserControl
             MarkerTranslation.Y = position.Y;
 
             // 방향 화살표 회전 (화살표만 회전, 중심 원은 고정)
-            MarkerRotation.Angle = position.Angle ?? 0;
+            var angle = position.Angle ?? 0;
+
+            // The Lab 맵은 방향을 왼쪽으로 90도 회전
+            if (string.Equals(_currentMapKey, "the-lab", StringComparison.OrdinalIgnoreCase))
+            {
+                angle -= 90;
+            }
+
+            MarkerRotation.Angle = angle;
         }
         else
         {
