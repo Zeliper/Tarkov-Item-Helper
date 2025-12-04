@@ -32,6 +32,7 @@ public class SettingsService
 
     public event EventHandler<string?>? LogFolderChanged;
     public event EventHandler<int>? PlayerLevelChanged;
+    public event EventHandler<double>? BaseFontSizeChanged;
 
     private SettingsService()
     {
@@ -44,6 +45,13 @@ public class SettingsService
     public const int MinPlayerLevel = 1;
     public const int MaxPlayerLevel = 79;
     public const int DefaultPlayerLevel = 15;
+
+    /// <summary>
+    /// Font size constants
+    /// </summary>
+    public const double MinFontSize = 10;
+    public const double MaxFontSize = 28;
+    public const double DefaultBaseFontSize = 18;
 
     /// <summary>
     /// Player level for quest filtering
@@ -153,6 +161,56 @@ public class SettingsService
         {
             _settings.HideWipeWarning = value;
             SaveSettings();
+        }
+    }
+
+    /// <summary>
+    /// Number of days to look back when syncing quest progress from logs
+    /// 0 = All logs, 1-30 = specific range
+    /// </summary>
+    public int SyncDaysRange
+    {
+        get
+        {
+            if (!_settingsLoaded)
+            {
+                LoadSettings();
+            }
+            return _settings.SyncDaysRange ?? 0; // Default: all logs
+        }
+        set
+        {
+            var clampedValue = Math.Clamp(value, 0, 30);
+            if (_settings.SyncDaysRange != clampedValue)
+            {
+                _settings.SyncDaysRange = clampedValue;
+                SaveSettings();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Base font size for the application
+    /// </summary>
+    public double BaseFontSize
+    {
+        get
+        {
+            if (!_settingsLoaded)
+            {
+                LoadSettings();
+            }
+            return _settings.BaseFontSize ?? DefaultBaseFontSize;
+        }
+        set
+        {
+            var clampedValue = Math.Clamp(value, MinFontSize, MaxFontSize);
+            if (Math.Abs((_settings.BaseFontSize ?? DefaultBaseFontSize) - clampedValue) > 0.01)
+            {
+                _settings.BaseFontSize = clampedValue;
+                SaveSettings();
+                BaseFontSizeChanged?.Invoke(this, clampedValue);
+            }
         }
     }
 
@@ -477,5 +535,7 @@ public class SettingsService
         public int? PlayerLevel { get; set; }
         public bool? ShowLevelLockedQuests { get; set; }
         public bool? HideWipeWarning { get; set; }
+        public int? SyncDaysRange { get; set; }
+        public double? BaseFontSize { get; set; }
     }
 }

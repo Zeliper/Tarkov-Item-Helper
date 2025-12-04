@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media.Imaging;
@@ -10,7 +12,7 @@ namespace TarkovHelper.Pages
     /// <summary>
     /// Hideout module view model for display
     /// </summary>
-    public class HideoutModuleViewModel
+    public class HideoutModuleViewModel : INotifyPropertyChanged
     {
         public HideoutModule Module { get; set; } = null!;
         public string DisplayName { get; set; } = string.Empty;
@@ -21,16 +23,45 @@ namespace TarkovHelper.Pages
         public bool CanIncrement { get; set; }
         public bool CanDecrement { get; set; }
         public bool IsMaxLevel { get; set; }
-        public BitmapImage? IconSource { get; set; }
+
+        private BitmapImage? _iconSource;
+        public BitmapImage? IconSource
+        {
+            get => _iconSource;
+            set
+            {
+                if (_iconSource != value)
+                {
+                    _iconSource = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IconSource)));
+                }
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 
     /// <summary>
     /// Requirement view model for display
     /// </summary>
-    public class RequirementViewModel
+    public class RequirementViewModel : INotifyPropertyChanged
     {
         public string DisplayText { get; set; } = string.Empty;
-        public BitmapImage? IconSource { get; set; }
+
+        private BitmapImage? _iconSource;
+        public BitmapImage? IconSource
+        {
+            get => _iconSource;
+            set
+            {
+                if (_iconSource != value)
+                {
+                    _iconSource = value;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IconSource)));
+                }
+            }
+        }
+
         public bool FoundInRaid { get; set; }
         public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
 
@@ -41,6 +72,9 @@ namespace TarkovHelper.Pages
 
         // Item identifier for fulfillment check
         public string ItemNormalizedName { get; set; } = string.Empty;
+
+        // Icon link for lazy loading
+        public string? IconLink { get; set; }
 
         // Fulfillment status
         public bool IsFulfilled { get; set; }
@@ -58,6 +92,8 @@ namespace TarkovHelper.Pages
             var nonFirCount = totalCount - firCount;
             return $"{itemName} x{firCount}(FIR) + x{nonFirCount}";
         }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 
     public partial class HideoutPage : UserControl
@@ -113,13 +149,16 @@ namespace TarkovHelper.Pages
             }
             finally
             {
-                // Hide loading overlay
+                // Hide loading overlay - show UI immediately
                 if (!_isUnloaded)
                 {
                     LoadingOverlay.Visibility = Visibility.Collapsed;
                     MainContent.Visibility = Visibility.Visible;
                 }
             }
+
+            // Load module icons in background (after UI is visible)
+            _ = LoadModuleIconsInBackgroundAsync();
         }
 
         private void OnLanguageChanged(object? sender, AppLanguage e)
@@ -140,7 +179,7 @@ namespace TarkovHelper.Pages
             });
         }
 
-        private async Task LoadModulesAsync()
+        private Task LoadModulesAsync()
         {
             var modules = _progressService.AllModules;
 
@@ -149,16 +188,55 @@ namespace TarkovHelper.Pages
             foreach (var module in modules)
             {
                 var vm = CreateModuleViewModel(module);
-
-                // Load icon asynchronously
-                if (!string.IsNullOrEmpty(module.ImageLink))
-                {
-                    var icon = await _imageCache.GetImageAsync(module.ImageLink, "hideout");
-                    vm.IconSource = icon;
-                }
-
                 _allModuleViewModels.Add(vm);
             }
+
+            // Note: Icon loading is now done separately via LoadModuleIconsInBackgroundAsync()
+            return Task.CompletedTask;
+        }
+
+        /// <summary>
+        /// Load module icons in background using parallel downloads.
+        /// </summary>
+        private async Task LoadModuleIconsInBackgroundAsync()
+        {
+            if (_allModuleViewModels == null || _allModuleViewModels.Count == 0)
+                return;
+
+            var modulesNeedingIcons = _allModuleViewModels
+                .Where(vm => !string.IsNullOrEmpty(vm.Module.ImageLink) && vm.IconSource == null)
+                .ToList();
+
+            if (modulesNeedingIcons.Count == 0)
+                return;
+
+            // Parallel loading with concurrency limit
+            const int maxConcurrency = 5;
+            using var semaphore = new SemaphoreSlim(maxConcurrency);
+
+            var tasks = modulesNeedingIcons.Select(async vm =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    if (_isUnloaded) return;
+
+                    var icon = await _imageCache.GetImageAsync(vm.Module.ImageLink!, "hideout");
+                    if (icon != null && !_isUnloaded)
+                    {
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            vm.IconSource = icon;
+                        });
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks);
         }
 
         private HideoutModuleViewModel CreateModuleViewModel(HideoutModule module)
@@ -353,17 +431,15 @@ namespace TarkovHelper.Pages
                             DisplayText = $"{itemName} x{itemReq.Count}",
                             FoundInRaid = itemReq.FoundInRaid,
                             ItemNormalizedName = itemReq.ItemNormalizedName,
+                            IconLink = itemReq.IconLink,
                             IsFulfilled = isFulfilled
                         };
-
-                        if (!string.IsNullOrEmpty(itemReq.IconLink))
-                        {
-                            vm.IconSource = await _imageCache.GetItemIconAsync(itemReq.IconLink);
-                        }
 
                         itemVms.Add(vm);
                     }
                     NextLevelItemsList.ItemsSource = itemVms;
+                    // Load icons in background
+                    _ = LoadRequirementIconsAsync(itemVms);
                 }
                 else
                 {
@@ -451,22 +527,49 @@ namespace TarkovHelper.Pages
                         // Only show FIR badge if ALL items are FIR (not mixed)
                         FoundInRaid = firCount > 0 && firCount == totalCount,
                         ItemNormalizedName = kvp.Value.Item.ItemNormalizedName,
+                        IconLink = kvp.Value.Item.IconLink,
                         IsFulfilled = isFulfilled
                     };
-
-                    if (!string.IsNullOrEmpty(kvp.Value.Item.IconLink))
-                    {
-                        vm.IconSource = await _imageCache.GetItemIconAsync(kvp.Value.Item.IconLink);
-                    }
 
                     totalVms.Add(vm);
                 }
                 TotalRemainingItemsList.ItemsSource = totalVms;
+                // Load icons in background
+                _ = LoadRequirementIconsAsync(totalVms);
             }
             else
             {
                 TotalRemainingItemsList.ItemsSource = new[] { new RequirementViewModel { DisplayText = "All items collected!" } };
             }
+        }
+
+        /// <summary>
+        /// Load requirement item icons in background.
+        /// </summary>
+        private async Task LoadRequirementIconsAsync(List<RequirementViewModel> items)
+        {
+            var itemsNeedingIcons = items
+                .Where(vm => !string.IsNullOrEmpty(vm.IconLink) && vm.IconSource == null)
+                .ToList();
+
+            if (itemsNeedingIcons.Count == 0)
+                return;
+
+            var tasks = itemsNeedingIcons.Select(async vm =>
+            {
+                if (_isUnloaded) return;
+
+                var icon = await _imageCache.GetItemIconAsync(vm.IconLink);
+                if (icon != null && !_isUnloaded)
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        vm.IconSource = icon;
+                    });
+                }
+            });
+
+            await Task.WhenAll(tasks);
         }
 
         private string GetLocalizedItemName(HideoutItemRequirement item)

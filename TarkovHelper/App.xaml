@@ -1,9 +1,24 @@
 <Application x:Class="TarkovHelper.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:local="clr-namespace:TarkovHelper"
 >
     <Application.Resources>
+        <!-- Custom Font -->
+        <FontFamily x:Key="MaplestoryFont">pack://application:,,,/Fonts/#Maplestory</FontFamily>
+
+        <!-- Font Sizes (dynamic, updated from code) -->
+        <sys:Double x:Key="BaseFontSize">18</sys:Double>
+        <sys:Double x:Key="FontSizeTiny">12</sys:Double>
+        <sys:Double x:Key="FontSizeXSmall">14</sys:Double>
+        <sys:Double x:Key="FontSizeSmall">16</sys:Double>
+        <sys:Double x:Key="FontSizeMedium">18</sys:Double>
+        <sys:Double x:Key="FontSizeLarge">20</sys:Double>
+        <sys:Double x:Key="FontSizeXLarge">22</sys:Double>
+        <sys:Double x:Key="FontSizeTitle">24</sys:Double>
+        <sys:Double x:Key="FontSizeHeader">26</sys:Double>
+
         <!-- BoolToVisibility Converter -->
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <!-- Color Palette -->
@@ -34,11 +49,15 @@
         <Style TargetType="Window">
             <Setter Property="Background" Value="{StaticResource BackgroundDarkBrush}"/>
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
         </Style>
 
         <!-- TextBlock Style -->
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
         </Style>
 
         <!-- TextBox Style -->
@@ -49,6 +68,8 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
@@ -76,6 +97,8 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="12,8"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -94,6 +117,80 @@
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="border" Property="Background" Value="{StaticResource AccentHoverBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- CheckBox Style -->
+        <Style TargetType="CheckBox">
+            <Setter Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4,0,0,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="18"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- CheckBox Border -->
+                            <Border x:Name="checkBoxBorder"
+                                    Grid.Column="0"
+                                    Width="16" Height="16"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="3"
+                                    VerticalAlignment="Center">
+                                <!-- Checkmark -->
+                                <Path x:Name="checkMark"
+                                      Data="M 2,5 L 5,8 L 10,2"
+                                      Stroke="{StaticResource SuccessBrush}"
+                                      StrokeThickness="2"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Visibility="Collapsed"
+                                      Margin="1"/>
+                            </Border>
+
+                            <!-- Content -->
+                            <ContentPresenter Grid.Column="1"
+                                              Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="checkMark" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="checkBoxBorder" Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
+                                <Setter TargetName="checkBoxBorder" Property="BorderBrush" Value="{StaticResource SuccessBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="checkBoxBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsMouseOver" Value="True"/>
+                                    <Condition Property="IsChecked" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="checkBoxBorder" Property="BorderBrush" Value="{StaticResource SuccessBrush}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="checkBoxBorder" Property="Opacity" Value="0.5"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -145,6 +242,8 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBox">
@@ -194,6 +293,8 @@
             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
             <Setter Property="Padding" Value="10,6"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
@@ -383,8 +484,9 @@
             <Setter Property="Padding" Value="16,12"/>
             <Setter Property="Margin" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontSize" Value="{DynamicResource BaseFontSize}"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontFamily" Value="{StaticResource MaplestoryFont}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="RadioButton">

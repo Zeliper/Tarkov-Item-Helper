@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Windows;
 using System.Windows.Media;
 
 namespace TarkovHelper.Models;
@@ -12,6 +13,8 @@ public class QuestSelectionItem : INotifyPropertyChanged
 
     public TarkovTask Quest { get; set; } = null!;
     public string DisplayName { get; set; } = string.Empty;
+    public string SubtitleName { get; set; } = string.Empty;
+    public Visibility SubtitleVisibility { get; set; } = Visibility.Collapsed;
     public string TraderName { get; set; } = string.Empty;
     public bool IsCompleted { get; set; }
     public bool IsEnabled => !IsCompleted;
@@ -48,5 +51,7 @@ public class PrerequisitePreviewItem
 {
     public TarkovTask Quest { get; set; } = null!;
     public string DisplayName { get; set; } = string.Empty;
+    public string SubtitleName { get; set; } = string.Empty;
+    public Visibility SubtitleVisibility { get; set; } = Visibility.Collapsed;
     public string TraderName { get; set; } = string.Empty;
 }

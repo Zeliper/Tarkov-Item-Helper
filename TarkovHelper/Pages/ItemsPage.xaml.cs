@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -28,7 +29,20 @@ namespace TarkovHelper.Pages
         public int TotalFIRCount { get; set; }
         public bool FoundInRaid { get; set; }
         public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
-        public BitmapImage? IconSource { get; set; }
+
+        private BitmapImage? _iconSource;
+        public BitmapImage? IconSource
+        {
+            get => _iconSource;
+            set
+            {
+                if (_iconSource != value)
+                {
+                    _iconSource = value;
+                    OnPropertyChanged(nameof(IconSource));
+                }
+            }
+        }
         public string? IconLink { get; set; }
         public string? WikiLink { get; set; }
 
@@ -330,10 +344,20 @@ namespace TarkovHelper.Pages
             }
             finally
             {
-                // Hide loading overlay
+                // Hide loading overlay - show UI immediately
                 LoadingOverlay.Visibility = Visibility.Collapsed;
                 MainContent.Visibility = Visibility.Visible;
             }
+
+            // Load images in background (after UI is visible)
+            // Fire-and-forget, but capture exceptions
+            _ = LoadImagesInBackgroundAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Background image loading failed: {t.Exception?.Message}");
+                }
+            }, TaskScheduler.Default);
         }
 
         private void OnLanguageChanged(object? sender, AppLanguage e)
@@ -343,6 +367,8 @@ namespace TarkovHelper.Pages
                 await LoadItemsAsync();
                 ApplyFilters();
                 UpdateDetailPanel();
+                // Load images in background
+                _ = LoadImagesInBackgroundAsync();
             });
         }
 
@@ -352,6 +378,8 @@ namespace TarkovHelper.Pages
             {
                 await LoadItemsAsync();
                 ApplyFilters();
+                // Load images in background
+                _ = LoadImagesInBackgroundAsync();
             });
         }
 
@@ -442,19 +470,185 @@ namespace TarkovHelper.Pages
 
             _allItemViewModels = mergedItems.Values.ToList();
 
-            // Load icons and inventory data
+            // Load inventory data (fast, synchronous)
             foreach (var vm in _allItemViewModels)
             {
-                if (!string.IsNullOrEmpty(vm.IconLink))
-                {
-                    vm.IconSource = await _imageCache.GetItemIconAsync(vm.IconLink);
-                }
-
-                // Load inventory quantities
                 var inventory = _inventoryService.GetInventory(vm.ItemNormalizedName);
                 vm.OwnedFirQuantity = inventory.FirQuantity;
                 vm.OwnedNonFirQuantity = inventory.NonFirQuantity;
             }
+
+            // Note: Image loading is now done separately via LoadImagesInBackgroundAsync()
+        }
+
+        /// <summary>
+        /// Load item icons with priority: visible items first, then remaining items in background.
+        /// </summary>
+        private async Task LoadImagesInBackgroundAsync()
+        {
+            if (_allItemViewModels == null || _allItemViewModels.Count == 0)
+                return;
+
+            // Phase 1: Load visible items first (immediate UX improvement)
+            await LoadVisibleItemImagesAsync();
+
+            // Phase 2: Load remaining items in background
+            await LoadRemainingItemImagesAsync();
+        }
+
+        /// <summary>
+        /// Load images only for currently visible items in the ListBox.
+        /// </summary>
+        private async Task LoadVisibleItemImagesAsync()
+        {
+            var visibleItems = GetVisibleItems();
+            if (visibleItems.Count == 0)
+                return;
+
+            var itemsNeedingIcons = visibleItems
+                .Where(vm => !string.IsNullOrEmpty(vm.IconLink) && vm.IconSource == null)
+                .ToList();
+
+            if (itemsNeedingIcons.Count == 0)
+                return;
+
+            await LoadItemImagesAsync(itemsNeedingIcons);
+        }
+
+        /// <summary>
+        /// Load images for all remaining items that haven't been loaded yet.
+        /// </summary>
+        private async Task LoadRemainingItemImagesAsync()
+        {
+            if (_allItemViewModels == null)
+                return;
+
+            var itemsNeedingIcons = _allItemViewModels
+                .Where(vm => !string.IsNullOrEmpty(vm.IconLink) && vm.IconSource == null)
+                .ToList();
+
+            if (itemsNeedingIcons.Count == 0)
+                return;
+
+            await LoadItemImagesAsync(itemsNeedingIcons);
+        }
+
+        /// <summary>
+        /// Load images for a specific list of items using parallel downloads.
+        /// </summary>
+        private async Task LoadItemImagesAsync(List<AggregatedItemViewModel> items)
+        {
+            if (items.Count == 0)
+                return;
+
+            const int maxConcurrency = 10;
+            using var semaphore = new SemaphoreSlim(maxConcurrency);
+
+            var tasks = items.Select(async vm =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    if (_isUnloaded) return;
+                    if (vm.IconSource != null) return; // Already loaded
+
+                    var icon = await _imageCache.GetItemIconAsync(vm.IconLink);
+                    if (icon != null && !_isUnloaded)
+                    {
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            vm.IconSource = icon;
+                        });
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
+
+        /// <summary>
+        /// Get the list of currently visible items in the ListBox.
+        /// </summary>
+        private List<AggregatedItemViewModel> GetVisibleItems()
+        {
+            var visibleItems = new List<AggregatedItemViewModel>();
+
+            if (LstItems.ItemsSource == null)
+                return visibleItems;
+
+            // Get the ScrollViewer from ListBox
+            var scrollViewer = GetScrollViewer(LstItems);
+            if (scrollViewer == null)
+                return visibleItems;
+
+            var itemsSource = LstItems.ItemsSource as IList<AggregatedItemViewModel>;
+            if (itemsSource == null || itemsSource.Count == 0)
+                return visibleItems;
+
+            // Estimate visible range based on scroll position
+            // Assume each item is approximately 50 pixels tall
+            const double estimatedItemHeight = 50;
+            var viewportHeight = scrollViewer.ViewportHeight;
+            var verticalOffset = scrollViewer.VerticalOffset;
+
+            var startIndex = Math.Max(0, (int)(verticalOffset / estimatedItemHeight) - 2);
+            var visibleCount = (int)(viewportHeight / estimatedItemHeight) + 5; // Add buffer
+            var endIndex = Math.Min(itemsSource.Count - 1, startIndex + visibleCount);
+
+            for (int i = startIndex; i <= endIndex; i++)
+            {
+                visibleItems.Add(itemsSource[i]);
+            }
+
+            return visibleItems;
+        }
+
+        /// <summary>
+        /// Get ScrollViewer from a ListBox.
+        /// </summary>
+        private static ScrollViewer? GetScrollViewer(DependencyObject element)
+        {
+            if (element is ScrollViewer sv)
+                return sv;
+
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(element); i++)
+            {
+                var child = VisualTreeHelper.GetChild(element, i);
+                var result = GetScrollViewer(child);
+                if (result != null)
+                    return result;
+            }
+            return null;
+        }
+
+        // Debounce timer for scroll events
+        private System.Windows.Threading.DispatcherTimer? _scrollDebounceTimer;
+
+        /// <summary>
+        /// Handle scroll events to load images for newly visible items.
+        /// </summary>
+        private void LstItems_ScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            // Only process if there's actual scrolling (not just layout changes)
+            if (e.VerticalChange == 0 && e.ViewportHeightChange == 0)
+                return;
+
+            // Debounce: wait for scrolling to settle before loading images
+            _scrollDebounceTimer?.Stop();
+            _scrollDebounceTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(100)
+            };
+            _scrollDebounceTimer.Tick += async (s, args) =>
+            {
+                _scrollDebounceTimer?.Stop();
+                await LoadVisibleItemImagesAsync();
+            };
+            _scrollDebounceTimer.Start();
         }
 
         private Dictionary<string, QuestItemAggregate> GetQuestItemRequirements()

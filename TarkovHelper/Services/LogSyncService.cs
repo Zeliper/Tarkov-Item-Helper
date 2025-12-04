@@ -358,7 +358,10 @@ namespace TarkovHelper.Services
         /// <summary>
         /// Synchronize quest progress from log files
         /// </summary>
-        public async Task<SyncResult> SyncFromLogsAsync(string logFolderPath, IProgress<string>? progress = null)
+        /// <param name="logFolderPath">Path to log folder</param>
+        /// <param name="progress">Progress reporter</param>
+        /// <param name="daysRange">Number of days to look back (0 = all logs)</param>
+        public async Task<SyncResult> SyncFromLogsAsync(string logFolderPath, IProgress<string>? progress = null, int daysRange = 0)
         {
             var result = new SyncResult();
 
@@ -366,6 +369,16 @@ namespace TarkovHelper.Services
 
             // Parse all log files
             var events = await ParseLogDirectoryAsync(logFolderPath, progress);
+
+            // Apply date filter if specified
+            if (daysRange > 0)
+            {
+                var cutoffDate = DateTime.Now.AddDays(-daysRange);
+                var originalCount = events.Count;
+                events = events.Where(e => e.Timestamp >= cutoffDate).ToList();
+                progress?.Report($"Filtered to {events.Count}/{originalCount} events from last {daysRange} days");
+            }
+
             result.TotalEventsFound = events.Count;
 
             if (events.Count == 0)
@@ -383,25 +396,13 @@ namespace TarkovHelper.Services
             // Build a lookup for quest IDs
             var tasksByQuestId = BuildQuestIdLookup(progressService.AllTasks);
 
-            // Track which quests we've already processed
-            var processedQuests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var questsToComplete = new List<QuestChangeInfo>();
-
-            // BUG FIX: Track quests that have Started events to exclude from auto-completion
-            // This prevents quests that are still in progress from being auto-completed
-            // when they appear as prerequisites of other started quests
+            // STEP 1: Determine final state for each quest (last event wins)
+            // Key: normalizedName, Value: (finalEventType, timestamp, task)
+            var questFinalStates = new Dictionary<string, (QuestEventType EventType, DateTime Timestamp, TarkovTask Task)>(StringComparer.OrdinalIgnoreCase);
             var startedQuests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var evt in events.Where(e => e.EventType == QuestEventType.Started))
-            {
-                var task = FindTaskByQuestId(tasksByQuestId, evt.QuestId);
-                if (task?.NormalizedName != null)
-                    startedQuests.Add(task.NormalizedName);
-            }
 
-            // Process events in chronological order
             foreach (var evt in events)
             {
-                // Find matching task
                 var task = FindTaskByQuestId(tasksByQuestId, evt.QuestId);
                 if (task == null)
                 {
@@ -411,45 +412,56 @@ namespace TarkovHelper.Services
                 }
 
                 var normalizedName = task.NormalizedName ?? "";
-                if (processedQuests.Contains(normalizedName))
-                    continue;
+                if (string.IsNullOrEmpty(normalizedName)) continue;
 
+                // Track started quests (for in-progress detection)
+                if (evt.EventType == QuestEventType.Started)
+                {
+                    startedQuests.Add(normalizedName);
+                }
+
+                // Last event for each quest determines final state
+                questFinalStates[normalizedName] = (evt.EventType, evt.Timestamp, task);
+
+                // Count events
                 switch (evt.EventType)
                 {
+                    case QuestEventType.Started: result.QuestsStarted++; break;
+                    case QuestEventType.Completed: result.QuestsCompleted++; break;
+                    case QuestEventType.Failed: result.QuestsFailed++; break;
+                }
+            }
+
+            // STEP 2: Build questsToComplete based on final states
+            var questsToComplete = new List<QuestChangeInfo>();
+            var processedPrereqs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // First, collect all quests that will be in a terminal state (Completed or Failed)
+            var terminalStateQuests = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in questFinalStates)
+            {
+                if (kvp.Value.EventType == QuestEventType.Completed || kvp.Value.EventType == QuestEventType.Failed)
+                {
+                    terminalStateQuests.Add(kvp.Key);
+                }
+            }
+
+            foreach (var kvp in questFinalStates)
+            {
+                var normalizedName = kvp.Key;
+                var (eventType, timestamp, task) = kvp.Value;
+                var currentStatus = progressService.GetStatus(task);
+
+                switch (eventType)
+                {
                     case QuestEventType.Started:
-                        result.QuestsStarted++;
-
-                        // Get all prerequisites and mark them for completion
-                        var prereqs = graphService.GetAllPrerequisites(normalizedName);
-                        foreach (var prereq in prereqs)
-                        {
-                            if (prereq.NormalizedName == null) continue;
-                            if (processedQuests.Contains(prereq.NormalizedName)) continue;
-                            // BUG FIX: Skip prerequisites that are also started (still in progress)
-                            if (startedQuests.Contains(prereq.NormalizedName)) continue;
-
-                            var currentStatus = progressService.GetStatus(prereq);
-                            if (currentStatus != QuestStatus.Done)
-                            {
-                                questsToComplete.Add(new QuestChangeInfo
-                                {
-                                    QuestName = prereq.Name,
-                                    NormalizedName = prereq.NormalizedName,
-                                    Trader = prereq.Trader,
-                                    IsPrerequisite = true,
-                                    ChangeType = QuestEventType.Completed
-                                });
-                                processedQuests.Add(prereq.NormalizedName);
-                                result.PrerequisitesAutoCompleted++;
-                            }
-                        }
+                        // Started quests: only complete prerequisites, not the quest itself
+                        // Quest stays Active
                         break;
 
                     case QuestEventType.Completed:
-                        result.QuestsCompleted++;
-
-                        var status = progressService.GetStatus(task);
-                        if (status != QuestStatus.Done)
+                        // Only add if status will actually change
+                        if (currentStatus != QuestStatus.Done)
                         {
                             questsToComplete.Add(new QuestChangeInfo
                             {
@@ -457,73 +469,73 @@ namespace TarkovHelper.Services
                                 NormalizedName = normalizedName,
                                 Trader = task.Trader,
                                 IsPrerequisite = false,
-                                ChangeType = QuestEventType.Completed
+                                ChangeType = QuestEventType.Completed,
+                                Timestamp = timestamp
                             });
-                            processedQuests.Add(normalizedName);
-
-                            // Also complete prerequisites if not already done
-                            var completedPrereqs = graphService.GetAllPrerequisites(normalizedName);
-                            foreach (var prereq in completedPrereqs)
-                            {
-                                if (prereq.NormalizedName == null) continue;
-                                if (processedQuests.Contains(prereq.NormalizedName)) continue;
-                                // BUG FIX: Skip prerequisites that are started but not completed (still in progress)
-                                if (startedQuests.Contains(prereq.NormalizedName)) continue;
-
-                                var prereqStatus = progressService.GetStatus(prereq);
-                                if (prereqStatus != QuestStatus.Done)
-                                {
-                                    questsToComplete.Add(new QuestChangeInfo
-                                    {
-                                        QuestName = prereq.Name,
-                                        NormalizedName = prereq.NormalizedName,
-                                        Trader = prereq.Trader,
-                                        IsPrerequisite = true,
-                                        ChangeType = QuestEventType.Completed
-                                    });
-                                    processedQuests.Add(prereq.NormalizedName);
-                                    result.PrerequisitesAutoCompleted++;
-                                }
-                            }
                         }
                         break;
 
                     case QuestEventType.Failed:
-                        result.QuestsFailed++;
+                        // Only add if status will actually change
+                        if (currentStatus != QuestStatus.Failed)
+                        {
+                            questsToComplete.Add(new QuestChangeInfo
+                            {
+                                QuestName = task.Name,
+                                NormalizedName = normalizedName,
+                                Trader = task.Trader,
+                                IsPrerequisite = false,
+                                ChangeType = QuestEventType.Failed,
+                                Timestamp = timestamp
+                            });
+                        }
+                        break;
+                }
+
+                // STEP 3: Complete prerequisites for ANY quest that was started/completed/failed
+                // (If a quest was started, failed, or completed, its prerequisites must be done)
+                var prereqs = graphService.GetAllPrerequisites(normalizedName);
+                foreach (var prereq in prereqs)
+                {
+                    if (prereq.NormalizedName == null) continue;
+                    if (processedPrereqs.Contains(prereq.NormalizedName)) continue;
+
+                    // Skip if this prereq will have a terminal state from logs
+                    if (terminalStateQuests.Contains(prereq.NormalizedName)) continue;
+
+                    // Skip if prereq is started but not in terminal state (still in progress)
+                    if (startedQuests.Contains(prereq.NormalizedName) && !terminalStateQuests.Contains(prereq.NormalizedName))
+                        continue;
+
+                    var prereqStatus = progressService.GetStatus(prereq);
+                    if (prereqStatus != QuestStatus.Done)
+                    {
                         questsToComplete.Add(new QuestChangeInfo
                         {
-                            QuestName = task.Name,
-                            NormalizedName = normalizedName,
-                            Trader = task.Trader,
-                            IsPrerequisite = false,
-                            ChangeType = QuestEventType.Failed
+                            QuestName = prereq.Name,
+                            NormalizedName = prereq.NormalizedName,
+                            Trader = prereq.Trader,
+                            IsPrerequisite = true,
+                            ChangeType = QuestEventType.Completed,
+                            Timestamp = timestamp
                         });
-                        processedQuests.Add(normalizedName);
-                        break;
+                        processedPrereqs.Add(prereq.NormalizedName);
+                        result.PrerequisitesAutoCompleted++;
+                    }
                 }
             }
 
-            result.QuestsToComplete = questsToComplete;
+            // Sort by timestamp (oldest first) for chronological display
+            result.QuestsToComplete = questsToComplete.OrderBy(q => q.Timestamp).ToList();
 
-            // Build InProgressQuests list: quests that are started but not completed/failed
-            var completedNormalizedNames = questsToComplete
-                .Where(q => q.ChangeType == QuestEventType.Completed && !q.IsPrerequisite)
-                .Select(q => q.NormalizedName)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            var failedNormalizedNames = questsToComplete
-                .Where(q => q.ChangeType == QuestEventType.Failed)
-                .Select(q => q.NormalizedName)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var normalizedName in startedQuests)
+            // Build InProgressQuests list: quests whose final state is Started (not Completed/Failed)
+            foreach (var kvp in questFinalStates)
             {
-                // Skip if already completed or failed in this sync
-                if (completedNormalizedNames.Contains(normalizedName)) continue;
-                if (failedNormalizedNames.Contains(normalizedName)) continue;
+                var normalizedName = kvp.Key;
+                var (eventType, _, task) = kvp.Value;
 
-                var task = progressService.GetTask(normalizedName);
-                if (task != null)
+                // Only include quests whose FINAL state is Started
+                if (eventType == QuestEventType.Started)
                 {
                     // Check if already done in saved progress
                     var currentStatus = progressService.GetStatus(task);

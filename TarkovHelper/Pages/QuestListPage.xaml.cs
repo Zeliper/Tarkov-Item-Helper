@@ -994,7 +994,8 @@ namespace TarkovHelper.Pages
         {
             var textBlock = new TextBlock
             {
-                FontSize = 12,
+                FontFamily = (System.Windows.Media.FontFamily)FindResource("MaplestoryFont"),
+                FontSize = (double)FindResource("FontSizeXSmall"),
                 TextWrapping = TextWrapping.Wrap,
                 MaxWidth = 260, // Slightly smaller to account for checkbox and badge
                 VerticalAlignment = VerticalAlignment.Top,
@@ -1015,7 +1016,8 @@ namespace TarkovHelper.Pages
         {
             var textBlock = new TextBlock
             {
-                FontSize = 12,
+                FontFamily = (System.Windows.Media.FontFamily)FindResource("MaplestoryFont"),
+                FontSize = (double)FindResource("FontSizeXSmall"),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 2, 0, 2),
                 MaxWidth = 300

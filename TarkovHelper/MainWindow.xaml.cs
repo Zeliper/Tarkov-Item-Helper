@@ -455,6 +455,9 @@ public partial class MainWindow : Window
         // Update cache size display
         UpdateCacheSizeDisplay();
 
+        // Update font size display
+        UpdateFontSizeDisplay();
+
         // Update path display
         if (!string.IsNullOrEmpty(logPath))
         {
@@ -1520,6 +1523,37 @@ public partial class MainWindow : Window
             BtnClearCache.IsEnabled = true;
             BtnClearAllData.IsEnabled = true;
         }
+    }
+
+    private void BtnFontSizeDown_Click(object sender, RoutedEventArgs e)
+    {
+        var currentSize = SettingsService.Instance.BaseFontSize;
+        if (currentSize > SettingsService.MinFontSize)
+        {
+            SettingsService.Instance.BaseFontSize = currentSize - 1;
+            UpdateFontSizeDisplay();
+        }
+    }
+
+    private void BtnFontSizeUp_Click(object sender, RoutedEventArgs e)
+    {
+        var currentSize = SettingsService.Instance.BaseFontSize;
+        if (currentSize < SettingsService.MaxFontSize)
+        {
+            SettingsService.Instance.BaseFontSize = currentSize + 1;
+            UpdateFontSizeDisplay();
+        }
+    }
+
+    private void BtnResetFontSize_Click(object sender, RoutedEventArgs e)
+    {
+        SettingsService.Instance.BaseFontSize = SettingsService.DefaultBaseFontSize;
+        UpdateFontSizeDisplay();
+    }
+
+    private void UpdateFontSizeDisplay()
+    {
+        TxtCurrentFontSize.Text = SettingsService.Instance.BaseFontSize.ToString("0");
     }
 
     #endregion

@@ -35,7 +35,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Column="0" Text="TARKOV HELPER" FontSize="20" FontWeight="Bold"
+                    <TextBlock Grid.Column="0" Text="TARKOV HELPER" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="Bold"
                                Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
 
                     <!-- Right Side Controls -->
@@ -45,19 +45,19 @@
                                 CornerRadius="4" Padding="4,2" Margin="0,0,12,0"
                                 VerticalAlignment="Center">
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Lv." FontSize="12" FontWeight="SemiBold"
+                                <TextBlock Text="Lv." FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            VerticalAlignment="Center" Margin="4,0,4,0"/>
                                 <Button x:Name="BtnLevelDown" Content="-" Width="24" Height="24"
-                                        Padding="0" FontSize="14" FontWeight="Bold"
+                                        Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                         Click="BtnLevelDown_Click"
                                         ToolTip="Decrease level"/>
-                                <TextBlock x:Name="TxtPlayerLevel" Text="15" FontSize="14" FontWeight="Bold"
+                                <TextBlock x:Name="TxtPlayerLevel" Text="15" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                            Foreground="{StaticResource AccentBrush}"
                                            VerticalAlignment="Center" Margin="8,0"
                                            MinWidth="20" TextAlignment="Center"/>
                                 <Button x:Name="BtnLevelUp" Content="+" Width="24" Height="24"
-                                        Padding="0" FontSize="14" FontWeight="Bold"
+                                        Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                         Click="BtnLevelUp_Click"
                                         ToolTip="Increase level"/>
                             </StackPanel>
@@ -81,7 +81,7 @@
                         <!-- Settings -->
                         <Button x:Name="BtnSettings" Content="⚙" Padding="10,6"
                                 Margin="0,0,12,0" Click="BtnSettings_Click"
-                                FontSize="16"
+                                FontSize="{DynamicResource FontSizeMedium}"
                                 ToolTip="Settings"/>
 
                         <!-- Language Selector -->
@@ -99,7 +99,7 @@
             <Grid Grid.Row="1">
                 <!-- Welcome Text (shown when no data) -->
                 <TextBlock x:Name="TxtWelcome" Text="Welcome to Tarkov Helper"
-                           FontSize="24" FontWeight="Light"
+                           FontSize="{DynamicResource FontSizeHeader}" FontWeight="Light"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            Visibility="Collapsed"/>
@@ -143,7 +143,7 @@
                     <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
                 </Border.Effect>
                 <StackPanel>
-                    <TextBlock Text="Loading Data" FontSize="18" FontWeight="SemiBold"
+                    <TextBlock Text="Loading Data" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
                                Foreground="{StaticResource AccentBrush}"
                                HorizontalAlignment="Center" Margin="0,0,0,16"/>
                     <ProgressBar x:Name="LoadingProgressBar"
@@ -152,7 +152,7 @@
                                  Background="{StaticResource BackgroundMediumBrush}"/>
                     <TextBlock x:Name="LoadingStatusText"
                                Text="Initializing..."
-                               FontSize="12" Margin="0,12,0,0"
+                               FontSize="{DynamicResource FontSizeXSmall}" Margin="0,12,0,0"
                                Foreground="{StaticResource TextSecondaryBrush}"
                                HorizontalAlignment="Center"
                                TextWrapping="Wrap" MaxWidth="280"/>
@@ -166,169 +166,235 @@
             <Border Background="{StaticResource BackgroundDarkBrush}"
                     CornerRadius="8" Padding="24"
                     HorizontalAlignment="Center" VerticalAlignment="Center"
-                    MinWidth="500" MaxWidth="600">
+                    MinWidth="800" MaxWidth="900" MaxHeight="550">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
                 </Border.Effect>
-                <StackPanel>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
                     <!-- Header -->
-                    <Grid Margin="0,0,0,20">
-                        <TextBlock x:Name="TxtSettingsTitle" Text="Settings" FontSize="20" FontWeight="SemiBold"
+                    <Grid Grid.Row="0" Margin="0,0,0,20">
+                        <TextBlock x:Name="TxtSettingsTitle" Text="Settings" FontSize="{DynamicResource FontSizeTitle}" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentBrush}"/>
                         <Button x:Name="BtnCloseSettings" Content="✕"
                                 HorizontalAlignment="Right"
-                                Padding="8,4" FontSize="14"
+                                Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
                                 Click="BtnCloseSettings_Click"/>
                     </Grid>
 
-                    <!-- Log Folder Section -->
-                    <TextBlock x:Name="TxtLogFolderLabel" Text="Tarkov Log Folder"
-                               FontSize="14" FontWeight="SemiBold"
-                               Foreground="{StaticResource TextPrimaryBrush}"
-                               Margin="0,0,0,8"/>
-
-                    <TextBlock x:Name="TxtLogFolderDesc"
-                               Text="Set the path to Tarkov's Logs folder for automatic quest completion tracking."
-                               FontSize="12"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               TextWrapping="Wrap"
-                               Margin="0,0,0,12"/>
-
-                    <!-- Current Path Display -->
-                    <Border Background="{StaticResource BackgroundMediumBrush}"
-                            CornerRadius="4" Padding="12,8" Margin="0,0,0,8">
+                    <!-- Scrollable Content -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="24"/>
+                                <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="TxtCurrentLogPath"
-                                       Text="Not configured"
-                                       FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       TextTrimming="CharacterEllipsis"
-                                       VerticalAlignment="Center"/>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <TextBlock x:Name="TxtDetectionMethod"
-                                           Text=""
-                                           FontSize="10"
-                                           Foreground="{StaticResource AccentBrush}"
-                                           VerticalAlignment="Center"
-                                           Margin="8,0"/>
+
+                            <!-- Left Column -->
+                            <StackPanel Grid.Column="0">
+                                <!-- Log Folder Section -->
+                                <TextBlock x:Name="TxtLogFolderLabel" Text="Tarkov Log Folder"
+                                           FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           Margin="0,0,0,8"/>
+
+                                <TextBlock x:Name="TxtLogFolderDesc"
+                                           Text="Set the path to Tarkov's Logs folder for automatic quest completion tracking."
+                                           FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,12"/>
+
+                                <!-- Current Path Display -->
+                                <Border Background="{StaticResource BackgroundMediumBrush}"
+                                        CornerRadius="4" Padding="12,8" Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="TxtCurrentLogPath"
+                                                   Text="Not configured"
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <TextBlock x:Name="TxtDetectionMethod"
+                                                       Text=""
+                                                       FontSize="{DynamicResource FontSizeTiny}"
+                                                       Foreground="{StaticResource AccentBrush}"
+                                                       VerticalAlignment="Center"
+                                                       Margin="8,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Status Indicator -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                    <Ellipse x:Name="LogFolderStatusIndicator"
+                                             Width="8" Height="8"
+                                             Fill="#FF4444"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,8,0"/>
+                                    <TextBlock x:Name="TxtLogFolderStatus"
+                                               Text="Invalid path"
+                                               FontSize="{DynamicResource FontSizeXSmall}"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </StackPanel>
+
+                                <!-- Action Buttons -->
+                                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                    <Button x:Name="BtnAutoDetect" Content="Auto Detect"
+                                            Padding="12,8" Margin="0,0,8,8"
+                                            Click="BtnAutoDetect_Click"/>
+                                    <Button x:Name="BtnBrowseLogFolder" Content="Browse..."
+                                            Padding="12,8" Margin="0,0,8,8"
+                                            Click="BtnBrowseLogFolder_Click"/>
+                                    <Button x:Name="BtnResetLogFolder" Content="Reset"
+                                            Padding="12,8" Margin="0,0,0,8"
+                                            Click="BtnResetLogFolder_Click"/>
+                                </WrapPanel>
+
+                                <!-- Quest Sync Section -->
+                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtQuestSyncLabel" Text="Quest Log Sync"
+                                                   FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   Margin="0,0,0,8"/>
+
+                                        <TextBlock x:Name="TxtQuestSyncDesc"
+                                                   Text="Synchronize quest progress from game log files. This will analyze your Tarkov logs and update completed quests."
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,12"/>
+
+                                        <!-- Monitoring Status -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                            <Ellipse x:Name="MonitoringStatusIndicator"
+                                                     Width="8" Height="8"
+                                                     Fill="#FF4444"
+                                                     VerticalAlignment="Center"
+                                                     Margin="0,0,8,0"/>
+                                            <TextBlock x:Name="TxtMonitoringStatus"
+                                                       Text="Not monitoring"
+                                                       FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
+                                        </StackPanel>
+
+                                        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                            <Button x:Name="BtnSyncQuest" Content="Sync Quest"
+                                                    Padding="12,8" Margin="0,0,8,8"
+                                                    Click="BtnSyncQuest_Click"/>
+                                            <Button x:Name="BtnToggleMonitoring" Content="Start Monitoring"
+                                                    Padding="12,8" Margin="0,0,0,8"
+                                                    Click="BtnToggleMonitoring_Click"/>
+                                        </WrapPanel>
+
+                                        <!-- Enter In-Progress Quests Button -->
+                                        <Button x:Name="BtnInProgressQuestInput" Content="Enter In-Progress Quests"
+                                                Padding="12,8" Margin="0,4,0,0"
+                                                HorizontalAlignment="Left"
+                                                Click="BtnInProgressQuestInput_Click"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Right Column -->
+                            <StackPanel Grid.Column="2">
+                                <!-- Cache Management Section -->
+                                <TextBlock Text="Cache Management"
+                                           FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           Margin="0,0,0,8"/>
+
+                                <TextBlock Text="Clear cached wiki pages and downloaded data. Use this if you encounter data issues or want to re-download everything."
+                                           FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,0,0,12"/>
+
+                                <!-- Cache Size Display -->
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                    <TextBlock Text="Cache Size: "
+                                               FontSize="{DynamicResource FontSizeXSmall}"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    <TextBlock x:Name="TxtCacheSize"
+                                               Text="Calculating..."
+                                               FontSize="{DynamicResource FontSizeXSmall}"
+                                               Foreground="{StaticResource TextPrimaryBrush}"/>
+                                </StackPanel>
+
+                                <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                    <Button x:Name="BtnClearCache" Content="Clear Cache"
+                                            Padding="12,8" Margin="0,0,8,8"
+                                            Click="BtnClearCache_Click"/>
+                                    <Button x:Name="BtnClearAllData" Content="Clear All Data"
+                                            Padding="12,8" Margin="0,0,0,8"
+                                            Click="BtnClearAllData_Click"
+                                            ToolTip="Clear cache and all downloaded data (tasks, items, etc.)"/>
+                                </WrapPanel>
+
+                                <!-- Font Size Section -->
+                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Font Size"
+                                                   FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   Margin="0,0,0,8"/>
+
+                                        <TextBlock Text="Adjust the base font size for the application."
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,12"/>
+
+                                        <!-- Font Size Control -->
+                                        <Grid Margin="0,0,0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <Button x:Name="BtnFontSizeDown" Content="-" Width="32" Height="32"
+                                                    Grid.Column="0" Padding="0" FontSize="{DynamicResource FontSizeMedium}" FontWeight="Bold"
+                                                    Click="BtnFontSizeDown_Click"/>
+
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <TextBlock x:Name="TxtCurrentFontSize" Text="16"
+                                                           FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
+                                                           Foreground="{StaticResource AccentBrush}"
+                                                           VerticalAlignment="Center"/>
+                                                <TextBlock Text=" pt"
+                                                           FontSize="{DynamicResource FontSizeSmall}"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           VerticalAlignment="Center"/>
+                                            </StackPanel>
+
+                                            <Button x:Name="BtnFontSizeUp" Content="+" Width="32" Height="32"
+                                                    Grid.Column="2" Padding="0" FontSize="{DynamicResource FontSizeMedium}" FontWeight="Bold"
+                                                    Click="BtnFontSizeUp_Click"/>
+                                        </Grid>
+
+                                        <Button x:Name="BtnResetFontSize" Content="Reset to Default"
+                                                Padding="12,8" HorizontalAlignment="Left"
+                                                Click="BtnResetFontSize_Click"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Grid>
-                    </Border>
-
-                    <!-- Status Indicator -->
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                        <Ellipse x:Name="LogFolderStatusIndicator"
-                                 Width="8" Height="8"
-                                 Fill="#FF4444"
-                                 VerticalAlignment="Center"
-                                 Margin="0,0,8,0"/>
-                        <TextBlock x:Name="TxtLogFolderStatus"
-                                   Text="Invalid path"
-                                   FontSize="12"
-                                   Foreground="{StaticResource TextSecondaryBrush}"/>
-                    </StackPanel>
-
-                    <!-- Action Buttons -->
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                        <Button x:Name="BtnAutoDetect" Content="Auto Detect"
-                                Padding="12,8" Margin="0,0,8,0"
-                                Click="BtnAutoDetect_Click"/>
-                        <Button x:Name="BtnBrowseLogFolder" Content="Browse..."
-                                Padding="12,8" Margin="0,0,8,0"
-                                Click="BtnBrowseLogFolder_Click"/>
-                        <Button x:Name="BtnResetLogFolder" Content="Reset"
-                                Padding="12,8"
-                                Click="BtnResetLogFolder_Click"/>
-                    </StackPanel>
-
-                    <!-- Quest Sync Section -->
-                    <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
-                            Margin="0,20,0,0" Padding="0,16,0,0">
-                        <StackPanel>
-                            <TextBlock x:Name="TxtQuestSyncLabel" Text="Quest Log Sync"
-                                       FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       Margin="0,0,0,8"/>
-
-                            <TextBlock x:Name="TxtQuestSyncDesc"
-                                       Text="Synchronize quest progress from game log files. This will analyze your Tarkov logs and update completed quests."
-                                       FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       TextWrapping="Wrap"
-                                       Margin="0,0,0,12"/>
-
-                            <!-- Monitoring Status -->
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                <Ellipse x:Name="MonitoringStatusIndicator"
-                                         Width="8" Height="8"
-                                         Fill="#FF4444"
-                                         VerticalAlignment="Center"
-                                         Margin="0,0,8,0"/>
-                                <TextBlock x:Name="TxtMonitoringStatus"
-                                           Text="Not monitoring"
-                                           FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
-                            </StackPanel>
-
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                <Button x:Name="BtnSyncQuest" Content="Sync Quest"
-                                        Padding="12,8" Margin="0,0,8,0"
-                                        Click="BtnSyncQuest_Click"/>
-                                <Button x:Name="BtnToggleMonitoring" Content="Start Monitoring"
-                                        Padding="12,8"
-                                        Click="BtnToggleMonitoring_Click"/>
-                            </StackPanel>
-
-                            <!-- Enter In-Progress Quests Button -->
-                            <Button x:Name="BtnInProgressQuestInput" Content="Enter In-Progress Quests"
-                                    Padding="12,8" Margin="0,12,0,0"
-                                    HorizontalAlignment="Left"
-                                    Click="BtnInProgressQuestInput_Click"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Cache Management Section -->
-                    <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
-                            Margin="0,20,0,0" Padding="0,16,0,0">
-                        <StackPanel>
-                            <TextBlock Text="Cache Management"
-                                       FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       Margin="0,0,0,8"/>
-
-                            <TextBlock Text="Clear cached wiki pages and downloaded data. Use this if you encounter data issues or want to re-download everything."
-                                       FontSize="12"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       TextWrapping="Wrap"
-                                       Margin="0,0,0,12"/>
-
-                            <!-- Cache Size Display -->
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                <TextBlock Text="Cache Size: "
-                                           FontSize="12"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
-                                <TextBlock x:Name="TxtCacheSize"
-                                           Text="Calculating..."
-                                           FontSize="12"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                            </StackPanel>
-
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                <Button x:Name="BtnClearCache" Content="Clear Cache"
-                                        Padding="12,8" Margin="0,0,8,0"
-                                        Click="BtnClearCache_Click"/>
-                                <Button x:Name="BtnClearAllData" Content="Clear All Data"
-                                        Padding="12,8"
-                                        Click="BtnClearAllData_Click"
-                                        ToolTip="Clear cache and all downloaded data (tasks, items, etc.)"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                    </ScrollViewer>
+                </Grid>
             </Border>
         </Grid>
 
@@ -346,27 +412,27 @@
                     <!-- Header -->
                     <Grid Margin="0,0,0,16">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="⚠️" FontSize="24" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                            <TextBlock x:Name="TxtWipeWarningTitle" Text="퀘스트 동기화 전 확인" FontSize="20" FontWeight="SemiBold"
+                            <TextBlock Text="⚠️" FontSize="{DynamicResource FontSizeHeader}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <TextBlock x:Name="TxtWipeWarningTitle" Text="퀘스트 동기화 전 확인" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="SemiBold"
                                        Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
                         </StackPanel>
                         <Button x:Name="BtnCloseWipeWarning" Content="✕"
                                 HorizontalAlignment="Right"
-                                Padding="8,4" FontSize="14"
+                                Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
                                 Click="BtnCloseWipeWarning_Click"/>
                     </Grid>
 
                     <!-- Warning Message -->
                     <TextBlock x:Name="TxtWipeWarningMessage"
                                Text="최근 계정 초기화(와이프)를 진행하셨나요?"
-                               FontSize="14" FontWeight="SemiBold"
+                               FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,12"/>
 
                     <TextBlock x:Name="TxtWipeWarningDesc"
                                Text="계정 초기화 후 동기화를 진행하면 이전 시즌의 로그가 섞여 퀘스트 진행 상태가 올바르지 않게 표시될 수 있습니다."
-                               FontSize="12"
+                               FontSize="{DynamicResource FontSizeXSmall}"
                                Foreground="{StaticResource TextSecondaryBrush}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,16"/>
@@ -376,12 +442,12 @@
                             CornerRadius="4" Padding="12" Margin="0,0,0,12">
                         <StackPanel>
                             <TextBlock x:Name="TxtLogFolderPathLabel" Text="📁 로그 폴더 위치:"
-                                       FontSize="12" FontWeight="SemiBold"
+                                       FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
                             <TextBlock x:Name="TxtWipeWarningLogPath"
                                        Text=""
-                                       FontSize="11"
+                                       FontSize="{DynamicResource FontSizeTiny}"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
@@ -390,7 +456,7 @@
                     <!-- Recommendation -->
                     <TextBlock x:Name="TxtWipeWarningRecommendation"
                                Text="💡 권장 조치: 계정 초기화 이전 날짜의 로그 폴더를 삭제하거나 다른 위치로 백업해 주세요."
-                               FontSize="12"
+                               FontSize="{DynamicResource FontSizeXSmall}"
                                Foreground="{StaticResource AccentBrush}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,16"/>
@@ -435,11 +501,11 @@
 
                     <!-- Header -->
                     <Grid Grid.Row="0" Margin="0,0,0,16">
-                        <TextBlock x:Name="TxtSyncResultTitle" Text="Quest Sync Result" FontSize="20" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtSyncResultTitle" Text="Quest Sync Result" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentBrush}"/>
                         <Button x:Name="BtnCloseSyncResult" Content="✕"
                                 HorizontalAlignment="Right"
-                                Padding="8,4" FontSize="14"
+                                Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
                                 Click="BtnCloseSyncResult_Click"/>
                     </Grid>
 
@@ -462,7 +528,7 @@
                                 <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}"
                                         CornerRadius="4,4,0,0" Padding="12,8">
                                     <TextBlock x:Name="TxtCompletedQuestsHeader" Text="완료된 퀘스트 (0)"
-                                               FontSize="13" FontWeight="SemiBold"
+                                               FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"/>
                                 </Border>
                                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="280">
@@ -481,10 +547,10 @@
                                                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                             <TextBlock Text="{Binding QuestName}"
-                                                                       FontSize="12"
+                                                                       FontSize="{DynamicResource FontSizeXSmall}"
                                                                        Foreground="{StaticResource TextPrimaryBrush}"/>
                                                             <TextBlock Text="{Binding Trader}"
-                                                                       FontSize="10"
+                                                                       FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                                         </StackPanel>
                                                         <Border Grid.Column="2"
@@ -492,7 +558,7 @@
                                                                 CornerRadius="3" Padding="4,2"
                                                                 VerticalAlignment="Center"
                                                                 Visibility="{Binding IsPrerequisite, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                            <TextBlock Text="Auto" FontSize="9"
+                                                            <TextBlock Text="Auto" FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="{StaticResource BackgroundDarkBrush}"/>
                                                         </Border>
                                                     </Grid>
@@ -515,7 +581,7 @@
                                 <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}"
                                         CornerRadius="4,4,0,0" Padding="12,8">
                                     <TextBlock x:Name="TxtInProgressQuestsHeader" Text="진행중 퀘스트 (0)"
-                                               FontSize="13" FontWeight="SemiBold"
+                                               FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"/>
                                 </Border>
                                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" MaxHeight="280">
@@ -526,16 +592,16 @@
                                                         Padding="12,6">
                                                     <StackPanel>
                                                         <StackPanel Orientation="Horizontal">
-                                                            <TextBlock Text="●" FontSize="10"
+                                                            <TextBlock Text="●" FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="#FFA726"
                                                                        VerticalAlignment="Center"
                                                                        Margin="0,0,6,0"/>
                                                             <TextBlock Text="{Binding Name}"
-                                                                       FontSize="12"
+                                                                       FontSize="{DynamicResource FontSizeXSmall}"
                                                                        Foreground="{StaticResource TextPrimaryBrush}"/>
                                                         </StackPanel>
                                                         <TextBlock Text="{Binding Trader}"
-                                                                   FontSize="10"
+                                                                   FontSize="{DynamicResource FontSizeTiny}"
                                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                                    Margin="16,0,0,0"/>
                                                     </StackPanel>
@@ -554,12 +620,12 @@
                         <StackPanel>
                             <TextBlock x:Name="TxtSyncSummary"
                                        Text="요약:"
-                                       FontSize="12" FontWeight="SemiBold"
+                                       FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,4"/>
                             <TextBlock x:Name="TxtSyncStats"
                                        Text=""
-                                       FontSize="11"
+                                       FontSize="{DynamicResource FontSizeTiny}"
                                        Foreground="{StaticResource TextSecondaryBrush}"
                                        TextWrapping="Wrap"/>
                         </StackPanel>
@@ -630,7 +696,7 @@
                                 <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}"
                                         CornerRadius="4,4,0,0" Padding="12,8">
                                     <TextBlock x:Name="TxtQuestSelectionHeader" Text="Quest Selection"
-                                               FontSize="13" FontWeight="SemiBold"
+                                               FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"/>
                                 </Border>
 
@@ -647,7 +713,7 @@
                                     <!-- Trader Filter -->
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock x:Name="TxtTraderFilterLabel" Text="Trader:"
-                                                   FontSize="12"
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                                         <ComboBox x:Name="CmbQuestTraderFilter" Width="140"
@@ -675,13 +741,13 @@
                                                                   Unchecked="QuestSelection_CheckChanged"/>
                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                             <TextBlock Text="{Binding DisplayName}"
-                                                                       FontSize="12"
+                                                                       FontSize="{DynamicResource FontSizeXSmall}"
                                                                        Foreground="{Binding TextColor}"/>
                                                             <TextBlock Text="{Binding TraderName}"
-                                                                       FontSize="10"
+                                                                       FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                                         </StackPanel>
-                                                        <TextBlock Grid.Column="2" Text="✓" FontSize="12"
+                                                        <TextBlock Grid.Column="2" Text="✓" FontSize="{DynamicResource FontSizeXSmall}"
                                                                    Foreground="{StaticResource AccentBrush}"
                                                                    VerticalAlignment="Center"
                                                                    Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVisibilityConverter}}"/>
@@ -708,14 +774,14 @@
                                 <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}"
                                         CornerRadius="4,4,0,0" Padding="12,8">
                                     <TextBlock x:Name="TxtPrerequisitesHeader" Text="Prerequisites Preview"
-                                               FontSize="13" FontWeight="SemiBold"
+                                               FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                                Foreground="{StaticResource TextPrimaryBrush}"/>
                                 </Border>
 
                                 <!-- Description -->
                                 <TextBlock x:Name="TxtPrerequisitesDesc" Grid.Row="1"
                                            Text="Prerequisites of selected quests will be shown here.&#x0a;These will be auto-completed on apply."
-                                           FontSize="11" Margin="12,8"
+                                           FontSize="{DynamicResource FontSizeTiny}" Margin="12,8"
                                            Foreground="{StaticResource TextSecondaryBrush}"
                                            TextWrapping="Wrap"/>
 
@@ -731,15 +797,15 @@
                                                             <ColumnDefinition Width="Auto"/>
                                                             <ColumnDefinition Width="*"/>
                                                         </Grid.ColumnDefinitions>
-                                                        <TextBlock Grid.Column="0" Text="✓" FontSize="12"
+                                                        <TextBlock Grid.Column="0" Text="✓" FontSize="{DynamicResource FontSizeXSmall}"
                                                                    Foreground="{StaticResource AccentBrush}"
                                                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                             <TextBlock Text="{Binding DisplayName}"
-                                                                       FontSize="12"
+                                                                       FontSize="{DynamicResource FontSizeXSmall}"
                                                                        Foreground="{StaticResource TextPrimaryBrush}"/>
                                                             <TextBlock Text="{Binding TraderName}"
-                                                                       FontSize="10"
+                                                                       FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                                         </StackPanel>
                                                     </Grid>
@@ -758,12 +824,12 @@
                         <StackPanel Orientation="Horizontal">
                             <TextBlock x:Name="TxtSelectedQuestsCount"
                                        Text="Selected quests: 0"
-                                       FontSize="12"
+                                       FontSize="{DynamicResource FontSizeXSmall}"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,24,0"/>
                             <TextBlock x:Name="TxtPrerequisitesCount"
                                        Text="Prerequisites to complete: 0"
-                                       FontSize="12"
+                                       FontSize="{DynamicResource FontSizeXSmall}"
                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                         </StackPanel>
                     </Border>

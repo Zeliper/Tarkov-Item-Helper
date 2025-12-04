@@ -20,8 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="Fonts\Maplestory Light.ttf" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Autoupdater.NET.Official" Version="1.9.2" />
-    <PackageReference Include="Westermo.GraphX.Controls" Version="3.0.0" />
   </ItemGroup>
 
 </Project>

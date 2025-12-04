@@ -152,5 +152,17 @@ namespace TarkovHelper.Models
         /// Whether this quest is selected for completion
         /// </summary>
         public bool IsSelected { get; set; } = true;
+
+        /// <summary>
+        /// Event timestamp for chronological ordering
+        /// </summary>
+        public DateTime Timestamp { get; set; }
+
+        /// <summary>
+        /// Formatted timestamp for display
+        /// </summary>
+        public string FormattedTimestamp => Timestamp != default
+            ? Timestamp.ToString("MM/dd HH:mm")
+            : "";
     }
 }

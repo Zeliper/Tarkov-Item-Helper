@@ -2,6 +2,7 @@
 using System.Reflection;
 using System.Windows;
 using AutoUpdaterDotNET;
+using TarkovHelper.Services;
 
 namespace TarkovHelper
 {
@@ -26,6 +27,10 @@ namespace TarkovHelper
             // 버전 변경 시 캐시 데이터 초기화 (사용자 진행 상황은 유지)
             CheckAndRefreshDataOnVersionChange();
 
+            // 폰트 크기 적용
+            ApplyBaseFontSize(SettingsService.Instance.BaseFontSize);
+            SettingsService.Instance.BaseFontSizeChanged += (_, size) => ApplyBaseFontSize(size);
+
             // AutoUpdater 설정
             AutoUpdater.InstalledVersion = Assembly.GetExecutingAssembly().GetName().Version;
             AutoUpdater.ShowSkipButton = true;
@@ -36,6 +41,22 @@ namespace TarkovHelper
 
             // 업데이트 체크 시작
             AutoUpdater.Start(UpdateXmlUrl);
+        }
+
+        /// <summary>
+        /// Apply base font size to application resources
+        /// </summary>
+        public void ApplyBaseFontSize(double baseFontSize)
+        {
+            Resources["BaseFontSize"] = baseFontSize;
+            Resources["FontSizeTiny"] = baseFontSize - 6;
+            Resources["FontSizeXSmall"] = baseFontSize - 4;
+            Resources["FontSizeSmall"] = baseFontSize - 2;
+            Resources["FontSizeMedium"] = baseFontSize;
+            Resources["FontSizeLarge"] = baseFontSize + 2;
+            Resources["FontSizeXLarge"] = baseFontSize + 4;
+            Resources["FontSizeTitle"] = baseFontSize + 6;
+            Resources["FontSizeHeader"] = baseFontSize + 8;
         }
 
         /// <summary>

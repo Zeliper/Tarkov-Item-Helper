@@ -8,12 +8,15 @@
              Background="{StaticResource BackgroundDarkBrush}">
 
     <UserControl.Resources>
+        <!-- Inherit FontFamily for all TextBlocks in this page -->
+        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"/>
+
         <!-- Small Button Style for Quantity Controls -->
         <Style x:Key="QuantityButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
             <Setter Property="MinWidth" Value="28"/>
             <Setter Property="MinHeight" Value="22"/>
             <Setter Property="Padding" Value="4,2"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontSize" Value="{DynamicResource FontSizeTiny}"/>
             <Setter Property="Margin" Value="1,0"/>
         </Style>
 
@@ -47,7 +50,7 @@
                                    Stretch="Uniform"
                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                             <!-- Fulfilled checkmark overlay -->
-                            <TextBlock Text="&#x2713;" FontSize="20" FontWeight="Bold"
+                            <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="Bold"
                                        Foreground="{StaticResource SuccessBrush}"
                                        HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                        Margin="0,0,2,0"
@@ -58,17 +61,17 @@
                     <!-- Item Name -->
                     <StackPanel Grid.Column="1" Grid.Row="0" Margin="12,0,8,0" VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="{Binding DisplayName}" FontSize="13"
+                            <TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource FontSizeSmall}"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        TextTrimming="CharacterEllipsis"
                                        TextDecorations="{Binding NameTextDecorations}"/>
                             <Border Padding="4,1" CornerRadius="2" Margin="6,0,0,0"
                                     Background="{StaticResource WarningBrush}"
                                     Visibility="{Binding FirVisibility}">
-                                <TextBlock Text="FIR" FontSize="9" Foreground="White"/>
+                                <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
                             </Border>
                         </StackPanel>
-                        <TextBlock Text="{Binding SubtitleName}" FontSize="10"
+                        <TextBlock Text="{Binding SubtitleName}" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    Visibility="{Binding SubtitleVisibility}"
                                    TextTrimming="CharacterEllipsis"/>
@@ -77,10 +80,10 @@
                     <!-- Owned Quantity Display -->
                     <StackPanel Grid.Column="2" Grid.Row="0" Orientation="Horizontal"
                                 VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="Owned: " FontSize="10"
+                        <TextBlock Text="Owned: " FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding OwnedDisplay}" FontSize="12" FontWeight="SemiBold"
+                        <TextBlock Text="{Binding OwnedDisplay}" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource SuccessBrush}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -88,21 +91,21 @@
                     <!-- Quick Quantity Buttons Row -->
                     <StackPanel Grid.Column="1" Grid.Row="1" Grid.ColumnSpan="2"
                                 Orientation="Horizontal" Margin="12,4,0,0">
-                        <TextBlock Text="FIR:" FontSize="9" Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="FIR:" FontSize="{DynamicResource FontSizeTiny}" Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="0,0,4,0"/>
                         <Button Content="-1" Style="{StaticResource QuantityButtonStyle}"
                                 Click="BtnFirMinus1_Click"/>
-                        <TextBlock Text="{Binding OwnedFirQuantity}" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Text="{Binding OwnedFirQuantity}" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" MinWidth="20"
                                    TextAlignment="Center" VerticalAlignment="Center" Margin="2,0"/>
                         <Button Content="+1" Style="{StaticResource QuantityButtonStyle}"
                                 Click="BtnFirPlus1_Click"/>
 
-                        <TextBlock Text="Non:" FontSize="9" Foreground="{StaticResource TextSecondaryBrush}"
+                        <TextBlock Text="Non:" FontSize="{DynamicResource FontSizeTiny}" Foreground="{StaticResource TextSecondaryBrush}"
                                    VerticalAlignment="Center" Margin="10,0,4,0"/>
                         <Button Content="-1" Style="{StaticResource QuantityButtonStyle}"
                                 Click="BtnNonFirMinus1_Click"/>
-                        <TextBlock Text="{Binding OwnedNonFirQuantity}" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Text="{Binding OwnedNonFirQuantity}" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" MinWidth="20"
                                    TextAlignment="Center" VerticalAlignment="Center" Margin="2,0"/>
                         <Button Content="+1" Style="{StaticResource QuantityButtonStyle}"
@@ -111,30 +114,30 @@
 
                     <!-- Quest Count -->
                     <StackPanel Grid.Column="3" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="Quest" FontSize="9"
+                        <TextBlock Text="Quest" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding QuestDisplay}" FontSize="13"
+                        <TextBlock Text="{Binding QuestDisplay}" FontSize="{DynamicResource FontSizeSmall}"
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    HorizontalAlignment="Center" FontWeight="SemiBold"/>
                     </StackPanel>
 
                     <!-- Hideout Count -->
                     <StackPanel Grid.Column="4" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="Hideout" FontSize="9"
+                        <TextBlock Text="Hideout" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding HideoutDisplay}" FontSize="13"
+                        <TextBlock Text="{Binding HideoutDisplay}" FontSize="{DynamicResource FontSizeSmall}"
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    HorizontalAlignment="Center" FontWeight="SemiBold"/>
                     </StackPanel>
 
                     <!-- Total Count -->
                     <StackPanel Grid.Column="5" Grid.RowSpan="2" VerticalAlignment="Center" HorizontalAlignment="Center">
-                        <TextBlock Text="Need" FontSize="9"
+                        <TextBlock Text="Need" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="{Binding TotalDisplay}" FontSize="13"
+                        <TextBlock Text="{Binding TotalDisplay}" FontSize="{DynamicResource FontSizeSmall}"
                                    Foreground="{StaticResource AccentBrush}"
                                    HorizontalAlignment="Center" FontWeight="Bold"/>
                     </StackPanel>
@@ -254,7 +257,7 @@
         <!-- Statistics Bar -->
         <Border Grid.Row="1" Padding="12,6" Margin="0,0,0,12">
             <StackPanel Orientation="Horizontal">
-                <TextBlock x:Name="TxtStats" FontSize="12"
+                <TextBlock x:Name="TxtStats" FontSize="{DynamicResource FontSizeXSmall}"
                            Foreground="{StaticResource TextSecondaryBrush}"/>
             </StackPanel>
         </Border>
@@ -287,15 +290,15 @@
                             <ColumnDefinition Width="90"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="0" Text="" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"/>
-                        <TextBlock Grid.Column="1" Text="Item Name" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="1" Text="Item Name" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,0,0"/>
-                        <TextBlock Grid.Column="3" Text="Quest" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="3" Text="Quest" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock Grid.Column="4" Text="Hideout" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="4" Text="Hideout" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock Grid.Column="5" Text="Total" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock Grid.Column="5" Text="Total" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
                     </Grid>
                 </Border>
@@ -309,6 +312,7 @@
                              ItemTemplate="{StaticResource ItemListTemplate}"
                              ItemContainerStyle="{StaticResource ItemListBoxItem}"
                              SelectionChanged="LstItems_SelectionChanged"
+                             ScrollViewer.ScrollChanged="LstItems_ScrollChanged"
                              VirtualizingPanel.IsVirtualizing="True"
                              VirtualizingPanel.VirtualizationMode="Recycling"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
@@ -326,7 +330,7 @@
                     <!-- Empty State -->
                     <TextBlock x:Name="TxtSelectItem"
                                Text="Select an item to view details"
-                               FontSize="14" Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="{DynamicResource FontSizeSmall}" Foreground="{StaticResource TextSecondaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -349,10 +353,10 @@
 
                                 <!-- Item Name -->
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="12,0,0,0">
-                                    <TextBlock x:Name="TxtDetailName" FontSize="16" FontWeight="SemiBold"
+                                    <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeMedium}" FontWeight="SemiBold"
                                                Foreground="{StaticResource AccentBrush}"
                                                TextWrapping="Wrap"/>
-                                    <TextBlock x:Name="TxtDetailSubtitle" FontSize="12"
+                                    <TextBlock x:Name="TxtDetailSubtitle" FontSize="{DynamicResource FontSizeXSmall}"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                TextWrapping="Wrap"/>
                                 </StackPanel>
@@ -374,28 +378,28 @@
                                     </Grid.ColumnDefinitions>
 
                                     <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                                        <TextBlock Text="Quest" FontSize="11"
+                                        <TextBlock Text="Quest" FontSize="{DynamicResource FontSizeTiny}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    HorizontalAlignment="Center"/>
-                                        <TextBlock x:Name="TxtDetailQuestCount" FontSize="18" FontWeight="Bold"
+                                        <TextBlock x:Name="TxtDetailQuestCount" FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
                                                    Foreground="{StaticResource TextPrimaryBrush}"
                                                    HorizontalAlignment="Center"/>
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                                        <TextBlock Text="Hideout" FontSize="11"
+                                        <TextBlock Text="Hideout" FontSize="{DynamicResource FontSizeTiny}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    HorizontalAlignment="Center"/>
-                                        <TextBlock x:Name="TxtDetailHideoutCount" FontSize="18" FontWeight="Bold"
+                                        <TextBlock x:Name="TxtDetailHideoutCount" FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
                                                    Foreground="{StaticResource TextPrimaryBrush}"
                                                    HorizontalAlignment="Center"/>
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                                        <TextBlock Text="Need" FontSize="11"
+                                        <TextBlock Text="Need" FontSize="{DynamicResource FontSizeTiny}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    HorizontalAlignment="Center"/>
-                                        <TextBlock x:Name="TxtDetailTotalCount" FontSize="18" FontWeight="Bold"
+                                        <TextBlock x:Name="TxtDetailTotalCount" FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
                                                    Foreground="{StaticResource AccentBrush}"
                                                    HorizontalAlignment="Center"/>
                                     </StackPanel>
@@ -403,7 +407,7 @@
                             </Border>
 
                             <!-- Inventory Input Section -->
-                            <TextBlock Text="Your Inventory" FontSize="14" FontWeight="SemiBold"
+                            <TextBlock Text="Your Inventory" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,8"/>
                             <Border Background="{StaticResource BackgroundDarkBrush}"
@@ -419,9 +423,9 @@
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                                             <Border Padding="4,2" CornerRadius="2" Margin="0,0,6,0"
                                                     Background="{StaticResource WarningBrush}">
-                                                <TextBlock Text="FIR" FontSize="9" Foreground="White"/>
+                                                <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
                                             </Border>
-                                            <TextBlock Text="Qty:" FontSize="12"
+                                            <TextBlock Text="Qty:" FontSize="{DynamicResource FontSizeXSmall}"
                                                        Foreground="{StaticResource TextSecondaryBrush}"
                                                        VerticalAlignment="Center"/>
                                         </StackPanel>
@@ -435,7 +439,7 @@
                                                     CornerRadius="4" Padding="8,4" Margin="4,0"
                                                     MinWidth="40">
                                                 <TextBlock x:Name="TxtDetailOwnedFir" Text="0"
-                                                           FontSize="14" FontWeight="Bold"
+                                                           FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                                            Foreground="{StaticResource TextPrimaryBrush}"
                                                            HorizontalAlignment="Center"/>
                                             </Border>
@@ -453,7 +457,7 @@
                                             <ColumnDefinition Width="*"/>
                                         </Grid.ColumnDefinitions>
 
-                                        <TextBlock Grid.Column="0" Text="Non-FIR:" FontSize="12"
+                                        <TextBlock Grid.Column="0" Text="Non-FIR:" FontSize="{DynamicResource FontSizeXSmall}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    VerticalAlignment="Center"/>
 
@@ -466,7 +470,7 @@
                                                     CornerRadius="4" Padding="8,4" Margin="4,0"
                                                     MinWidth="40">
                                                 <TextBlock x:Name="TxtDetailOwnedNonFir" Text="0"
-                                                           FontSize="14" FontWeight="Bold"
+                                                           FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                                            Foreground="{StaticResource TextPrimaryBrush}"
                                                            HorizontalAlignment="Center"/>
                                             </Border>
@@ -487,7 +491,7 @@
                                             </Grid.ColumnDefinitions>
 
                                             <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Progress" FontSize="10"
+                                                <TextBlock Text="Progress" FontSize="{DynamicResource FontSizeTiny}"
                                                            Foreground="{StaticResource TextSecondaryBrush}"/>
                                                 <ProgressBar x:Name="DetailProgressBar"
                                                              Height="6" Margin="0,4,8,0"
@@ -500,7 +504,7 @@
                                                         VerticalAlignment="Center">
                                                 <TextBlock x:Name="TxtDetailFulfillmentStatus"
                                                            Text="Not Started"
-                                                           FontSize="12" FontWeight="SemiBold"
+                                                           FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
                                                            Foreground="{StaticResource TextSecondaryBrush}"
                                                            HorizontalAlignment="Right"/>
                                             </StackPanel>
@@ -511,7 +515,7 @@
 
                             <!-- Quest Requirements Section -->
                             <StackPanel x:Name="QuestSection">
-                                <TextBlock Text="Required for Quests" FontSize="14" FontWeight="SemiBold"
+                                <TextBlock Text="Required for Quests" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            Margin="0,0,0,8"/>
                                 <Border Background="{StaticResource BackgroundDarkBrush}"
@@ -534,9 +538,9 @@
                                                                     MouseLeftButtonDown="QuestName_Click">
                                                             <TextBlock x:Name="QuestNameText"
                                                                        Text="{Binding QuestName}"
-                                                                       FontSize="12" TextWrapping="Wrap">
+                                                                       FontSize="{DynamicResource FontSizeXSmall}" TextWrapping="Wrap">
                                                                 <TextBlock.Style>
-                                                                    <Style TargetType="TextBlock">
+                                                                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                                                         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
                                                                         <Style.Triggers>
                                                                             <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=StackPanel}}" Value="True">
@@ -549,30 +553,30 @@
                                                             </TextBlock>
                                                             <TextBlock Text="{Binding TraderName}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       FontSize="10"/>
+                                                                       FontSize="{DynamicResource FontSizeTiny}"/>
                                                         </StackPanel>
 
                                                         <StackPanel Grid.Column="1" Orientation="Horizontal"
                                                                     VerticalAlignment="Center" Margin="8,0,4,0">
                                                             <TextBlock Text="{Binding AmountDisplay}"
                                                                        Foreground="{StaticResource AccentBrush}"
-                                                                       FontSize="14" FontWeight="Bold"
+                                                                       FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                                                        VerticalAlignment="Center"/>
                                                             <Border Padding="4,2" CornerRadius="2" Margin="6,0,0,0"
                                                                     Background="{StaticResource WarningBrush}"
                                                                     Visibility="{Binding FirVisibility}">
-                                                                <TextBlock Text="FIR" FontSize="9" Foreground="White"/>
+                                                                <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
                                                             </Border>
                                                             <!-- Dogtag Level Requirement -->
                                                             <Border Padding="4,2" CornerRadius="2" Margin="4,0,0,0"
                                                                     Background="#6366F1"
                                                                     Visibility="{Binding DogtagLevelVisibility}">
-                                                                <TextBlock Text="{Binding DogtagLevelDisplay}" FontSize="9" Foreground="White"/>
+                                                                <TextBlock Text="{Binding DogtagLevelDisplay}" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
                                                             </Border>
                                                         </StackPanel>
 
                                                         <Button Grid.Column="2" Content="Wiki" Padding="6,2"
-                                                                FontSize="10" MinWidth="40" Margin="4,0,0,0"
+                                                                FontSize="{DynamicResource FontSizeTiny}" MinWidth="40" Margin="4,0,0,0"
                                                                 Click="BtnQuestWiki_Click"
                                                                 Tag="{Binding}"
                                                                 Visibility="{Binding WikiButtonVisibility}"/>
@@ -586,7 +590,7 @@
 
                             <!-- Hideout Requirements Section -->
                             <StackPanel x:Name="HideoutSection">
-                                <TextBlock Text="Required for Hideout" FontSize="14" FontWeight="SemiBold"
+                                <TextBlock Text="Required for Hideout" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            Margin="0,0,0,8"/>
                                 <Border Background="{StaticResource BackgroundDarkBrush}"
@@ -606,22 +610,22 @@
                                                         <StackPanel Grid.Column="0" Margin="4,0">
                                                             <TextBlock Text="{Binding ModuleName}"
                                                                        Foreground="{StaticResource TextPrimaryBrush}"
-                                                                       FontSize="12" TextWrapping="Wrap"/>
+                                                                       FontSize="{DynamicResource FontSizeXSmall}" TextWrapping="Wrap"/>
                                                             <TextBlock Text="{Binding LevelDisplay}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       FontSize="10"/>
+                                                                       FontSize="{DynamicResource FontSizeTiny}"/>
                                                         </StackPanel>
 
                                                         <StackPanel Grid.Column="1" Orientation="Horizontal"
                                                                     VerticalAlignment="Center" Margin="8,0,4,0">
                                                             <TextBlock Text="{Binding AmountDisplay}"
                                                                        Foreground="{StaticResource AccentBrush}"
-                                                                       FontSize="14" FontWeight="Bold"
+                                                                       FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                                                        VerticalAlignment="Center"/>
                                                             <Border Padding="4,2" CornerRadius="2" Margin="6,0,0,0"
                                                                     Background="{StaticResource WarningBrush}"
                                                                     Visibility="{Binding FirVisibility}">
-                                                                <TextBlock Text="FIR" FontSize="9" Foreground="White"/>
+                                                                <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
                                                             </Border>
                                                         </StackPanel>
                                                     </Grid>
@@ -646,7 +650,7 @@
                              Background="{StaticResource BackgroundMediumBrush}"/>
                 <TextBlock x:Name="LoadingStatusText"
                            Text="Loading items data..."
-                           FontSize="14" Margin="0,16,0,0"
+                           FontSize="{DynamicResource FontSizeSmall}" Margin="0,16,0,0"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            HorizontalAlignment="Center"/>
             </StackPanel>

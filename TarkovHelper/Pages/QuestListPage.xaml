@@ -8,6 +8,9 @@
              Background="{StaticResource BackgroundDarkBrush}">
 
     <UserControl.Resources>
+        <!-- Inherit FontFamily for all TextBlocks in this page -->
+        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"/>
+
         <!-- Status Badge Colors -->
         <SolidColorBrush x:Key="StatusLockedBrush" Color="#666666"/>
         <SolidColorBrush x:Key="StatusActiveBrush" Color="#4CAF50"/>
@@ -40,17 +43,17 @@
                     <Border Grid.Column="0" Width="28" Height="28"
                             CornerRadius="4" Background="{StaticResource BackgroundLightBrush}"
                             VerticalAlignment="Center">
-                        <TextBlock Text="{Binding TraderInitial}" FontSize="12" FontWeight="Bold"
+                        <TextBlock Text="{Binding TraderInitial}" FontSize="{DynamicResource FontSizeXSmall}" FontWeight="Bold"
                                    Foreground="{StaticResource AccentBrush}"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
 
                     <!-- Quest Name -->
                     <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding DisplayName}" FontSize="13"
+                        <TextBlock Text="{Binding DisplayName}" FontSize="{DynamicResource FontSizeSmall}"
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    TextTrimming="CharacterEllipsis"/>
-                        <TextBlock Text="{Binding SubtitleName}" FontSize="10"
+                        <TextBlock Text="{Binding SubtitleName}" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    Visibility="{Binding SubtitleVisibility}"
                                    TextTrimming="CharacterEllipsis"/>
@@ -62,7 +65,7 @@
                             VerticalAlignment="Center" Margin="0,0,6,0"
                             Visibility="{Binding KappaBadgeVisibility}"
                             ToolTip="Required for Kappa Container">
-                        <TextBlock Text="κ" FontSize="10"
+                        <TextBlock Text="κ" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="White" FontWeight="Bold"/>
                     </Border>
 
@@ -70,13 +73,13 @@
                     <Border Grid.Column="3" Padding="8,3" CornerRadius="3"
                             Background="{Binding StatusBackground}"
                             VerticalAlignment="Center" Margin="0,0,8,0">
-                        <TextBlock Text="{Binding StatusText}" FontSize="10"
+                        <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSizeTiny}"
                                    Foreground="White" FontWeight="SemiBold"/>
                     </Border>
 
                     <!-- Complete Button -->
                     <Button Grid.Column="4" Content="Done" Padding="8,4"
-                            FontSize="11" MinWidth="50"
+                            FontSize="{DynamicResource FontSizeTiny}" MinWidth="50"
                             Click="CompleteButton_Click"
                             Tag="{Binding}"
                             Visibility="{Binding CompleteButtonVisibility}"/>
@@ -192,13 +195,13 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="TxtStats" Grid.Column="0" FontSize="12"
+                <TextBlock x:Name="TxtStats" Grid.Column="0" FontSize="{DynamicResource FontSizeXSmall}"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            VerticalAlignment="Center"/>
 
                 <!-- Kappa Progress Gauge -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="κ" FontSize="13" FontWeight="Bold"
+                    <TextBlock Text="κ" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                Foreground="#9C27B0" VerticalAlignment="Center"
                                Margin="0,0,6,0"/>
                     <Grid Width="120" Height="16" VerticalAlignment="Center">
@@ -207,7 +210,7 @@
                                 CornerRadius="3" HorizontalAlignment="Left" Width="0"/>
                         <TextBlock x:Name="TxtKappaGauge"
                                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                                   FontSize="10" FontWeight="SemiBold" Foreground="White"/>
+                                   FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold" Foreground="White"/>
                     </Grid>
                 </StackPanel>
             </Grid>
@@ -246,16 +249,16 @@
                     <!-- Empty State -->
                     <TextBlock x:Name="TxtSelectQuest"
                                Text="Select a quest to view details"
-                               FontSize="14" Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="{DynamicResource FontSizeSmall}" Foreground="{StaticResource TextSecondaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <StackPanel x:Name="DetailPanel" Visibility="Collapsed">
                         <!-- Quest Title -->
-                        <TextBlock x:Name="TxtDetailName" FontSize="18" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentBrush}"
                                    TextWrapping="Wrap" Margin="0,0,0,4"/>
-                        <TextBlock x:Name="TxtDetailSubtitle" FontSize="12"
+                        <TextBlock x:Name="TxtDetailSubtitle" FontSize="{DynamicResource FontSizeXSmall}"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    TextWrapping="Wrap" Margin="0,0,0,8"/>
 
@@ -271,28 +274,28 @@
 
                         <!-- Trader & Status -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="Trader: " FontSize="12"
+                            <TextBlock Text="Trader: " FontSize="{DynamicResource FontSizeXSmall}"
                                        Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock x:Name="TxtDetailTrader" FontSize="12"
+                            <TextBlock x:Name="TxtDetailTrader" FontSize="{DynamicResource FontSizeXSmall}"
                                        Foreground="{StaticResource TextPrimaryBrush}"/>
-                            <TextBlock Text="  |  Status: " FontSize="12"
+                            <TextBlock Text="  |  Status: " FontSize="{DynamicResource FontSizeXSmall}"
                                        Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0"/>
                             <Border x:Name="DetailStatusBadge" Padding="6,2" CornerRadius="3">
-                                <TextBlock x:Name="TxtDetailStatus" FontSize="10"
+                                <TextBlock x:Name="TxtDetailStatus" FontSize="{DynamicResource FontSizeTiny}"
                                            Foreground="White" FontWeight="SemiBold"/>
                             </Border>
                         </StackPanel>
 
                         <!-- Map -->
                         <StackPanel x:Name="MapInfoPanel" Orientation="Horizontal" Margin="0,0,0,16">
-                            <TextBlock Text="Map: " FontSize="12"
+                            <TextBlock Text="Map: " FontSize="{DynamicResource FontSizeXSmall}"
                                        Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock x:Name="TxtDetailMap" FontSize="12"
+                            <TextBlock x:Name="TxtDetailMap" FontSize="{DynamicResource FontSizeXSmall}"
                                        Foreground="{StaticResource TextPrimaryBrush}"/>
                         </StackPanel>
 
                         <!-- Required Items Section -->
-                        <TextBlock Text="Required Items" FontSize="14" FontWeight="SemiBold"
+                        <TextBlock Text="Required Items" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    Margin="0,0,0,8"
                                    x:Name="TxtRequiredItemsHeader"/>
@@ -326,7 +329,7 @@
                                                            Stretch="Uniform"
                                                            RenderOptions.BitmapScalingMode="HighQuality"/>
                                                     <!-- Fulfilled checkmark overlay -->
-                                                    <TextBlock Text="&#x2713;" FontSize="16" FontWeight="Bold"
+                                                    <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeMedium}" FontWeight="Bold"
                                                                Foreground="{StaticResource SuccessBrush}"
                                                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                                Margin="0,0,1,0"
@@ -336,7 +339,7 @@
                                             <!-- Item Info -->
                                             <StackPanel VerticalAlignment="Center">
                                                 <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding DisplayText}" FontSize="12"
+                                                    <TextBlock Text="{Binding DisplayText}" FontSize="{DynamicResource FontSizeXSmall}"
                                                                TextDecorations="{Binding TextDecorations}">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock">
@@ -355,10 +358,10 @@
                                                     <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
                                                             Background="{StaticResource WarningBrush}"
                                                             Visibility="{Binding FirVisibility}">
-                                                        <TextBlock Text="FIR" FontSize="9" Foreground="White"/>
+                                                        <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
                                                     </Border>
                                                 </StackPanel>
-                                                <TextBlock Text="{Binding RequirementType}" FontSize="10"
+                                                <TextBlock Text="{Binding RequirementType}" FontSize="{DynamicResource FontSizeTiny}"
                                                            Foreground="{StaticResource TextSecondaryBrush}"
                                                            Visibility="{Binding RequirementTypeVisibility}"/>
                                             </StackPanel>
@@ -370,14 +373,14 @@
 
                         <!-- Kappa Progress Section (for Collector quest) -->
                         <StackPanel x:Name="KappaProgressSection" Visibility="Collapsed" Margin="0,0,0,16">
-                            <TextBlock Text="Kappa Progress" FontSize="14" FontWeight="SemiBold"
+                            <TextBlock Text="Kappa Progress" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,8"/>
                             <Border Background="{StaticResource BackgroundDarkBrush}"
                                     CornerRadius="4" Padding="12">
                                 <StackPanel>
                                     <!-- Progress Text -->
-                                    <TextBlock x:Name="TxtKappaProgress" FontSize="13"
+                                    <TextBlock x:Name="TxtKappaProgress" FontSize="{DynamicResource FontSizeSmall}"
                                                Foreground="{StaticResource TextPrimaryBrush}"
                                                Margin="0,0,0,8"/>
                                     <!-- Progress Bar -->
@@ -387,7 +390,7 @@
                                                 CornerRadius="4" HorizontalAlignment="Left"/>
                                         <TextBlock x:Name="TxtKappaProgressPercent"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                   FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                                   FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold" Foreground="White"/>
                                     </Grid>
                                     <!-- Show All Button -->
                                     <Button x:Name="BtnShowKappaQuests" Content="Show All Required Quests"
@@ -397,13 +400,13 @@
                         </StackPanel>
 
                         <!-- Requirements Section -->
-                        <TextBlock Text="Requirements" FontSize="14" FontWeight="SemiBold"
+                        <TextBlock Text="Requirements" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    Margin="0,0,0,8"/>
                         <Border Background="{StaticResource BackgroundDarkBrush}"
                                 CornerRadius="4" Padding="12" Margin="0,0,0,16">
                             <StackPanel x:Name="RequirementsPanel">
-                                <TextBlock x:Name="TxtRequiredLevel" FontSize="12"
+                                <TextBlock x:Name="TxtRequiredLevel" FontSize="{DynamicResource FontSizeXSmall}"
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            Margin="0,0,0,4"/>
                             </StackPanel>
@@ -411,7 +414,7 @@
 
                         <!-- Objectives Section -->
                         <StackPanel x:Name="ObjectivesSection" Visibility="Collapsed">
-                            <TextBlock Text="Objectives" FontSize="14" FontWeight="SemiBold"
+                            <TextBlock Text="Objectives" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,8"/>
                             <Border Background="{StaticResource BackgroundDarkBrush}"
@@ -426,7 +429,7 @@
 
                         <!-- Guide Section -->
                         <StackPanel x:Name="GuideSection" Visibility="Collapsed">
-                            <TextBlock Text="Guide" FontSize="14" FontWeight="SemiBold"
+                            <TextBlock Text="Guide" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,8"/>
                             <Border Background="{StaticResource BackgroundDarkBrush}"
@@ -439,7 +442,7 @@
                                         <ScrollViewer MaxHeight="250"
                                                       VerticalScrollBarVisibility="Auto"
                                                       HorizontalScrollBarVisibility="Disabled">
-                                            <TextBlock x:Name="TxtGuideText" FontSize="12"
+                                            <TextBlock x:Name="TxtGuideText" FontSize="{DynamicResource FontSizeXSmall}"
                                                        Foreground="{StaticResource TextPrimaryBrush}"
                                                        TextWrapping="Wrap" Padding="10"/>
                                         </ScrollViewer>
@@ -450,7 +453,7 @@
                                               Visibility="Collapsed"
                                               Expanded="GuideImagesExpander_Expanded">
                                         <Expander.Header>
-                                            <TextBlock x:Name="TxtGuideImagesHeader" Text="View Images" FontSize="11"
+                                            <TextBlock x:Name="TxtGuideImagesHeader" Text="View Images" FontSize="{DynamicResource FontSizeTiny}"
                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                         </Expander.Header>
                                         <ItemsControl x:Name="GuideImagesList" Margin="0,8,0,0">
@@ -470,7 +473,7 @@
                                                                    Width="140" Height="80"
                                                                    Stretch="UniformToFill"
                                                                    RenderOptions.BitmapScalingMode="HighQuality"/>
-                                                            <TextBlock Text="{Binding Caption}" FontSize="9"
+                                                            <TextBlock Text="{Binding Caption}" FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        TextAlignment="Center"
@@ -487,7 +490,7 @@
                         </StackPanel>
 
                         <!-- Prerequisites Section -->
-                        <TextBlock Text="Prerequisites" FontSize="14" FontWeight="SemiBold"
+                        <TextBlock Text="Prerequisites" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}"
                                    Margin="0,0,0,8"/>
                         <Border Background="{StaticResource BackgroundDarkBrush}"
@@ -498,10 +501,10 @@
                                         <StackPanel Orientation="Horizontal" Margin="0,2">
                                             <TextBlock Text="- " Foreground="{StaticResource TextSecondaryBrush}"/>
                                             <TextBlock Text="{Binding DisplayName}"
-                                                       Foreground="{StaticResource TextPrimaryBrush}" FontSize="12"/>
+                                                       Foreground="{StaticResource TextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"/>
                                             <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
                                                     Background="{Binding StatusBackground}">
-                                                <TextBlock Text="{Binding StatusText}" FontSize="9"
+                                                <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSizeTiny}"
                                                            Foreground="White"/>
                                             </Border>
                                         </StackPanel>
