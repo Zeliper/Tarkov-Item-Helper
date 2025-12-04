@@ -743,14 +743,14 @@
                                                             <TextBlock Text="{Binding DisplayName}"
                                                                        FontSize="{DynamicResource FontSizeXSmall}"
                                                                        Foreground="{Binding TextColor}"/>
+                                                            <TextBlock Text="{Binding SubtitleName}"
+                                                                       FontSize="{DynamicResource FontSizeTiny}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Visibility="{Binding SubtitleVisibility}"/>
                                                             <TextBlock Text="{Binding TraderName}"
                                                                        FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"/>
                                                         </StackPanel>
-                                                        <TextBlock Grid.Column="2" Text="✓" FontSize="{DynamicResource FontSizeXSmall}"
-                                                                   Foreground="{StaticResource AccentBrush}"
-                                                                   VerticalAlignment="Center"
-                                                                   Visibility="{Binding IsCompleted, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                                     </Grid>
                                                 </Border>
                                             </DataTemplate>
@@ -804,6 +804,10 @@
                                                             <TextBlock Text="{Binding DisplayName}"
                                                                        FontSize="{DynamicResource FontSizeXSmall}"
                                                                        Foreground="{StaticResource TextPrimaryBrush}"/>
+                                                            <TextBlock Text="{Binding SubtitleName}"
+                                                                       FontSize="{DynamicResource FontSizeTiny}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       Visibility="{Binding SubtitleVisibility}"/>
                                                             <TextBlock Text="{Binding TraderName}"
                                                                        FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"/>

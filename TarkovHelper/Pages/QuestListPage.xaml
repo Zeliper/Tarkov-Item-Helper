@@ -342,7 +342,7 @@
                                                     <TextBlock Text="{Binding DisplayText}" FontSize="{DynamicResource FontSizeXSmall}"
                                                                TextDecorations="{Binding TextDecorations}">
                                                         <TextBlock.Style>
-                                                            <Style TargetType="TextBlock">
+                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                                                 <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
                                                                 <Style.Triggers>
                                                                     <DataTrigger Binding="{Binding IsFulfilled}" Value="True">

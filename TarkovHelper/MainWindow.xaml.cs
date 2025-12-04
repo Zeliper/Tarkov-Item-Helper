@@ -1617,7 +1617,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Load quest selection list
+    /// Load quest selection list (only remaining quests - not completed or failed)
     /// </summary>
     private void LoadQuestSelectionList()
     {
@@ -1627,13 +1627,24 @@ public partial class MainWindow : Window
 
         _allQuestItems = tasks
             .Where(t => !string.IsNullOrEmpty(t.NormalizedName))
-            .Select(t => new QuestSelectionItem
+            .Where(t =>
             {
-                Quest = t,
-                DisplayName = GetLocalizedQuestName(t),
-                TraderName = GetLocalizedTraderName(t.Trader),
-                IsCompleted = progressService.GetStatus(t) == QuestStatus.Done,
-                IsSelected = false
+                var status = progressService.GetStatus(t);
+                return status != QuestStatus.Done && status != QuestStatus.Failed;
+            })
+            .Select(t =>
+            {
+                var (displayName, subtitleName, showSubtitle) = GetLocalizedQuestNames(t);
+                return new QuestSelectionItem
+                {
+                    Quest = t,
+                    DisplayName = displayName,
+                    SubtitleName = subtitleName,
+                    SubtitleVisibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed,
+                    TraderName = GetLocalizedTraderName(t.Trader),
+                    IsCompleted = false,
+                    IsSelected = false
+                };
             })
             .OrderBy(q => q.TraderName)
             .ThenBy(q => q.DisplayName)
@@ -1684,6 +1695,37 @@ public partial class MainWindow : Window
             AppLanguage.JA => task.NameJa ?? task.Name,
             _ => task.Name
         };
+    }
+
+    /// <summary>
+    /// Get localized quest names with subtitle (matching QuestListPage pattern)
+    /// For EN: DisplayName only
+    /// For KO/JA: Localized name as main, English as subtitle
+    /// </summary>
+    private (string DisplayName, string Subtitle, bool ShowSubtitle) GetLocalizedQuestNames(TarkovTask task)
+    {
+        var lang = _loc.CurrentLanguage;
+
+        if (lang == AppLanguage.EN)
+        {
+            return (task.Name, string.Empty, false);
+        }
+
+        // For KO/JA, show localized name as main, English as subtitle
+        var localizedName = lang switch
+        {
+            AppLanguage.KO => task.NameKo,
+            AppLanguage.JA => task.NameJa,
+            _ => null
+        };
+
+        if (!string.IsNullOrEmpty(localizedName))
+        {
+            return (localizedName, task.Name, true);
+        }
+
+        // Fallback to English only
+        return (task.Name, string.Empty, false);
     }
 
     /// <summary>
@@ -1810,11 +1852,17 @@ public partial class MainWindow : Window
         var prereqItems = allPrereqs
             .Select(name => graphService.GetTask(name))
             .Where(t => t != null)
-            .Select(t => new PrerequisitePreviewItem
+            .Select(t =>
             {
-                Quest = t!,
-                DisplayName = GetLocalizedQuestName(t!),
-                TraderName = GetLocalizedTraderName(t!.Trader)
+                var (displayName, subtitleName, showSubtitle) = GetLocalizedQuestNames(t!);
+                return new PrerequisitePreviewItem
+                {
+                    Quest = t!,
+                    DisplayName = displayName,
+                    SubtitleName = subtitleName,
+                    SubtitleVisibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed,
+                    TraderName = GetLocalizedTraderName(t!.Trader)
+                };
             })
             .OrderBy(p => p.TraderName)
             .ThenBy(p => p.DisplayName)

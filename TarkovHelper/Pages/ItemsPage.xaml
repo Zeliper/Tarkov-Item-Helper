@@ -32,7 +32,7 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="40"/>
+                        <ColumnDefinition Width="56"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="100"/>
                         <ColumnDefinition Width="70"/>
@@ -41,12 +41,12 @@
                     </Grid.ColumnDefinitions>
 
                     <!-- Item Icon -->
-                    <Border Grid.Column="0" Grid.RowSpan="2" Width="36" Height="36"
+                    <Border Grid.Column="0" Grid.RowSpan="2" Width="48" Height="48"
                             CornerRadius="4" Background="{StaticResource BackgroundLightBrush}"
                             VerticalAlignment="Center">
                         <Grid>
                             <Image Source="{Binding IconSource}"
-                                   Width="32" Height="32"
+                                   Width="44" Height="44"
                                    Stretch="Uniform"
                                    RenderOptions.BitmapScalingMode="HighQuality"/>
                             <!-- Fulfilled checkmark overlay -->
@@ -282,7 +282,7 @@
                         CornerRadius="6,6,0,0" Padding="12,8">
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="40"/>
+                            <ColumnDefinition Width="56"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="90"/>
