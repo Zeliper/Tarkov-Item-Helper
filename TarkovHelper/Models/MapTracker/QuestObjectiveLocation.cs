@@ -150,6 +150,12 @@ public sealed class TaskObjectiveWithLocation
     public bool IsCompleted { get; set; }
 
     /// <summary>
+    /// 목표 인덱스 (Quests 탭과 연동용)
+    /// </summary>
+    [JsonIgnore]
+    public int ObjectiveIndex { get; set; } = -1;
+
+    /// <summary>
     /// 마커 색상 (목표 유형별 기본값 또는 사용자 설정)
     /// </summary>
     [JsonIgnore]

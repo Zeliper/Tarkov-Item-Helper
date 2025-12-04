@@ -437,6 +437,15 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
+        /// Get objective completion status by objective ID
+        /// </summary>
+        public bool IsObjectiveCompletedById(string objectiveId)
+        {
+            var key = $"id:{objectiveId}";
+            return _objectiveProgress.TryGetValue(key, out var completed) && completed;
+        }
+
+        /// <summary>
         /// Set objective completion status
         /// </summary>
         public void SetObjectiveCompleted(string questNormalizedName, int objectiveIndex, bool completed)
@@ -454,6 +463,26 @@ namespace TarkovHelper.Services
 
             SaveObjectiveProgress();
             ObjectiveProgressChanged?.Invoke(this, new ObjectiveProgressChangedEventArgs(questNormalizedName, objectiveIndex, completed));
+        }
+
+        /// <summary>
+        /// Set objective completion status by objective ID
+        /// </summary>
+        public void SetObjectiveCompletedById(string objectiveId, bool completed)
+        {
+            var key = $"id:{objectiveId}";
+
+            if (completed)
+            {
+                _objectiveProgress[key] = true;
+            }
+            else
+            {
+                _objectiveProgress.Remove(key);
+            }
+
+            SaveObjectiveProgress();
+            ObjectiveProgressChanged?.Invoke(this, new ObjectiveProgressChangedEventArgs(objectiveId, -1, completed));
         }
 
         /// <summary>

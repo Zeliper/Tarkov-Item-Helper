@@ -48,8 +48,16 @@
                               IsChecked="True"
                               Checked="ChkShowQuestMarkers_Changed"
                               Unchecked="ChkShowQuestMarkers_Changed"/>
+                    <CheckBox x:Name="ChkShowExtractMarkers" Content="Extracts"
+                              Foreground="{StaticResource TextPrimaryBrush}"
+                              VerticalAlignment="Center" Margin="0,0,16,0"
+                              IsChecked="True"
+                              Checked="ChkShowExtractMarkers_Changed"
+                              Unchecked="ChkShowExtractMarkers_Changed"/>
                     <Button x:Name="BtnClearTrail" Content="Clear Trail" Padding="12,6"
                             Margin="0,0,8,0" Click="BtnClearTrail_Click"/>
+                    <Button x:Name="BtnFullScreen" Content="Full Screen" Padding="12,6"
+                            Margin="0,0,8,0" Click="BtnFullScreen_Click"/>
                     <Button x:Name="BtnSettings" Content="Settings" Padding="12,6"
                             Click="BtnSettings_Click"/>
                 </StackPanel>
@@ -134,42 +142,49 @@
                                     <Border Background="{StaticResource BackgroundDarkBrush}"
                                             CornerRadius="4" Padding="12" Margin="0,0,0,8"
                                             Cursor="Hand"
+                                            BorderBrush="{Binding SelectionBorderBrush}"
+                                            BorderThickness="{Binding SelectionBorderThickness}"
                                             MouseLeftButtonDown="QuestObjectiveItem_Click">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="BorderBrush" Value="Transparent"/>
-                                                <Setter Property="BorderThickness" Value="2"/>
-                                                <Style.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <StackPanel>
-                                            <!-- 퀘스트 이름 -->
-                                            <TextBlock Text="{Binding QuestName}"
-                                                       FontSize="13" FontWeight="SemiBold"
-                                                       Foreground="{StaticResource AccentBrush}"
-                                                       TextWrapping="Wrap" Margin="0,0,0,4"/>
-                                            <!-- 목표 타입 배지 -->
-                                            <Border Background="{Binding TypeBrush}"
-                                                    CornerRadius="3" Padding="6,2"
-                                                    HorizontalAlignment="Left" Margin="0,0,0,6">
-                                                <TextBlock Text="{Binding TypeDisplay}"
-                                                           FontSize="10" Foreground="White" FontWeight="SemiBold"/>
-                                            </Border>
-                                            <!-- 목표 설명 -->
-                                            <TextBlock Text="{Binding Description}"
-                                                       FontSize="12"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                       TextWrapping="Wrap"/>
-                                            <!-- 완료 상태 -->
-                                            <TextBlock Text="✓ Completed"
-                                                       FontSize="11" Foreground="{StaticResource SuccessBrush}"
-                                                       Margin="0,4,0,0"
-                                                       Visibility="{Binding CompletedVisibility}"/>
-                                        </StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- 체크박스 -->
+                                            <CheckBox Grid.Column="0" VerticalAlignment="Top" Margin="0,2,12,0"
+                                                      IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                      Checked="ObjectiveCheckBox_Checked"
+                                                      Unchecked="ObjectiveCheckBox_Unchecked"
+                                                      Tag="{Binding Objective}">
+                                                <CheckBox.LayoutTransform>
+                                                    <ScaleTransform ScaleX="1.5" ScaleY="1.5"/>
+                                                </CheckBox.LayoutTransform>
+                                            </CheckBox>
+
+                                            <StackPanel Grid.Column="1">
+                                                <!-- 퀘스트 이름 -->
+                                                <TextBlock Text="{Binding QuestName}"
+                                                           FontSize="13" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource AccentBrush}"
+                                                           TextWrapping="Wrap" Margin="0,0,0,4"
+                                                           TextDecorations="{Binding TextDecoration}"/>
+                                                <!-- 목표 타입 배지 -->
+                                                <Border Background="{Binding TypeBrush}"
+                                                        CornerRadius="3" Padding="6,2"
+                                                        HorizontalAlignment="Left" Margin="0,0,0,6"
+                                                        Opacity="{Binding ContentOpacity}">
+                                                    <TextBlock Text="{Binding TypeDisplay}"
+                                                               FontSize="10" Foreground="White" FontWeight="SemiBold"/>
+                                                </Border>
+                                                <!-- 목표 설명 -->
+                                                <TextBlock Text="{Binding Description}"
+                                                           FontSize="12"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           TextWrapping="Wrap"
+                                                           Opacity="{Binding ContentOpacity}"/>
+                                            </StackPanel>
+                                        </Grid>
                                     </Border>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -196,15 +211,19 @@
                         <StackPanel Orientation="Horizontal">
                             <Button Content="-" Width="28" Height="28" Padding="0"
                                     Click="BtnZoomOut_Click" Margin="0,0,4,0"/>
-                            <ComboBox x:Name="CmbZoomLevel" Width="70"
+                            <ComboBox x:Name="CmbZoomLevel" Width="80"
                                       SelectionChanged="CmbZoomLevel_SelectionChanged"
                                       KeyDown="CmbZoomLevel_KeyDown"
                                       IsEditable="True"
-                                      Text="100%"/>
+                                      SelectedIndex="3"/>
                             <Button Content="+" Width="28" Height="28" Padding="0"
                                     Click="BtnZoomIn_Click" Margin="4,0,4,0"/>
                             <Button x:Name="BtnResetView" Content="Reset" Padding="8,4"
                                     Click="BtnResetView_Click" Margin="4,0,0,0"/>
+                            <!-- Exit Full Screen 버튼 (전체화면 모드에서만 표시) -->
+                            <Button x:Name="BtnExitFullScreen" Content="Exit Full Screen" Padding="8,4"
+                                    Click="BtnExitFullScreen_Click" Margin="8,0,0,0"
+                                    Visibility="Collapsed"/>
                         </StackPanel>
                     </Border>
 
@@ -226,6 +245,9 @@
                             <!-- 맵 이미지 (SVG) -->
                             <svgc:SvgViewbox x:Name="MapSvg" Stretch="Fill" Visibility="Collapsed"/>
 
+                            <!-- 탈출구 마커 컨테이너 -->
+                            <Canvas x:Name="ExtractMarkersContainer"/>
+
                             <!-- 퀘스트 목표 마커 컨테이너 -->
                             <Canvas x:Name="QuestMarkersContainer"/>
 
@@ -236,7 +258,10 @@
                             <!-- 플레이어 마커 (방향 표시 - 화살표 + 원) -->
                             <Canvas x:Name="PlayerMarker" Visibility="Collapsed">
                                 <Canvas.RenderTransform>
-                                    <TranslateTransform x:Name="MarkerTranslation" X="0" Y="0"/>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="MarkerScale" ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform x:Name="MarkerTranslation" X="0" Y="0"/>
+                                    </TransformGroup>
                                 </Canvas.RenderTransform>
 
                                 <!-- 외곽 글로우 효과 -->
@@ -270,7 +295,10 @@
                             <!-- 방향 표시가 없을 때 사용하는 원형 마커 -->
                             <Canvas x:Name="PlayerDot" Visibility="Collapsed">
                                 <Canvas.RenderTransform>
-                                    <TranslateTransform x:Name="DotTranslation" X="0" Y="0"/>
+                                    <TransformGroup>
+                                        <ScaleTransform x:Name="DotScale" ScaleX="1" ScaleY="1"/>
+                                        <TranslateTransform x:Name="DotTranslation" X="0" Y="0"/>
+                                    </TransformGroup>
                                 </Canvas.RenderTransform>
 
                                 <!-- 외곽 글로우 효과 -->
@@ -319,115 +347,96 @@
                         <TextBlock Text="Screenshot Folder" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
                         <TextBox x:Name="TxtScreenshotFolder" IsReadOnly="True" Margin="0,0,0,8"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
                             <Button x:Name="BtnAutoDetect" Content="Auto Detect" Padding="12,6"
                                     Margin="0,0,8,0" Click="BtnAutoDetect_Click"/>
                             <Button x:Name="BtnBrowseFolder" Content="Browse" Padding="12,6"
                                     Click="BtnBrowseFolder_Click"/>
                         </StackPanel>
 
-                        <!-- 파일명 패턴 설정 -->
-                        <TextBlock Text="Filename Pattern (Regex)" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
-                        <TextBox x:Name="TxtFilePattern" Height="60" TextWrapping="Wrap"
-                                 AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
-                                 Margin="0,0,0,8"/>
-                        <Button x:Name="BtnApplyPattern" Content="Apply Pattern" Padding="12,6"
-                                HorizontalAlignment="Left" Margin="0,0,0,16"
-                                Click="BtnApplyPattern_Click"/>
-
                         <!-- 마커 설정 -->
                         <TextBlock Text="Marker Settings" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
+
+                        <!-- 완료된 퀘스트 목표 숨기기 -->
+                        <CheckBox x:Name="ChkHideCompletedObjectives" Content="Hide Completed Objectives"
+                                  Foreground="{StaticResource TextPrimaryBrush}"
+                                  Margin="0,0,0,12" IsChecked="False"
+                                  Checked="ChkHideCompletedObjectives_Changed"
+                                  Unchecked="ChkHideCompletedObjectives_Changed"/>
+
+                        <!-- 퀘스트 마커 스타일 -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="Size:" Foreground="{StaticResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center" Width="80"/>
-                            <Slider x:Name="SliderMarkerSize" Width="150" Minimum="8" Maximum="32"
+                            <TextBlock Text="Quest Style:" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Width="100"/>
+                            <ComboBox x:Name="CmbQuestMarkerStyle" Width="160"
+                                      SelectionChanged="CmbQuestMarkerStyle_SelectionChanged">
+                                <ComboBoxItem Content="Icon Only" Tag="Default"/>
+                                <ComboBoxItem Content="Green Circle" Tag="GreenCircle"/>
+                                <ComboBoxItem Content="Icon + Name" Tag="DefaultWithName"/>
+                                <ComboBoxItem Content="Circle + Name" Tag="GreenCircleWithName"/>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- 퀘스트명 텍스트 크기 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Quest Name:" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Width="100"/>
+                            <Slider x:Name="SliderQuestNameTextSize" Width="120" Minimum="8" Maximum="50"
+                                    Value="12" ValueChanged="SliderQuestNameTextSize_ValueChanged"/>
+                            <TextBlock x:Name="TxtQuestNameTextSize" Text="12" Width="30"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        </StackPanel>
+
+                        <!-- 퀘스트 마커 크기 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Quest Marker:" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Width="100"/>
+                            <Slider x:Name="SliderMarkerSize" Width="120" Minimum="8" Maximum="48"
                                     Value="16" ValueChanged="SliderMarkerSize_ValueChanged"/>
                             <TextBlock x:Name="TxtMarkerSize" Text="16" Width="30"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        VerticalAlignment="Center" Margin="8,0,0,0"/>
                         </StackPanel>
 
-                        <CheckBox x:Name="ChkShowDirection" Content="Show Direction"
-                                  Foreground="{StaticResource TextPrimaryBrush}"
-                                  IsChecked="True" Margin="0,0,0,8"
-                                  Checked="ChkShowDirection_Changed"
-                                  Unchecked="ChkShowDirection_Changed"/>
-                        <CheckBox x:Name="ChkShowTrail" Content="Show Trail"
-                                  Foreground="{StaticResource TextPrimaryBrush}"
-                                  IsChecked="True" Margin="0,0,0,16"
-                                  Checked="ChkShowTrail_Changed"
-                                  Unchecked="ChkShowTrail_Changed"/>
+                        <!-- 플레이어 위치 마커 크기 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+                            <TextBlock Text="Player Marker:" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Width="100"/>
+                            <Slider x:Name="SliderPlayerMarkerSize" Width="120" Minimum="8" Maximum="64"
+                                    Value="16" ValueChanged="SliderPlayerMarkerSize_ValueChanged"/>
+                            <TextBlock x:Name="TxtPlayerMarkerSize" Text="16" Width="30"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        </StackPanel>
 
-                        <!-- 현재 맵 좌표 설정 -->
-                        <TextBlock Text="Current Map Calibration" FontWeight="SemiBold"
+                        <!-- 탈출구 설정 -->
+                        <TextBlock Text="Extract Settings" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
-                        <TextBlock x:Name="TxtCurrentMapName" Text="(맵 선택 필요)"
-                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,8"/>
 
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="80"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+                        <CheckBox x:Name="ChkShowPmcExtracts" Content="PMC Extracts"
+                                  Foreground="#4CAF50" FontWeight="SemiBold"
+                                  Margin="0,0,0,6" IsChecked="True"
+                                  Checked="ChkExtractFilter_Changed"
+                                  Unchecked="ChkExtractFilter_Changed"/>
 
-                            <TextBlock Text="World X:" Grid.Row="0" Grid.Column="0"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <TextBox x:Name="TxtWorldMinX" Grid.Row="0" Grid.Column="1"
-                                     Margin="0,0,0,4"/>
-                            <TextBox x:Name="TxtWorldMaxX" Grid.Row="0" Grid.Column="3"
-                                     Margin="0,0,0,4"/>
+                        <CheckBox x:Name="ChkShowScavExtracts" Content="Scav Extracts"
+                                  Foreground="#FFB74D" FontWeight="SemiBold"
+                                  Margin="0,0,0,12" IsChecked="True"
+                                  Checked="ChkExtractFilter_Changed"
+                                  Unchecked="ChkExtractFilter_Changed"/>
 
-                            <TextBlock Text="World Y:" Grid.Row="1" Grid.Column="0"
-                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <TextBox x:Name="TxtWorldMinY" Grid.Row="1" Grid.Column="1"/>
-                            <TextBox x:Name="TxtWorldMaxY" Grid.Row="1" Grid.Column="3"/>
-                        </Grid>
-
-                        <CheckBox x:Name="ChkInvertY" Content="Invert Y Axis"
-                                  Foreground="{StaticResource TextPrimaryBrush}"
-                                  IsChecked="True" Margin="0,0,0,8"/>
-                        <CheckBox x:Name="ChkInvertX" Content="Invert X Axis"
-                                  Foreground="{StaticResource TextPrimaryBrush}"
-                                  IsChecked="False" Margin="0,0,0,16"/>
-
-                        <Button x:Name="BtnSaveMapSettings" Content="Save Map Settings"
-                                Padding="12,6" Click="BtnSaveMapSettings_Click"/>
-
-                        <!-- 테스트 파일 입력 -->
-                        <TextBlock Text="Test Screenshot File" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}" Margin="0,24,0,8"/>
-                        <TextBox x:Name="TxtTestFilePath" Margin="0,0,0,8"
-                                 ToolTip="EFT screenshot filename or full path"/>
-                        <Button x:Name="BtnTestFile" Content="Test File" Padding="12,6"
-                                HorizontalAlignment="Left" Click="BtnTestFile_Click" Margin="0,0,0,16"/>
-
-                        <!-- 테스트 좌표 입력 -->
-                        <TextBlock Text="Test Coordinate" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}" Margin="0,8,0,8"/>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="8"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtTestX" Grid.Column="0" ToolTip="X coordinate"/>
-                            <TextBox x:Name="TxtTestY" Grid.Column="2" ToolTip="Y coordinate"/>
-                            <TextBox x:Name="TxtTestAngle" Grid.Column="4" ToolTip="Angle (degrees)"/>
-                        </Grid>
-                        <Button x:Name="BtnTestCoordinate" Content="Test" Padding="12,6"
-                                HorizontalAlignment="Left" Click="BtnTestCoordinate_Click"/>
+                        <!-- 탈출구 이름 텍스트 크기 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <TextBlock Text="Name Size:" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Width="100"/>
+                            <Slider x:Name="SliderExtractTextSize" Width="120" Minimum="6" Maximum="20"
+                                    Value="10" ValueChanged="SliderExtractTextSize_ValueChanged"/>
+                            <TextBlock x:Name="TxtExtractTextSize" Text="10" Width="30"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0"/>
+                        </StackPanel>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

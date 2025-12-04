@@ -3,6 +3,32 @@ using System.IO;
 namespace TarkovHelper.Models.MapTracker;
 
 /// <summary>
+/// 퀘스트 마커 표시 스타일
+/// </summary>
+public enum QuestMarkerStyle
+{
+    /// <summary>
+    /// 기본 스타일 (아이콘만)
+    /// </summary>
+    Default = 0,
+
+    /// <summary>
+    /// 초록색 원 테두리
+    /// </summary>
+    GreenCircle = 1,
+
+    /// <summary>
+    /// 기본 스타일 + 퀘스트명
+    /// </summary>
+    DefaultWithName = 2,
+
+    /// <summary>
+    /// 초록색 원 + 퀘스트명
+    /// </summary>
+    GreenCircleWithName = 3
+}
+
+/// <summary>
 /// 맵 트래커 전체 설정.
 /// Data/map_tracker_settings.json 파일에 저장됩니다.
 /// </summary>
@@ -38,9 +64,14 @@ public sealed class MapTrackerSettings
     public List<MapConfig> Maps { get; set; } = GetDefaultMaps();
 
     /// <summary>
-    /// 마커 크기 (픽셀)
+    /// 퀘스트 마커 크기 (픽셀)
     /// </summary>
     public int MarkerSize { get; set; } = 16;
+
+    /// <summary>
+    /// 플레이어 위치 마커 크기 (픽셀)
+    /// </summary>
+    public int PlayerMarkerSize { get; set; } = 16;
 
     /// <summary>
     /// 마커 색상 (ARGB hex, 예: "#FFFF0000" = 빨간색)
@@ -61,6 +92,66 @@ public sealed class MapTrackerSettings
     /// 이동 경로 최대 포인트 수
     /// </summary>
     public int MaxTrailPoints { get; set; } = 50;
+
+    /// <summary>
+    /// PMC 탈출구 표시 여부
+    /// </summary>
+    public bool ShowPmcExtracts { get; set; } = true;
+
+    /// <summary>
+    /// Scav 탈출구 표시 여부
+    /// </summary>
+    public bool ShowScavExtracts { get; set; } = true;
+
+    /// <summary>
+    /// 탈출구 이름 텍스트 크기
+    /// </summary>
+    public double ExtractNameTextSize { get; set; } = 10.0;
+
+    /// <summary>
+    /// 퀘스트 마커 표시 여부
+    /// </summary>
+    public bool ShowQuestMarkers { get; set; } = true;
+
+    /// <summary>
+    /// 퀘스트 마커 스타일
+    /// </summary>
+    public QuestMarkerStyle QuestMarkerStyle { get; set; } = QuestMarkerStyle.Default;
+
+    /// <summary>
+    /// 퀘스트명 텍스트 크기
+    /// </summary>
+    public double QuestNameTextSize { get; set; } = 12.0;
+
+    /// <summary>
+    /// 탈출구 마커 표시 여부
+    /// </summary>
+    public bool ShowExtractMarkers { get; set; } = true;
+
+    /// <summary>
+    /// 완료된 퀘스트 목표 마커 숨기기 여부
+    /// </summary>
+    public bool HideCompletedObjectives { get; set; } = false;
+
+    /// <summary>
+    /// 마지막으로 선택한 맵 키 (탭 전환 시 상태 유지용)
+    /// </summary>
+    public string? LastSelectedMapKey { get; set; }
+
+    /// <summary>
+    /// 마지막 줌 레벨 (탭 전환 시 상태 유지용)
+    /// </summary>
+    public double LastZoomLevel { get; set; } = 1.0;
+
+    /// <summary>
+    /// 마지막 맵 X 위치 (탭 전환 시 상태 유지용)
+    /// </summary>
+    public double LastTranslateX { get; set; } = 0;
+
+    /// <summary>
+    /// 마지막 맵 Y 위치 (탭 전환 시 상태 유지용)
+    /// </summary>
+    public double LastTranslateY { get; set; } = 0;
 
     /// <summary>
     /// 기본 스크린샷 폴더 경로 반환.
@@ -220,8 +311,7 @@ public sealed class MapTrackerSettings
     /// <summary>
     /// 기본 파일명 패턴.
     /// EFT 스크린샷 파일명 형식 (쿼터니언):
-    /// - 형식 1: "2025-12-0413-52_-277.49_-0.11_329.64_-0.00019_0.98508_-0.00107_-0.17208_13.11_0.png"
-    /// - 형식 2 (레거시): "2023-09-22[13-00]_-49.9, 12.1, -51.8_0.0, -0.8, 0.1, -0.5_14.08.png"
+    /// - 형식: "2025-12-04[00-40]_95.77, 2.44, -134.02_-0.02395, -0.85891, 0.03920, -0.51007_16.74 (0).png"
     ///
     /// [지원되는 그룹]
     /// - x, y: 좌표 (필수)
@@ -231,7 +321,7 @@ public sealed class MapTrackerSettings
     /// - qx, qy, qz, qw: 쿼터니언 회전값 (선택 - angle 대신 사용 가능)
     /// </summary>
     private const string DefaultFileNamePattern =
-        @"\d{4}-\d{2}-\d{2}\d{2}-\d{2}_(?<x>-?\d+\.?\d*)_(?<y>-?\d+\.?\d*)_(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*)_(?<qy>-?\d+\.?\d*)_(?<qz>-?\d+\.?\d*)_(?<qw>-?\d+\.?\d*)_";
+        @"\d{4}-\d{2}-\d{2}\[\d{2}-\d{2}\]_(?<x>-?\d+\.?\d*),\s*(?<y>-?\d+\.?\d*),\s*(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*),\s*(?<qy>-?\d+\.?\d*),\s*(?<qz>-?\d+\.?\d*),\s*(?<qw>-?\d+\.?\d*)_";
 
     /// <summary>
     /// 기본 맵 설정 목록 생성.
@@ -327,31 +417,33 @@ public sealed class MapTrackerSettings
                 Transform = [0.38, 0, 0.38, 0],
                 CoordinateRotation = 180,
                 SvgBounds = [[323, -317], [-280, 554]],
-                Aliases = new List<string> { "streets", "STREETS", "TarkovStreets" }
+                Aliases = new List<string> { "streets", "STREETS", "TarkovStreets", "streets-of-tarkov" }
             },
             new()
             {
                 Key = "Factory",
                 DisplayName = "Factory",
                 ImagePath = "Assets/Maps/Factory_tarkovdev.svg",
-                ImageWidth = 131,
-                ImageHeight = 141,
-                Transform = [1.629, 119.9, 1.629, 139.3],
+                ImageWidth = 655 * 5,
+                ImageHeight = 706 * 5,
+                Transform = [1.629 * 5, 119.9 * 5, 1.629 * 5, 139.3 * 5],
                 CoordinateRotation = 90,
                 SvgBounds = [[79, -64.5], [-66.5, 67.4]],
-                Aliases = new List<string> { "factory", "FACTORY", "factory4_day", "factory4_night" }
+                Aliases = new List<string> { "factory", "FACTORY", "factory4_day", "factory4_night" },
+                MarkerScale = 5.0
             },
             new()
             {
                 Key = "GroundZero",
                 DisplayName = "Ground Zero",
                 ImagePath = "Assets/Maps/GroundZero_tarkovdev.svg",
-                ImageWidth = 349,
-                ImageHeight = 488,
-                Transform = [0.524, 167.3, 0.524, 65.1],
+                ImageWidth = 1047 * 3,
+                ImageHeight = 1465 * 3,
+                Transform = [0.524 * 3, 167.3 * 3, 0.524 * 3, 65.1 * 3],
                 CoordinateRotation = 180,
                 SvgBounds = [[249, -124], [-99, 364]],
-                Aliases = new List<string> { "groundzero", "GROUNDZERO", "Sandbox", "sandbox" }
+                Aliases = new List<string> { "groundzero", "GROUNDZERO", "Sandbox", "sandbox", "ground-zero", "ground-zero-21" },
+                MarkerScale = 3.0
             },
             new()
             {
@@ -363,7 +455,7 @@ public sealed class MapTrackerSettings
                 Transform = [0.575, 281.2, 0.575, 193.7],
                 CoordinateRotation = 270,
                 SvgBounds = [[-80, -477], [-287, -193]],
-                Aliases = new List<string> { "labs", "LABS", "laboratory" }
+                Aliases = new List<string> { "labs", "LABS", "laboratory", "the-lab" }
             }
         };
     }

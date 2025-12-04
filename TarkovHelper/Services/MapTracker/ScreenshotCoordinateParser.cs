@@ -51,10 +51,10 @@ public sealed class ScreenshotCoordinateParser : IScreenshotCoordinateParser
 
     /// <summary>
     /// 기본 파일명 패턴.
-    /// EFT 스크린샷 형식 (쿼터니언): "2025-12-0413-52_-277.49_-0.11_329.64_-0.00019_0.98508_-0.00107_-0.17208_13.11_0.png"
+    /// EFT 스크린샷 형식 (쿼터니언): "2025-12-04[00-40]_95.77, 2.44, -134.02_-0.02395, -0.85891, 0.03920, -0.51007_16.74 (0).png"
     /// </summary>
     private const string DefaultPattern =
-        @"\d{4}-\d{2}-\d{2}\d{2}-\d{2}_(?<x>-?\d+\.?\d*)_(?<y>-?\d+\.?\d*)_(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*)_(?<qy>-?\d+\.?\d*)_(?<qz>-?\d+\.?\d*)_(?<qw>-?\d+\.?\d*)_";
+        @"\d{4}-\d{2}-\d{2}\[\d{2}-\d{2}\]_(?<x>-?\d+\.?\d*),\s*(?<y>-?\d+\.?\d*),\s*(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*),\s*(?<qy>-?\d+\.?\d*),\s*(?<qz>-?\d+\.?\d*),\s*(?<qw>-?\d+\.?\d*)_";
 
     /// <inheritdoc />
     public bool TryParse(string fileName, out EftPosition? position)
@@ -155,8 +155,9 @@ public sealed class ScreenshotCoordinateParser : IScreenshotCoordinateParser
         var cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz);
         var yaw = Math.Atan2(siny_cosp, cosy_cosp);
 
-        // 라디안을 도(degree)로 변환
-        return yaw * 180.0 / Math.PI;
+        // 라디안을 도(degree)로 변환 후 180도 추가 (EFT 좌표계 보정)
+        var degrees = yaw * 180.0 / Math.PI + 180.0;
+        return degrees;
     }
 
     /// <inheritdoc />

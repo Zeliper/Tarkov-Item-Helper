@@ -31,6 +31,7 @@ public partial class MainWindow : Window
     private MapTrackerPage? _mapTrackerPage;
     private List<HideoutModule>? _hideoutModules;
     private ObservableCollection<QuestChangeInfo>? _pendingSyncChanges;
+    private bool _isFullScreen;
 
     // Windows API for dark title bar
     [DllImport("dwmapi.dll", PreserveSig = true)]
@@ -2262,6 +2263,41 @@ public partial class MainWindow : Window
             _loc.CurrentLanguage switch { AppLanguage.KO => "적용 완료", AppLanguage.JA => "適用完了", _ => "Applied" },
             MessageBoxButton.OK,
             MessageBoxImage.Information);
+    }
+
+    #endregion
+
+    #region Full Screen Mode
+
+    /// <summary>
+    /// 전체화면 모드를 설정합니다.
+    /// Map 페이지에서 호출됩니다.
+    /// </summary>
+    /// <param name="fullScreen">true이면 전체화면 모드 진입, false이면 해제</param>
+    public void SetFullScreenMode(bool fullScreen)
+    {
+        _isFullScreen = fullScreen;
+
+        if (fullScreen)
+        {
+            // 타이틀 바와 탭 네비게이션 숨기기
+            TitleBar.Visibility = Visibility.Collapsed;
+            TabNavigation.Visibility = Visibility.Collapsed;
+
+            // 전체화면 모드 진입
+            WindowStyle = WindowStyle.None;
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            // 타이틀 바와 탭 네비게이션 다시 표시
+            TitleBar.Visibility = Visibility.Visible;
+            TabNavigation.Visibility = Visibility.Visible;
+
+            // 전체화면 모드 해제
+            WindowStyle = WindowStyle.SingleBorderWindow;
+            WindowState = WindowState.Normal;
+        }
     }
 
     #endregion

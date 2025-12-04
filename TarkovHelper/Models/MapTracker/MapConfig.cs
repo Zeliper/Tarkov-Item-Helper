@@ -108,4 +108,11 @@ public sealed class MapConfig
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double[][]? SvgBounds { get; set; }
+
+    /// <summary>
+    /// 마커 크기 배율.
+    /// 확대된 맵(Factory, Ground Zero 등)에서 마커도 같은 비율로 확대합니다.
+    /// 기본값: 1.0
+    /// </summary>
+    public double MarkerScale { get; set; } = 1.0;
 }

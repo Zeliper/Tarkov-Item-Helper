@@ -27,7 +27,7 @@
             </Grid.RowDefinitions>
 
             <!-- Title Bar -->
-            <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,12">
+            <Border x:Name="TitleBar" Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,12">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -178,7 +178,7 @@
                     </Grid.RowDefinitions>
 
                     <!-- Tab Navigation -->
-                    <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,0">
+                    <Border x:Name="TabNavigation" Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}" Padding="16,0">
                         <StackPanel Orientation="Horizontal">
                             <RadioButton x:Name="TabQuests" Content="Quests"
                                          Style="{StaticResource TabButtonStyle}"

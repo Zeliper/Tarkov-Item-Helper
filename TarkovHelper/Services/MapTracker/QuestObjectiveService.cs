@@ -489,8 +489,11 @@ public sealed class QuestObjectiveService : IDisposable
             // Active 상태인 퀘스트만
             if (status != QuestStatus.Active) continue;
 
-            // 목표가 이미 완료되었는지 확인
+            // 목표 인덱스 설정 (Quests 탭과 연동용)
             var objectiveIndex = GetObjectiveIndex(task, objective.Description);
+            objective.ObjectiveIndex = objectiveIndex;
+
+            // 목표가 이미 완료되었는지 확인
             if (objectiveIndex >= 0 && progressService.IsObjectiveCompleted(task.NormalizedName!, objectiveIndex))
             {
                 objective.IsCompleted = true;
@@ -522,19 +525,83 @@ public sealed class QuestObjectiveService : IDisposable
     /// </summary>
     private static int GetObjectiveIndex(TarkovTask task, string description)
     {
-        if (task.Objectives == null) return -1;
+        if (task.Objectives == null || task.Objectives.Count == 0) return -1;
+        if (string.IsNullOrEmpty(description)) return -1;
 
+        // 정규화된 설명
+        var normalizedDesc = NormalizeText(description);
+
+        // 1차: 정확한 매칭 시도
         for (int i = 0; i < task.Objectives.Count; i++)
         {
-            // 부분 매칭 (API 설명이 더 짧을 수 있음)
-            if (task.Objectives[i].Contains(description, StringComparison.OrdinalIgnoreCase) ||
-                description.Contains(task.Objectives[i], StringComparison.OrdinalIgnoreCase))
+            var normalizedObj = NormalizeText(task.Objectives[i]);
+            if (normalizedObj == normalizedDesc)
             {
                 return i;
             }
         }
 
+        // 2차: 부분 매칭 (한 쪽이 다른 쪽을 포함)
+        for (int i = 0; i < task.Objectives.Count; i++)
+        {
+            var normalizedObj = NormalizeText(task.Objectives[i]);
+            if (normalizedObj.Contains(normalizedDesc) || normalizedDesc.Contains(normalizedObj))
+            {
+                return i;
+            }
+        }
+
+        // 3차: 핵심 키워드 매칭 (숫자, 아이템명 등)
+        for (int i = 0; i < task.Objectives.Count; i++)
+        {
+            var normalizedObj = NormalizeText(task.Objectives[i]);
+            // 두 문자열에서 공통 단어가 50% 이상이면 매칭
+            var descWords = normalizedDesc.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var objWords = normalizedObj.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            if (descWords.Length == 0 || objWords.Length == 0) continue;
+
+            var commonWords = descWords.Intersect(objWords, StringComparer.OrdinalIgnoreCase).Count();
+            var minWords = Math.Min(descWords.Length, objWords.Length);
+
+            if (minWords > 0 && (double)commonWords / minWords >= 0.5)
+            {
+                return i;
+            }
+        }
+
+        // 4차: 위치 정보가 있는 목표면 맵 이름으로 찾기 (visit, mark 등)
+        // 목표가 하나뿐이면 그것으로 반환
+        if (task.Objectives.Count == 1)
+        {
+            return 0;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[GetObjectiveIndex] Failed to match: task={task.NormalizedName}, desc={description}");
         return -1;
+    }
+
+    /// <summary>
+    /// 텍스트 정규화 (대소문자, 특수문자 제거)
+    /// </summary>
+    private static string NormalizeText(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+
+        // 소문자로 변환하고 특수문자 제거
+        var normalized = text.ToLowerInvariant()
+            .Replace("\u2019", "'")  // Right single quotation mark
+            .Replace("\u2018", "'")  // Left single quotation mark
+            .Replace("\u201C", "\"") // Left double quotation mark
+            .Replace("\u201D", "\""); // Right double quotation mark
+
+        // 연속 공백 제거
+        while (normalized.Contains("  "))
+        {
+            normalized = normalized.Replace("  ", " ");
+        }
+
+        return normalized.Trim();
     }
 
     /// <summary>
