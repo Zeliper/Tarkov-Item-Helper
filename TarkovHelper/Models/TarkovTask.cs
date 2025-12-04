@@ -77,6 +77,13 @@ namespace TarkovHelper.Models
         public int? RequiredLevel { get; set; }
 
         /// <summary>
+        /// Required Scav Karma (Fence reputation) for this quest
+        /// Positive value means >= requirement, negative means <= requirement
+        /// </summary>
+        [JsonPropertyName("requiredScavKarma")]
+        public double? RequiredScavKarma { get; set; }
+
+        /// <summary>
         /// Required skills for this quest
         /// </summary>
         [JsonPropertyName("requiredSkills")]

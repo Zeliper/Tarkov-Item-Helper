@@ -252,268 +252,308 @@
                                FontSize="{DynamicResource FontSizeSmall}" Foreground="{StaticResource TextSecondaryBrush}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="DetailPanel" Visibility="Collapsed">
-                        <!-- Quest Title -->
-                        <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource AccentBrush}"
-                                   TextWrapping="Wrap" Margin="0,0,0,4"/>
-                        <TextBlock x:Name="TxtDetailSubtitle" FontSize="{DynamicResource FontSizeXSmall}"
-                                   Foreground="{StaticResource TextSecondaryBrush}"
-                                   TextWrapping="Wrap" Margin="0,0,0,8"/>
+                    <Grid x:Name="DetailPanel" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
 
-                        <!-- Actions (Top) -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <Button x:Name="BtnWiki" Content="Wiki" Padding="12,6"
-                                    Margin="0,0,8,0" Click="BtnWiki_Click"/>
-                            <Button x:Name="BtnComplete" Content="Mark Complete" Padding="12,6"
-                                    Margin="0,0,8,0" Click="BtnComplete_Click"/>
-                            <Button x:Name="BtnReset" Content="Reset" Padding="12,6"
-                                    Click="BtnReset_Click"/>
-                        </StackPanel>
+                        <!-- Fixed Header Section -->
+                        <StackPanel Grid.Row="0">
+                            <!-- Quest Title -->
+                            <TextBlock x:Name="TxtDetailName" FontSize="{DynamicResource FontSizeLarge}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,4"/>
+                            <TextBlock x:Name="TxtDetailSubtitle" FontSize="{DynamicResource FontSizeXSmall}"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
 
-                        <!-- Trader & Status -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="Trader: " FontSize="{DynamicResource FontSizeXSmall}"
-                                       Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock x:Name="TxtDetailTrader" FontSize="{DynamicResource FontSizeXSmall}"
-                                       Foreground="{StaticResource TextPrimaryBrush}"/>
-                            <TextBlock Text="  |  Status: " FontSize="{DynamicResource FontSizeXSmall}"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0"/>
-                            <Border x:Name="DetailStatusBadge" Padding="6,2" CornerRadius="3">
-                                <TextBlock x:Name="TxtDetailStatus" FontSize="{DynamicResource FontSizeTiny}"
-                                           Foreground="White" FontWeight="SemiBold"/>
-                            </Border>
-                        </StackPanel>
-
-                        <!-- Map -->
-                        <StackPanel x:Name="MapInfoPanel" Orientation="Horizontal" Margin="0,0,0,16">
-                            <TextBlock Text="Map: " FontSize="{DynamicResource FontSizeXSmall}"
-                                       Foreground="{StaticResource TextSecondaryBrush}"/>
-                            <TextBlock x:Name="TxtDetailMap" FontSize="{DynamicResource FontSizeXSmall}"
-                                       Foreground="{StaticResource TextPrimaryBrush}"/>
-                        </StackPanel>
-
-                        <!-- Required Items Section -->
-                        <TextBlock Text="Required Items" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}"
-                                   Margin="0,0,0,8"
-                                   x:Name="TxtRequiredItemsHeader"/>
-                        <Border Background="{StaticResource BackgroundDarkBrush}"
-                                CornerRadius="4" Padding="12" Margin="0,0,0,16"
-                                x:Name="RequiredItemsSection">
-                            <ItemsControl x:Name="RequiredItemsList">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="0,4"
-                                                    Cursor="Hand"
-                                                    Opacity="{Binding ItemOpacity}"
-                                                    MouseLeftButtonDown="ItemName_Click">
-                                            <StackPanel.Style>
-                                                <Style TargetType="StackPanel">
-                                                    <Setter Property="Background" Value="Transparent"/>
-                                                    <Style.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
-                                                        </Trigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </StackPanel.Style>
-                                            <!-- Item Icon -->
-                                            <Border Width="32" Height="32" CornerRadius="4"
-                                                    Background="{StaticResource BackgroundMediumBrush}"
-                                                    Margin="0,0,8,0">
-                                                <Grid>
-                                                    <Image Source="{Binding IconSource}"
-                                                           Width="28" Height="28"
-                                                           Stretch="Uniform"
-                                                           RenderOptions.BitmapScalingMode="HighQuality"/>
-                                                    <!-- Fulfilled checkmark overlay -->
-                                                    <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeMedium}" FontWeight="Bold"
-                                                               Foreground="{StaticResource SuccessBrush}"
-                                                               HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                               Margin="0,0,1,0"
-                                                               Visibility="{Binding FulfilledVisibility}"/>
-                                                </Grid>
-                                            </Border>
-                                            <!-- Item Info -->
-                                            <StackPanel VerticalAlignment="Center">
-                                                <StackPanel Orientation="Horizontal">
-                                                    <TextBlock Text="{Binding DisplayText}" FontSize="{DynamicResource FontSizeXSmall}"
-                                                               TextDecorations="{Binding TextDecorations}">
-                                                        <TextBlock.Style>
-                                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsFulfilled}" Value="True">
-                                                                        <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-                                                                    </DataTrigger>
-                                                                    <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=StackPanel}}" Value="True">
-                                                                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </TextBlock.Style>
-                                                    </TextBlock>
-                                                    <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
-                                                            Background="{StaticResource WarningBrush}"
-                                                            Visibility="{Binding FirVisibility}">
-                                                        <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
-                                                    </Border>
-                                                </StackPanel>
-                                                <TextBlock Text="{Binding RequirementType}" FontSize="{DynamicResource FontSizeTiny}"
-                                                           Foreground="{StaticResource TextSecondaryBrush}"
-                                                           Visibility="{Binding RequirementTypeVisibility}"/>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Border>
-
-                        <!-- Kappa Progress Section (for Collector quest) -->
-                        <StackPanel x:Name="KappaProgressSection" Visibility="Collapsed" Margin="0,0,0,16">
-                            <TextBlock Text="Kappa Progress" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       Margin="0,0,0,8"/>
-                            <Border Background="{StaticResource BackgroundDarkBrush}"
-                                    CornerRadius="4" Padding="12">
-                                <StackPanel>
-                                    <!-- Progress Text -->
-                                    <TextBlock x:Name="TxtKappaProgress" FontSize="{DynamicResource FontSizeSmall}"
-                                               Foreground="{StaticResource TextPrimaryBrush}"
-                                               Margin="0,0,0,8"/>
-                                    <!-- Progress Bar -->
-                                    <Grid Height="20" Margin="0,0,0,8">
-                                        <Border Background="#333333" CornerRadius="4"/>
-                                        <Border x:Name="KappaProgressBar" Background="#9C27B0"
-                                                CornerRadius="4" HorizontalAlignment="Left"/>
-                                        <TextBlock x:Name="TxtKappaProgressPercent"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                   FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold" Foreground="White"/>
-                                    </Grid>
-                                    <!-- Show All Button -->
-                                    <Button x:Name="BtnShowKappaQuests" Content="Show All Required Quests"
-                                            Padding="8,4" Click="BtnShowKappaQuests_Click"/>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-
-                        <!-- Requirements Section -->
-                        <TextBlock Text="Requirements" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}"
-                                   Margin="0,0,0,8"/>
-                        <Border Background="{StaticResource BackgroundDarkBrush}"
-                                CornerRadius="4" Padding="12" Margin="0,0,0,16">
-                            <StackPanel x:Name="RequirementsPanel">
-                                <TextBlock x:Name="TxtRequiredLevel" FontSize="{DynamicResource FontSizeXSmall}"
-                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                           Margin="0,0,0,4"/>
+                            <!-- Actions (Top) -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                <Button x:Name="BtnWiki" Content="Wiki" Padding="12,6"
+                                        Margin="0,0,8,0" Click="BtnWiki_Click"/>
+                                <Button x:Name="BtnComplete" Content="Mark Complete" Padding="12,6"
+                                        Margin="0,0,8,0" Click="BtnComplete_Click"/>
+                                <Button x:Name="BtnReset" Content="Reset" Padding="12,6"
+                                        Click="BtnReset_Click"/>
                             </StackPanel>
-                        </Border>
 
-                        <!-- Objectives Section -->
-                        <StackPanel x:Name="ObjectivesSection" Visibility="Collapsed">
-                            <TextBlock Text="Objectives" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       Margin="0,0,0,8"/>
-                            <Border Background="{StaticResource BackgroundDarkBrush}"
-                                    CornerRadius="4" Margin="0,0,0,16">
-                                <ScrollViewer MaxHeight="200"
-                                              VerticalScrollBarVisibility="Auto"
-                                              HorizontalScrollBarVisibility="Disabled">
-                                    <StackPanel x:Name="ObjectivesList" Margin="12"/>
-                                </ScrollViewer>
-                            </Border>
+                            <!-- Trader & Status -->
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="Trader: " FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtDetailTrader" FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                                <TextBlock Text="  |  Status: " FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}" Margin="8,0,0,0"/>
+                                <Border x:Name="DetailStatusBadge" Padding="6,2" CornerRadius="3">
+                                    <TextBlock x:Name="TxtDetailStatus" FontSize="{DynamicResource FontSizeTiny}"
+                                               Foreground="White" FontWeight="SemiBold"/>
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Map -->
+                            <StackPanel x:Name="MapInfoPanel" Orientation="Horizontal" Margin="0,0,0,16">
+                                <TextBlock Text="Map: " FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtDetailMap" FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{StaticResource TextPrimaryBrush}"/>
+                            </StackPanel>
                         </StackPanel>
 
-                        <!-- Guide Section -->
-                        <StackPanel x:Name="GuideSection" Visibility="Collapsed">
-                            <TextBlock Text="Guide" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       Margin="0,0,0,8"/>
-                            <Border Background="{StaticResource BackgroundDarkBrush}"
-                                    CornerRadius="4" Padding="12" Margin="0,0,0,16">
-                                <StackPanel>
-                                    <!-- Guide Text - Scrollable TextBox -->
-                                    <Border x:Name="GuideTextSection" Visibility="Collapsed"
-                                            Background="{StaticResource BackgroundMediumBrush}"
-                                            CornerRadius="4" Margin="0,0,0,8">
-                                        <ScrollViewer MaxHeight="250"
-                                                      VerticalScrollBarVisibility="Auto"
-                                                      HorizontalScrollBarVisibility="Disabled">
-                                            <TextBlock x:Name="TxtGuideText" FontSize="{DynamicResource FontSizeXSmall}"
-                                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                                       TextWrapping="Wrap" Padding="10"/>
-                                        </ScrollViewer>
-                                    </Border>
-
-                                    <!-- Guide Images with Expander -->
-                                    <Expander x:Name="GuideImagesExpander" IsExpanded="False"
-                                              Visibility="Collapsed"
-                                              Expanded="GuideImagesExpander_Expanded">
-                                        <Expander.Header>
-                                            <TextBlock x:Name="TxtGuideImagesHeader" Text="View Images" FontSize="{DynamicResource FontSizeTiny}"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"/>
-                                        </Expander.Header>
-                                        <ItemsControl x:Name="GuideImagesList" Margin="0,8,0,0">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel Orientation="Horizontal"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
+                        <!-- Scrollable Content Section -->
+                        <ScrollViewer x:Name="DetailScrollViewer" Grid.Row="1"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <StackPanel>
+                                <!-- Required Items Section -->
+                                <StackPanel x:Name="RequiredItemsSectionWrapper" Visibility="Collapsed">
+                                    <TextBlock Text="Required Items" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"
+                                               x:Name="TxtRequiredItemsHeader"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16"
+                                            x:Name="RequiredItemsSection">
+                                        <ItemsControl x:Name="RequiredItemsList">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border Margin="0,0,8,8" BorderThickness="1"
-                                                            BorderBrush="{StaticResource BorderBrush}"
-                                                            CornerRadius="4" Background="{StaticResource BackgroundMediumBrush}"
-                                                            Cursor="Hand" MouseLeftButtonDown="GuideImage_Click">
-                                                        <StackPanel>
-                                                            <Image Source="{Binding ImageSource}"
-                                                                   Width="140" Height="80"
-                                                                   Stretch="UniformToFill"
-                                                                   RenderOptions.BitmapScalingMode="HighQuality"/>
-                                                            <TextBlock Text="{Binding Caption}" FontSize="{DynamicResource FontSizeTiny}"
+                                                    <StackPanel Orientation="Horizontal" Margin="0,4"
+                                                                Cursor="Hand"
+                                                                Opacity="{Binding ItemOpacity}"
+                                                                MouseLeftButtonDown="ItemName_Click">
+                                                        <StackPanel.Style>
+                                                            <Style TargetType="StackPanel">
+                                                                <Setter Property="Background" Value="Transparent"/>
+                                                                <Style.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="{StaticResource BackgroundMediumBrush}"/>
+                                                                    </Trigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </StackPanel.Style>
+                                                        <!-- Item Icon -->
+                                                        <Border Width="32" Height="32" CornerRadius="4"
+                                                                Background="{StaticResource BackgroundMediumBrush}"
+                                                                Margin="0,0,8,0">
+                                                            <Grid>
+                                                                <Image Source="{Binding IconSource}"
+                                                                       Width="28" Height="28"
+                                                                       Stretch="Uniform"
+                                                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                                <!-- Fulfilled checkmark overlay -->
+                                                                <TextBlock Text="&#x2713;" FontSize="{DynamicResource FontSizeMedium}" FontWeight="Bold"
+                                                                           Foreground="{StaticResource SuccessBrush}"
+                                                                           HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                                           Margin="0,0,1,0"
+                                                                           Visibility="{Binding FulfilledVisibility}"/>
+                                                            </Grid>
+                                                        </Border>
+                                                        <!-- Item Info -->
+                                                        <StackPanel VerticalAlignment="Center">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="{Binding DisplayText}" FontSize="{DynamicResource FontSizeXSmall}"
+                                                                           TextDecorations="{Binding TextDecorations}">
+                                                                    <TextBlock.Style>
+                                                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                                                                            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsFulfilled}" Value="True">
+                                                                                    <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+                                                                                </DataTrigger>
+                                                                                <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=StackPanel}}" Value="True">
+                                                                                    <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBlock.Style>
+                                                                </TextBlock>
+                                                                <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
+                                                                        Background="{StaticResource WarningBrush}"
+                                                                        Visibility="{Binding FirVisibility}">
+                                                                    <TextBlock Text="FIR" FontSize="{DynamicResource FontSizeTiny}" Foreground="White"/>
+                                                                </Border>
+                                                            </StackPanel>
+                                                            <TextBlock Text="{Binding RequirementType}" FontSize="{DynamicResource FontSizeTiny}"
                                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       TextAlignment="Center"
-                                                                       MaxWidth="140" Margin="4,2"
-                                                                       Visibility="{Binding CaptionVisibility}"/>
+                                                                       Visibility="{Binding RequirementTypeVisibility}"/>
                                                         </StackPanel>
-                                                    </Border>
+                                                    </StackPanel>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                    </Expander>
+                                    </Border>
                                 </StackPanel>
-                            </Border>
-                        </StackPanel>
 
-                        <!-- Prerequisites Section -->
-                        <TextBlock Text="Prerequisites" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                                   Foreground="{StaticResource TextPrimaryBrush}"
-                                   Margin="0,0,0,8"/>
-                        <Border Background="{StaticResource BackgroundDarkBrush}"
-                                CornerRadius="4" Padding="12" Margin="0,0,0,16">
-                            <ItemsControl x:Name="PrerequisitesList">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2">
-                                            <TextBlock Text="- " Foreground="{StaticResource TextSecondaryBrush}"/>
-                                            <TextBlock Text="{Binding DisplayName}"
-                                                       Foreground="{StaticResource TextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"/>
-                                            <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
-                                                    Background="{Binding StatusBackground}">
-                                                <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSizeTiny}"
-                                                           Foreground="White"/>
-                                            </Border>
+                                <!-- Kappa Progress Section (for Collector quest) -->
+                                <StackPanel x:Name="KappaProgressSection" Visibility="Collapsed" Margin="0,0,0,16">
+                                    <TextBlock Text="Kappa Progress" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12">
+                                        <StackPanel>
+                                            <!-- Progress Text -->
+                                            <TextBlock x:Name="TxtKappaProgress" FontSize="{DynamicResource FontSizeSmall}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       Margin="0,0,0,8"/>
+                                            <!-- Progress Bar -->
+                                            <Grid Height="20" Margin="0,0,0,8">
+                                                <Border Background="#333333" CornerRadius="4"/>
+                                                <Border x:Name="KappaProgressBar" Background="#9C27B0"
+                                                        CornerRadius="4" HorizontalAlignment="Left"/>
+                                                <TextBlock x:Name="TxtKappaProgressPercent"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold" Foreground="White"/>
+                                            </Grid>
+                                            <!-- Show All Button -->
+                                            <Button x:Name="BtnShowKappaQuests" Content="Show All Required Quests"
+                                                    Padding="8,4" Click="BtnShowKappaQuests_Click"/>
                                         </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Border>
-                        </StackPanel>
-                    </ScrollViewer>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Requirements Section -->
+                                <StackPanel x:Name="RequirementsSectionWrapper" Visibility="Collapsed">
+                                    <TextBlock Text="Requirements" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                        <StackPanel x:Name="RequirementsPanel">
+                                            <TextBlock x:Name="TxtRequiredLevel" FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       Margin="0,0,0,4"/>
+                                            <TextBlock x:Name="TxtRequiredScavKarma" FontSize="{DynamicResource FontSizeXSmall}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       Margin="0,0,0,4"/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Objectives Section -->
+                                <StackPanel x:Name="ObjectivesSection" Visibility="Collapsed">
+                                    <TextBlock Text="Objectives" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Margin="0,0,0,16">
+                                        <ScrollViewer x:Name="ObjectivesScrollViewer" MaxHeight="200"
+                                                      VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled"
+                                                      PreviewMouseWheel="NestedScrollViewer_PreviewMouseWheel">
+                                            <StackPanel x:Name="ObjectivesList" Margin="12"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Guide Section -->
+                                <StackPanel x:Name="GuideSection" Visibility="Collapsed">
+                                    <TextBlock Text="Guide" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                        <StackPanel>
+                                            <!-- Guide Text - Scrollable TextBox -->
+                                            <Border x:Name="GuideTextSection" Visibility="Collapsed"
+                                                    Background="{StaticResource BackgroundMediumBrush}"
+                                                    CornerRadius="4" Margin="0,0,0,8">
+                                                <ScrollViewer x:Name="GuideTextScrollViewer" MaxHeight="250"
+                                                              VerticalScrollBarVisibility="Auto"
+                                                              HorizontalScrollBarVisibility="Disabled"
+                                                              PreviewMouseWheel="NestedScrollViewer_PreviewMouseWheel">
+                                                    <TextBlock x:Name="TxtGuideText" FontSize="{DynamicResource FontSizeXSmall}"
+                                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                                               TextWrapping="Wrap" Padding="10"/>
+                                                </ScrollViewer>
+                                            </Border>
+
+                                            <!-- Guide Images with Expander -->
+                                            <Expander x:Name="GuideImagesExpander" IsExpanded="False"
+                                                      Visibility="Collapsed"
+                                                      Expanded="GuideImagesExpander_Expanded">
+                                                <Expander.Header>
+                                                    <TextBlock x:Name="TxtGuideImagesHeader" Text="View Images" FontSize="{DynamicResource FontSizeTiny}"
+                                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                </Expander.Header>
+                                                <ItemsControl x:Name="GuideImagesList" Margin="0,8,0,0">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate>
+                                                            <WrapPanel Orientation="Horizontal"/>
+                                                        </ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,8,8" BorderThickness="1"
+                                                                    BorderBrush="{StaticResource BorderBrush}"
+                                                                    CornerRadius="4" Background="{StaticResource BackgroundMediumBrush}"
+                                                                    Cursor="Hand" MouseLeftButtonDown="GuideImage_Click">
+                                                                <StackPanel>
+                                                                    <Grid Width="140" Height="80">
+                                                                        <!-- Loading Placeholder -->
+                                                                        <Border Background="{StaticResource BackgroundDarkBrush}"
+                                                                                Visibility="{Binding LoadingVisibility}">
+                                                                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                                                <ProgressBar IsIndeterminate="True"
+                                                                                             Width="60" Height="4"
+                                                                                             Margin="0,0,0,6"/>
+                                                                                <TextBlock Text="Loading..."
+                                                                                           FontSize="{DynamicResource FontSizeTiny}"
+                                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                                           HorizontalAlignment="Center"/>
+                                                                            </StackPanel>
+                                                                        </Border>
+                                                                        <!-- Actual Image -->
+                                                                        <Image Source="{Binding ImageSource}"
+                                                                               Stretch="UniformToFill"
+                                                                               RenderOptions.BitmapScalingMode="HighQuality"
+                                                                               Visibility="{Binding ImageVisibility}"/>
+                                                                    </Grid>
+                                                                    <TextBlock Text="{Binding Caption}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               TextAlignment="Center"
+                                                                               MaxWidth="140" Margin="4,2"
+                                                                               Visibility="{Binding CaptionVisibility}"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </Expander>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+
+                                <!-- Prerequisites Section -->
+                                <StackPanel x:Name="PrerequisitesSectionWrapper" Visibility="Collapsed">
+                                    <TextBlock Text="Prerequisites" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    <Border Background="{StaticResource BackgroundDarkBrush}"
+                                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                                        <ItemsControl x:Name="PrerequisitesList">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,2">
+                                                        <TextBlock Text="- " Foreground="{StaticResource TextSecondaryBrush}"/>
+                                                        <TextBlock Text="{Binding DisplayName}"
+                                                                   Foreground="{StaticResource TextPrimaryBrush}" FontSize="{DynamicResource FontSizeXSmall}"/>
+                                                        <Border Padding="4,1" CornerRadius="2" Margin="8,0,0,0"
+                                                                Background="{Binding StatusBackground}">
+                                                            <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource FontSizeTiny}"
+                                                                       Foreground="White"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

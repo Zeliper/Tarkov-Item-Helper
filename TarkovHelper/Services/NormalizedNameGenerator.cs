@@ -16,6 +16,7 @@ namespace TarkovHelper.Services
         private static readonly Dictionary<string, string> QuestNameOverrides = new(StringComparer.OrdinalIgnoreCase)
         {
             { "immunity", "immunity-quest" },  // Conflicts with Immunity skill
+            { "reserve", "reserve-quest" },    // Conflicts with Reserve map
         };
 
         /// <summary>
@@ -24,7 +25,8 @@ namespace TarkovHelper.Services
         /// </summary>
         private static readonly Dictionary<string, string> WikiUrlOverrides = new(StringComparer.OrdinalIgnoreCase)
         {
-            { "Immunity", "Immunity_(quest)" },  // Quest page has disambiguation suffix
+            { "Immunity", "Immunity_(quest)" },  // Quest page has disambiguation suffix (conflicts with skill)
+            { "Reserve", "Reserve_(quest)" },    // Quest page has disambiguation suffix (conflicts with map)
         };
 
         /// <summary>

@@ -156,6 +156,56 @@ namespace TarkovHelper.Services
 
         #endregion
 
+        #region Scav Karma Requirements
+
+        /// <summary>
+        /// Parse required Scav Karma from wiki content
+        /// </summary>
+        /// <param name="wikiContent">Raw wiki file content</param>
+        /// <returns>Required Scav Karma or null if not specified</returns>
+        public static double? ParseRequiredScavKarma(string wikiContent)
+        {
+            // Pattern 1: Wiki link format "[[Scavs#Scav karma|Scav karma]] of [at least] [+/-]X"
+            // Examples:
+            //   [[Scavs#Scav karma|Scav karma]] of -1
+            //   [[Scavs#Scav karma|Scav karma]] of at least +4
+            var match = Regex.Match(wikiContent,
+                @"\[\[[^\]]*\|?Scav\s*karma\]\]\s*of\s*(?:at\s+least\s+)?([+-]?\d+(?:\.\d+)?)",
+                RegexOptions.IgnoreCase);
+            if (match.Success && double.TryParse(match.Groups[1].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var karma))
+            {
+                return karma;
+            }
+
+            // Pattern 2: Simple format "Scav karma of [at least] X"
+            match = Regex.Match(wikiContent,
+                @"Scav\s+karma\s+of\s+(?:at\s+least\s+)?([+-]?\d+(?:\.\d+)?)",
+                RegexOptions.IgnoreCase);
+            if (match.Success && double.TryParse(match.Groups[1].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out karma))
+            {
+                return karma;
+            }
+
+            // Pattern 3: "Fence reputation of X" or "Fence rep of X"
+            match = Regex.Match(wikiContent,
+                @"Fence\s+(?:reputation|rep)\s+of\s+(?:at\s+least\s+)?([+-]?\d+(?:\.\d+)?)",
+                RegexOptions.IgnoreCase);
+            if (match.Success && double.TryParse(match.Groups[1].Value,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out karma))
+            {
+                return karma;
+            }
+
+            return null;
+        }
+
+        #endregion
+
         #region Skill Requirements
 
         /// <summary>
@@ -528,6 +578,7 @@ namespace TarkovHelper.Services
                 LeadsTo = ParseLeadsToQuests(wikiContent),
                 Maps = ParseMaps(wikiContent),
                 RequiredLevel = ParseRequiredLevel(wikiContent),
+                RequiredScavKarma = ParseRequiredScavKarma(wikiContent),
                 RequiredSkills = ParseSkillRequirements(wikiContent),
                 RequiredItems = ParseRequiredItems(wikiContent),
                 Objectives = ParseObjectives(wikiContent),
@@ -691,6 +742,7 @@ namespace TarkovHelper.Services
         public List<string>? LeadsTo { get; set; }
         public List<string>? Maps { get; set; }
         public int? RequiredLevel { get; set; }
+        public double? RequiredScavKarma { get; set; }
         public List<SkillRequirement>? RequiredSkills { get; set; }
         public List<QuestItem>? RequiredItems { get; set; }
         public List<string>? Objectives { get; set; }

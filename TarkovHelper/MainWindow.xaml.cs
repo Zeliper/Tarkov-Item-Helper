@@ -41,6 +41,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         _loc.LanguageChanged += OnLanguageChanged;
         _settingsService.PlayerLevelChanged += OnPlayerLevelChanged;
+        _settingsService.ScavRepChanged += OnScavRepChanged;
+        _settingsService.DspDecodeCountChanged += OnDspDecodeCountChanged;
 
         // Apply dark title bar
         SourceInitialized += (s, e) => EnableDarkTitleBar();
@@ -91,6 +93,12 @@ public partial class MainWindow : Window
 
         // Initialize player level UI
         UpdatePlayerLevelUI();
+
+        // Initialize Scav Rep UI
+        UpdateScavRepUI();
+
+        // Initialize DSP Decode Count UI
+        UpdateDspDecodeUI();
 
         UpdateAllLocalizedText();
 
@@ -387,6 +395,170 @@ public partial class MainWindow : Window
             // Reset to current value if invalid
             TxtPlayerLevel.Text = _settingsService.PlayerLevel.ToString();
         }
+    }
+
+    #endregion
+
+    #region Scav Rep
+
+    /// <summary>
+    /// Update Scav Rep UI
+    /// </summary>
+    private void UpdateScavRepUI()
+    {
+        var scavRep = _settingsService.ScavRep;
+        TxtScavRep.Text = scavRep.ToString("0.0");
+
+        // Disable buttons at min/max Scav Rep
+        BtnScavRepDown.IsEnabled = scavRep > SettingsService.MinScavRep;
+        BtnScavRepUp.IsEnabled = scavRep < SettingsService.MaxScavRep;
+    }
+
+    /// <summary>
+    /// Handle Scav Rep decrease
+    /// </summary>
+    private void BtnScavRepDown_Click(object sender, RoutedEventArgs e)
+    {
+        _settingsService.ScavRep -= SettingsService.ScavRepStep;
+    }
+
+    /// <summary>
+    /// Handle Scav Rep increase
+    /// </summary>
+    private void BtnScavRepUp_Click(object sender, RoutedEventArgs e)
+    {
+        _settingsService.ScavRep += SettingsService.ScavRepStep;
+    }
+
+    /// <summary>
+    /// Handle Scav Rep change from settings service
+    /// </summary>
+    private void OnScavRepChanged(object? sender, double newScavRep)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            UpdateScavRepUI();
+
+            // Refresh quest list if visible
+            _questListPage?.RefreshDisplay();
+        });
+    }
+
+    /// <summary>
+    /// Allow numeric input including decimal point and minus sign for Scav Rep
+    /// </summary>
+    private void TxtScavRep_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        var textBox = sender as TextBox;
+        var currentText = textBox?.Text ?? "";
+        var newChar = e.Text;
+
+        // Allow minus sign only at the beginning
+        if (newChar == "-")
+        {
+            e.Handled = currentText.Contains('-') || (textBox?.CaretIndex ?? 0) != 0;
+            return;
+        }
+
+        // Allow decimal point only once
+        if (newChar == "." || newChar == ",")
+        {
+            e.Handled = currentText.Contains('.') || currentText.Contains(',');
+            return;
+        }
+
+        // Allow digits
+        e.Handled = !char.IsDigit(newChar[0]);
+    }
+
+    /// <summary>
+    /// Apply Scav Rep when losing focus
+    /// </summary>
+    private void TxtScavRep_LostFocus(object sender, RoutedEventArgs e)
+    {
+        ApplyScavRepFromTextBox();
+    }
+
+    /// <summary>
+    /// Apply Scav Rep when pressing Enter
+    /// </summary>
+    private void TxtScavRep_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ApplyScavRepFromTextBox();
+            Keyboard.ClearFocus();
+        }
+    }
+
+    /// <summary>
+    /// Parse and apply Scav Rep from TextBox input
+    /// </summary>
+    private void ApplyScavRepFromTextBox()
+    {
+        var text = TxtScavRep.Text.Replace(',', '.');
+        if (double.TryParse(text, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var scavRep))
+        {
+            // Clamp to valid range and round to 1 decimal place
+            scavRep = Math.Round(Math.Clamp(scavRep, SettingsService.MinScavRep, SettingsService.MaxScavRep), 1);
+            _settingsService.ScavRep = scavRep;
+        }
+        else
+        {
+            // Reset to current value if invalid
+            TxtScavRep.Text = _settingsService.ScavRep.ToString("0.0");
+        }
+    }
+
+    #endregion
+
+    #region DSP Decode Count
+
+    /// <summary>
+    /// Update DSP Decode Count UI - highlight the selected button
+    /// </summary>
+    private void UpdateDspDecodeUI()
+    {
+        var dspCount = _settingsService.DspDecodeCount;
+
+        // Reset all buttons to default style
+        var buttons = new[] { BtnDsp0, BtnDsp1, BtnDsp2, BtnDsp3 };
+        foreach (var btn in buttons)
+        {
+            btn.Background = (Brush)FindResource("BackgroundMediumBrush");
+            btn.Foreground = (Brush)FindResource("TextPrimaryBrush");
+        }
+
+        // Highlight the selected button
+        var selectedBtn = buttons[dspCount];
+        selectedBtn.Background = (Brush)FindResource("AccentBrush");
+        selectedBtn.Foreground = (Brush)FindResource("BackgroundDarkBrush");
+    }
+
+    /// <summary>
+    /// Handle DSP Decode button click
+    /// </summary>
+    private void BtnDsp_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string tagStr && int.TryParse(tagStr, out var count))
+        {
+            _settingsService.DspDecodeCount = count;
+        }
+    }
+
+    /// <summary>
+    /// Handle DSP Decode Count change from settings service
+    /// </summary>
+    private void OnDspDecodeCountChanged(object? sender, int newCount)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            UpdateDspDecodeUI();
+
+            // Refresh quest list if visible
+            _questListPage?.RefreshDisplay();
+        });
     }
 
     #endregion

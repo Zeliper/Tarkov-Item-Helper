@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
+using TarkovHelper.Debug;
 
 namespace TarkovHelper.Services;
 
@@ -19,12 +20,9 @@ public class SettingsService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    private static string DataDirectory => Path.Combine(
-        AppDomain.CurrentDomain.BaseDirectory,
-        "Data"
-    );
+    private static string ConfigDirectory => AppEnv.ConfigPath;
 
-    private static string SettingsPath => Path.Combine(DataDirectory, "app_settings.json");
+    private static string SettingsPath => Path.Combine(ConfigDirectory, "app_settings.json");
 
     private AppSettingsData _settings = new();
     private bool _settingsLoaded;
@@ -32,7 +30,9 @@ public class SettingsService
 
     public event EventHandler<string?>? LogFolderChanged;
     public event EventHandler<int>? PlayerLevelChanged;
+    public event EventHandler<double>? ScavRepChanged;
     public event EventHandler<double>? BaseFontSizeChanged;
+    public event EventHandler<int>? DspDecodeCountChanged;
 
     private SettingsService()
     {
@@ -47,11 +47,26 @@ public class SettingsService
     public const int DefaultPlayerLevel = 15;
 
     /// <summary>
+    /// Scav Rep constants
+    /// </summary>
+    public const double MinScavRep = -6.0;
+    public const double MaxScavRep = 6.0;
+    public const double DefaultScavRep = 1.0;
+    public const double ScavRepStep = 0.1;
+
+    /// <summary>
     /// Font size constants
     /// </summary>
     public const double MinFontSize = 10;
     public const double MaxFontSize = 28;
     public const double DefaultBaseFontSize = 18;
+
+    /// <summary>
+    /// DSP Decode count constants (for Make Amends quest branches)
+    /// </summary>
+    public const int MinDspDecodeCount = 0;
+    public const int MaxDspDecodeCount = 3;
+    public const int DefaultDspDecodeCount = 0;
 
     /// <summary>
     /// Player level for quest filtering
@@ -95,6 +110,31 @@ public class SettingsService
         {
             _settings.ShowLevelLockedQuests = value;
             SaveSettings();
+        }
+    }
+
+    /// <summary>
+    /// Scav reputation for quest filtering (Fence karma)
+    /// </summary>
+    public double ScavRep
+    {
+        get
+        {
+            if (!_settingsLoaded)
+            {
+                LoadSettings();
+            }
+            return _settings.ScavRep ?? DefaultScavRep;
+        }
+        set
+        {
+            var clampedValue = Math.Round(Math.Clamp(value, MinScavRep, MaxScavRep), 1);
+            if (Math.Abs((_settings.ScavRep ?? DefaultScavRep) - clampedValue) > 0.01)
+            {
+                _settings.ScavRep = clampedValue;
+                SaveSettings();
+                ScavRepChanged?.Invoke(this, clampedValue);
+            }
         }
     }
 
@@ -210,6 +250,32 @@ public class SettingsService
                 _settings.BaseFontSize = clampedValue;
                 SaveSettings();
                 BaseFontSizeChanged?.Invoke(this, clampedValue);
+            }
+        }
+    }
+
+    /// <summary>
+    /// DSP Radio Transmitter decode count for Make Amends quest branches
+    /// 0 = Buyout, 1 = Security, 2 or 3 = Software
+    /// </summary>
+    public int DspDecodeCount
+    {
+        get
+        {
+            if (!_settingsLoaded)
+            {
+                LoadSettings();
+            }
+            return _settings.DspDecodeCount ?? DefaultDspDecodeCount;
+        }
+        set
+        {
+            var clampedValue = Math.Clamp(value, MinDspDecodeCount, MaxDspDecodeCount);
+            if (_settings.DspDecodeCount != clampedValue)
+            {
+                _settings.DspDecodeCount = clampedValue;
+                SaveSettings();
+                DspDecodeCountChanged?.Invoke(this, clampedValue);
             }
         }
     }
@@ -480,9 +546,9 @@ public class SettingsService
     {
         try
         {
-            if (!Directory.Exists(DataDirectory))
+            if (!Directory.Exists(ConfigDirectory))
             {
-                Directory.CreateDirectory(DataDirectory);
+                Directory.CreateDirectory(ConfigDirectory);
             }
 
             var json = JsonSerializer.Serialize(_settings, JsonOptions);
@@ -533,9 +599,11 @@ public class SettingsService
     {
         public string? LogFolderPath { get; set; }
         public int? PlayerLevel { get; set; }
+        public double? ScavRep { get; set; }
         public bool? ShowLevelLockedQuests { get; set; }
         public bool? HideWipeWarning { get; set; }
         public int? SyncDaysRange { get; set; }
         public double? BaseFontSize { get; set; }
+        public int? DspDecodeCount { get; set; }
     }
 }

@@ -60,6 +60,10 @@ namespace TarkovHelper.Services
             return _tasksByNormalizedName.TryGetValue(normalizedName, out var task) ? task : null;
         }
 
+        // Thread-local visited set for GetStatus to prevent circular reference during status check
+        [ThreadStatic]
+        private static HashSet<string>? _getStatusVisited;
+
         /// <summary>
         /// Get quest status for a task
         /// </summary>
@@ -74,15 +78,44 @@ namespace TarkovHelper.Services
                     return status;
             }
 
-            // Check prerequisites
-            if (!ArePrerequisitesMet(task))
-                return QuestStatus.Locked;
+            // Circular reference protection for prerequisite checking
+            bool isTopLevel = _getStatusVisited == null;
+            _getStatusVisited ??= new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // Check level requirement
-            if (!IsLevelRequirementMet(task))
-                return QuestStatus.LevelLocked;
+            // If already checking this task (circular reference), treat as Active to break the cycle
+            if (!_getStatusVisited.Add(task.NormalizedName))
+            {
+                return QuestStatus.Active;
+            }
 
-            return QuestStatus.Active;
+            try
+            {
+                // Check DSP Decode Count for Make Amends quests
+                if (!IsDspRequirementMet(task))
+                    return QuestStatus.Locked;
+
+                // Check prerequisites
+                if (!ArePrerequisitesMet(task))
+                    return QuestStatus.Locked;
+
+                // Check level requirement
+                if (!IsLevelRequirementMet(task))
+                    return QuestStatus.LevelLocked;
+
+                // Check Scav Karma requirement
+                if (!IsScavKarmaRequirementMet(task))
+                    return QuestStatus.LevelLocked;  // Use LevelLocked status for karma-locked quests too
+
+                return QuestStatus.Active;
+            }
+            finally
+            {
+                _getStatusVisited.Remove(task.NormalizedName);
+                if (isTopLevel)
+                {
+                    _getStatusVisited = null;
+                }
+            }
         }
 
         /// <summary>
@@ -96,6 +129,67 @@ namespace TarkovHelper.Services
 
             var playerLevel = SettingsService.Instance.PlayerLevel;
             return playerLevel >= task.RequiredLevel.Value;
+        }
+
+        /// <summary>
+        /// Check if Scav Karma (Fence reputation) meets quest requirement
+        /// </summary>
+        public bool IsScavKarmaRequirementMet(TarkovTask task)
+        {
+            // If no karma requirement, always met
+            if (!task.RequiredScavKarma.HasValue)
+                return true;
+
+            var playerScavRep = SettingsService.Instance.ScavRep;
+            var requiredKarma = task.RequiredScavKarma.Value;
+
+            // Negative requirement means player karma must be <= that value (bad karma quests)
+            // Positive requirement means player karma must be >= that value (good karma quests)
+            if (requiredKarma < 0)
+            {
+                return playerScavRep <= requiredKarma;
+            }
+            else
+            {
+                return playerScavRep >= requiredKarma;
+            }
+        }
+
+        // Make Amends quest normalized names for DSP Decode filtering
+        private static readonly string MakeAmendsBuyout = "make-amends-buyout";
+        private static readonly string MakeAmendsSecurity = "make-amends-security";
+        private static readonly string MakeAmendsSoftware = "make-amends-software";
+
+        /// <summary>
+        /// Check if DSP Decode Count requirement is met for Make Amends quests
+        /// - 0 Decodes: No Make Amends quest available
+        /// - 1 Decode: Buyout is available
+        /// - 2 Decodes: Security is available
+        /// - 3 Decodes: Software is available
+        /// </summary>
+        public bool IsDspRequirementMet(TarkovTask task)
+        {
+            if (task.NormalizedName == null) return true;
+
+            var normalizedName = task.NormalizedName.ToLowerInvariant();
+            var dspCount = SettingsService.Instance.DspDecodeCount;
+
+            // Check if this is a Make Amends quest
+            if (normalizedName == MakeAmendsBuyout)
+            {
+                return dspCount == 1;
+            }
+            else if (normalizedName == MakeAmendsSecurity)
+            {
+                return dspCount == 2;
+            }
+            else if (normalizedName == MakeAmendsSoftware)
+            {
+                return dspCount == 3;
+            }
+
+            // Not a Make Amends quest, no DSP requirement
+            return true;
         }
 
         /// <summary>
@@ -136,7 +230,31 @@ namespace TarkovHelper.Services
         /// </summary>
         public void CompleteQuest(TarkovTask task, bool completePrerequisites = true)
         {
-            if (task.NormalizedName == null) return;
+            var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            bool anyChanged = CompleteQuestInternal(task, completePrerequisites, visited);
+
+            // Save and notify only once after all recursive completions
+            if (anyChanged)
+            {
+                SaveProgress();
+                ProgressChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        /// <summary>
+        /// Internal method to complete quest with circular reference prevention
+        /// Returns true if any quest was changed
+        /// </summary>
+        private bool CompleteQuestInternal(TarkovTask task, bool completePrerequisites, HashSet<string> visited)
+        {
+            if (task.NormalizedName == null) return false;
+
+            // Prevent circular reference - if already visiting this quest, skip
+            if (!visited.Add(task.NormalizedName)) return false;
+
+            // Skip if already done
+            if (_questProgress.TryGetValue(task.NormalizedName, out var currentStatus) && currentStatus == QuestStatus.Done)
+                return false;
 
             // Complete prerequisites first (recursive)
             if (completePrerequisites && task.Previous != null)
@@ -146,14 +264,13 @@ namespace TarkovHelper.Services
                     var prevTask = GetTask(prevName);
                     if (prevTask != null && GetStatus(prevTask) != QuestStatus.Done)
                     {
-                        CompleteQuest(prevTask, true);
+                        CompleteQuestInternal(prevTask, true, visited);
                     }
                 }
             }
 
             _questProgress[task.NormalizedName] = QuestStatus.Done;
-            SaveProgress();
-            ProgressChanged?.Invoke(this, EventArgs.Empty);
+            return true;
         }
 
         /// <summary>
@@ -360,8 +477,8 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var filePath = Path.Combine(AppEnv.DataPath, ProgressFileName);
-                Directory.CreateDirectory(AppEnv.DataPath);
+                var filePath = Path.Combine(AppEnv.ConfigPath, ProgressFileName);
+                Directory.CreateDirectory(AppEnv.ConfigPath);
 
                 var options = new JsonSerializerOptions
                 {
@@ -387,7 +504,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var filePath = Path.Combine(AppEnv.DataPath, ProgressFileName);
+                var filePath = Path.Combine(AppEnv.ConfigPath, ProgressFileName);
 
                 if (!File.Exists(filePath))
                     return;
@@ -418,8 +535,8 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var filePath = Path.Combine(AppEnv.DataPath, ObjectiveProgressFileName);
-                Directory.CreateDirectory(AppEnv.DataPath);
+                var filePath = Path.Combine(AppEnv.ConfigPath, ObjectiveProgressFileName);
+                Directory.CreateDirectory(AppEnv.ConfigPath);
 
                 var options = new JsonSerializerOptions
                 {
@@ -439,7 +556,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var filePath = Path.Combine(AppEnv.DataPath, ObjectiveProgressFileName);
+                var filePath = Path.Combine(AppEnv.ConfigPath, ObjectiveProgressFileName);
 
                 if (!File.Exists(filePath))
                     return;

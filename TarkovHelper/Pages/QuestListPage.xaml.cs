@@ -51,15 +51,54 @@ namespace TarkovHelper.Pages
     }
 
     /// <summary>
-    /// Guide image view model
+    /// Guide image view model with loading state
     /// </summary>
-    public class GuideImageViewModel
+    public class GuideImageViewModel : System.ComponentModel.INotifyPropertyChanged
     {
+        private BitmapImage? _imageSource;
+        private bool _isLoading = true;
+
         public string FileName { get; set; } = string.Empty;
         public string? Caption { get; set; }
-        public BitmapImage? ImageSource { get; set; }
+
+        public BitmapImage? ImageSource
+        {
+            get => _imageSource;
+            set
+            {
+                _imageSource = value;
+                OnPropertyChanged(nameof(ImageSource));
+                OnPropertyChanged(nameof(ImageVisibility));
+            }
+        }
+
+        public bool IsLoading
+        {
+            get => _isLoading;
+            set
+            {
+                _isLoading = value;
+                OnPropertyChanged(nameof(IsLoading));
+                OnPropertyChanged(nameof(LoadingVisibility));
+                OnPropertyChanged(nameof(ImageVisibility));
+            }
+        }
+
         public Visibility CaptionVisibility =>
             string.IsNullOrEmpty(Caption) ? Visibility.Collapsed : Visibility.Visible;
+
+        public Visibility LoadingVisibility =>
+            IsLoading ? Visibility.Visible : Visibility.Collapsed;
+
+        public Visibility ImageVisibility =>
+            IsLoading ? Visibility.Collapsed : Visibility.Visible;
+
+        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+
+        protected void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+        }
     }
 
     public partial class QuestListPage : UserControl
@@ -349,9 +388,17 @@ namespace TarkovHelper.Pages
 
         private string GetStatusText(QuestStatus status, TarkovTask? task = null)
         {
-            if (status == QuestStatus.LevelLocked && task?.RequiredLevel.HasValue == true)
+            if (status == QuestStatus.LevelLocked && task != null)
             {
-                return $"Lv.{task.RequiredLevel}";
+                // Check if it's level-locked or karma-locked
+                if (task.RequiredLevel.HasValue && !_progressService.IsLevelRequirementMet(task))
+                {
+                    return $"Lv.{task.RequiredLevel}";
+                }
+                if (task.RequiredScavKarma.HasValue && !_progressService.IsScavKarmaRequirementMet(task))
+                {
+                    return $"Rep {task.RequiredScavKarma:0.#}";
+                }
             }
 
             return status switch
@@ -610,10 +657,13 @@ namespace TarkovHelper.Pages
             UpdateKappaProgressSection(task);
 
             // Requirements - Level with current level comparison
-            if (task.RequiredLevel.HasValue && task.RequiredLevel.Value > 0)
+            bool hasLevelRequirement = task.RequiredLevel.HasValue && task.RequiredLevel.Value > 0;
+            bool hasScavKarmaRequirement = task.RequiredScavKarma.HasValue;
+
+            if (hasLevelRequirement)
             {
                 var playerLevel = SettingsService.Instance.PlayerLevel;
-                var reqLevel = task.RequiredLevel.Value;
+                var reqLevel = task.RequiredLevel!.Value;
                 if (playerLevel >= reqLevel)
                 {
                     TxtRequiredLevel.Text = $"Level {reqLevel} (Current: {playerLevel})";
@@ -630,6 +680,27 @@ namespace TarkovHelper.Pages
             {
                 TxtRequiredLevel.Visibility = Visibility.Collapsed;
             }
+
+            // Requirements - Scav Karma (Fence reputation)
+            if (hasScavKarmaRequirement)
+            {
+                var playerScavRep = SettingsService.Instance.ScavRep;
+                var reqKarma = task.RequiredScavKarma!.Value;
+                var isMet = _progressService.IsScavKarmaRequirementMet(task);
+                var comparison = reqKarma < 0 ? "≤" : "≥";
+                TxtRequiredScavKarma.Text = $"Scav Karma {comparison} {reqKarma:0.#} (Current: {playerScavRep:0.#})";
+                TxtRequiredScavKarma.Foreground = isMet ? (Brush)FindResource("TextPrimaryBrush") : LevelLockedBrush;
+                TxtRequiredScavKarma.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                TxtRequiredScavKarma.Visibility = Visibility.Collapsed;
+            }
+
+            // Show requirements section if any requirement exists
+            RequirementsSectionWrapper.Visibility = (hasLevelRequirement || hasScavKarmaRequirement)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
 
             // Prerequisites
             var prereqs = _progressService.GetPrerequisiteChain(task);
@@ -648,10 +719,12 @@ namespace TarkovHelper.Pages
                 }).ToList();
 
                 PrerequisitesList.ItemsSource = prereqVms;
+                PrerequisitesSectionWrapper.Visibility = Visibility.Visible;
             }
             else
             {
-                PrerequisitesList.ItemsSource = new[] { new QuestViewModel { DisplayName = "None" } };
+                PrerequisitesList.ItemsSource = null;
+                PrerequisitesSectionWrapper.Visibility = Visibility.Collapsed;
             }
 
             // Objectives Section
@@ -664,14 +737,12 @@ namespace TarkovHelper.Pages
             if (task.RequiredItems != null && task.RequiredItems.Count > 0)
             {
                 _ = LoadRequiredItemsAsync(task.RequiredItems);
-                TxtRequiredItemsHeader.Visibility = Visibility.Visible;
-                RequiredItemsSection.Visibility = Visibility.Visible;
+                RequiredItemsSectionWrapper.Visibility = Visibility.Visible;
             }
             else
             {
                 RequiredItemsList.ItemsSource = null;
-                TxtRequiredItemsHeader.Visibility = Visibility.Collapsed;
-                RequiredItemsSection.Visibility = Visibility.Collapsed;
+                RequiredItemsSectionWrapper.Visibility = Visibility.Collapsed;
             }
 
             // Button states
@@ -1243,25 +1314,20 @@ namespace TarkovHelper.Pages
 
         private async Task LoadGuideImagesAsync(List<GuideImage> guideImages)
         {
-            var imageVms = new List<GuideImageViewModel>();
+            // Create ViewModels with loading state first
+            var imageVms = new System.Collections.ObjectModel.ObservableCollection<GuideImageViewModel>();
 
             foreach (var guideImage in guideImages)
             {
-                if (_isUnloaded) return; // Check if page was unloaded
-
-                var vm = new GuideImageViewModel
+                imageVms.Add(new GuideImageViewModel
                 {
                     FileName = guideImage.FileName,
-                    Caption = guideImage.Caption
-                };
-
-                // Load image asynchronously
-                var image = await _imageCache.GetWikiImageAsync(guideImage.FileName);
-                vm.ImageSource = image;
-                imageVms.Add(vm);
+                    Caption = guideImage.Caption,
+                    IsLoading = true
+                });
             }
 
-            // Update on UI thread only if page is still loaded
+            // Set ItemsSource immediately to show placeholders
             if (!_isUnloaded)
             {
                 Dispatcher.Invoke(() =>
@@ -1270,6 +1336,29 @@ namespace TarkovHelper.Pages
                         GuideImagesList.ItemsSource = imageVms;
                 });
             }
+
+            // Load images in parallel for better performance
+            var loadTasks = imageVms.Select(async (vm, index) =>
+            {
+                if (_isUnloaded) return;
+
+                var image = await _imageCache.GetWikiImageAsync(vm.FileName);
+
+                // Update on UI thread
+                if (!_isUnloaded)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        if (!_isUnloaded)
+                        {
+                            vm.ImageSource = image;
+                            vm.IsLoading = false;
+                        }
+                    });
+                }
+            });
+
+            await Task.WhenAll(loadTasks);
         }
 
         private void GuideImage_Click(object sender, MouseButtonEventArgs e)
@@ -1393,6 +1482,63 @@ namespace TarkovHelper.Pages
             }
 
             return null;
+        }
+
+        #endregion
+
+        #region Nested ScrollViewer Scroll Propagation
+
+        /// <summary>
+        /// Handle mouse wheel events on nested ScrollViewers to propagate to parent when at scroll limits
+        /// </summary>
+        private void NestedScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (sender is not ScrollViewer scrollViewer) return;
+
+            // Check if the nested ScrollViewer can handle this scroll
+            var canScrollDown = scrollViewer.VerticalOffset < scrollViewer.ScrollableHeight;
+            var canScrollUp = scrollViewer.VerticalOffset > 0;
+            var scrollingDown = e.Delta < 0;
+            var scrollingUp = e.Delta > 0;
+
+            // If the nested ScrollViewer cannot scroll in the direction of the wheel,
+            // or if there's no scrollable content, propagate to parent
+            bool shouldPropagate = false;
+
+            if (scrollViewer.ScrollableHeight <= 0)
+            {
+                // No scrollable content, propagate to parent
+                shouldPropagate = true;
+            }
+            else if (scrollingDown && !canScrollDown)
+            {
+                // At bottom, trying to scroll down - propagate
+                shouldPropagate = true;
+            }
+            else if (scrollingUp && !canScrollUp)
+            {
+                // At top, trying to scroll up - propagate
+                shouldPropagate = true;
+            }
+
+            if (shouldPropagate)
+            {
+                // Don't handle the event, let it bubble up to parent ScrollViewer
+                e.Handled = false;
+
+                // Manually raise the event on the parent ScrollViewer
+                var parentScrollViewer = DetailScrollViewer;
+                if (parentScrollViewer != null)
+                {
+                    var newEventArgs = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
+                    {
+                        RoutedEvent = UIElement.MouseWheelEvent,
+                        Source = sender
+                    };
+                    parentScrollViewer.RaiseEvent(newEventArgs);
+                    e.Handled = true;
+                }
+            }
         }
 
         #endregion

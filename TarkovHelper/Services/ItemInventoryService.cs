@@ -234,8 +234,8 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var filePath = Path.Combine(AppEnv.DataPath, InventoryFileName);
-                Directory.CreateDirectory(AppEnv.DataPath);
+                var filePath = Path.Combine(AppEnv.ConfigPath, InventoryFileName);
+                Directory.CreateDirectory(AppEnv.ConfigPath);
 
                 var options = new JsonSerializerOptions
                 {
@@ -261,7 +261,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var filePath = Path.Combine(AppEnv.DataPath, InventoryFileName);
+                var filePath = Path.Combine(AppEnv.ConfigPath, InventoryFileName);
 
                 if (!File.Exists(filePath))
                     return;

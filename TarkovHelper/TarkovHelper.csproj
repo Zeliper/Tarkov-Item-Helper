@@ -9,9 +9,9 @@
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
 
     <!-- Version Info for Auto-Update -->
-    <Version>2.2.2</Version>
-    <AssemblyVersion>2.2.2</AssemblyVersion>
-    <FileVersion>2.2.2</FileVersion>
+    <Version>2.3.0</Version>
+    <AssemblyVersion>2.3.0</AssemblyVersion>
+    <FileVersion>2.3.0</FileVersion>
     <ApplicationIcon>1764579946.ico</ApplicationIcon>
   </PropertyGroup>
 

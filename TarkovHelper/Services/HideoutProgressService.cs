@@ -287,8 +287,8 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var filePath = Path.Combine(AppEnv.DataPath, ProgressFileName);
-                Directory.CreateDirectory(AppEnv.DataPath);
+                var filePath = Path.Combine(AppEnv.ConfigPath, ProgressFileName);
+                Directory.CreateDirectory(AppEnv.ConfigPath);
 
                 var options = new JsonSerializerOptions
                 {
@@ -308,7 +308,7 @@ namespace TarkovHelper.Services
         {
             try
             {
-                var filePath = Path.Combine(AppEnv.DataPath, ProgressFileName);
+                var filePath = Path.Combine(AppEnv.ConfigPath, ProgressFileName);
 
                 if (!File.Exists(filePath))
                     return;

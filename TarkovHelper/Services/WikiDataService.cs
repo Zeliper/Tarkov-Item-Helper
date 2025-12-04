@@ -289,17 +289,32 @@ namespace TarkovHelper.Services
 
         /// <summary>
         /// Query MediaWiki API for revision info of multiple pages (parallel batch processing)
+        /// Input: quest names (e.g., "Immunity")
+        /// Output: keyed by quest names, after wiki page name mapping (e.g., "Immunity_(quest)" -> "Immunity")
         /// </summary>
-        public async Task<Dictionary<string, (int PageId, int RevisionId, DateTime Timestamp)>> GetPagesRevisionInfoAsync(IEnumerable<string> titles)
+        public async Task<Dictionary<string, (int PageId, int RevisionId, DateTime Timestamp)>> GetPagesRevisionInfoAsync(IEnumerable<string> questNames)
         {
             var result = new Dictionary<string, (int, int, DateTime)>();
-            var titleList = titles.ToList();
+            var questNameList = questNames.ToList();
 
-            // Create batches
-            var batches = new List<List<string>>();
-            for (int i = 0; i < titleList.Count; i += MaxTitlesPerRequest)
+            // Build mapping from wiki page name to quest name
+            // Note: MediaWiki API normalizes underscores to spaces in responses
+            var wikiPageToQuestName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var wikiPageNames = new List<string>();
+            foreach (var questName in questNameList)
             {
-                batches.Add(titleList.Skip(i).Take(MaxTitlesPerRequest).ToList());
+                var wikiPageName = NormalizedNameGenerator.GetWikiPageName(questName);
+                wikiPageNames.Add(wikiPageName);
+                // Map both underscore and space versions (API returns spaces)
+                wikiPageToQuestName[wikiPageName] = questName;
+                wikiPageToQuestName[wikiPageName.Replace("_", " ")] = questName;
+            }
+
+            // Create batches using wiki page names
+            var batches = new List<List<string>>();
+            for (int i = 0; i < wikiPageNames.Count; i += MaxTitlesPerRequest)
+            {
+                batches.Add(wikiPageNames.Skip(i).Take(MaxTitlesPerRequest).ToList());
             }
 
             // Process batches sequentially to avoid rate limiting
@@ -320,7 +335,7 @@ namespace TarkovHelper.Services
                         if (page.Value.TryGetProperty("missing", out _))
                             continue;
 
-                        var title = page.Value.GetProperty("title").GetString() ?? "";
+                        var wikiPageName = page.Value.GetProperty("title").GetString() ?? "";
                         var pageId = page.Value.GetProperty("pageid").GetInt32();
 
                         if (page.Value.TryGetProperty("revisions", out var revisions) &&
@@ -329,7 +344,16 @@ namespace TarkovHelper.Services
                             var rev = revisions[0];
                             var revId = rev.GetProperty("revid").GetInt32();
                             var timestamp = DateTime.Parse(rev.GetProperty("timestamp").GetString() ?? "");
-                            result[title] = (pageId, revId, timestamp);
+
+                            // Map wiki page name back to original quest name
+                            if (wikiPageToQuestName.TryGetValue(wikiPageName, out var questName))
+                            {
+                                result[questName] = (pageId, revId, timestamp);
+                            }
+                            else
+                            {
+                                result[wikiPageName] = (pageId, revId, timestamp);
+                            }
                         }
                     }
                 }
@@ -487,7 +511,7 @@ namespace TarkovHelper.Services
         /// </summary>
         /// <param name="questNames">List of quest names to export</param>
         /// <param name="progress">Progress callback</param>
-        /// <returns>Dictionary of quest name -> wiki content</returns>
+        /// <returns>Dictionary of quest name -> wiki content (keyed by original quest name, not wiki page name)</returns>
         public async Task<Dictionary<string, string>> ExportQuestPagesAsync(
             IEnumerable<string> questNames,
             Action<string>? progress = null,
@@ -499,13 +523,28 @@ namespace TarkovHelper.Services
             if (questList.Count == 0)
                 return result;
 
-            progress?.Invoke($"Requesting {questList.Count} pages from Special:Export...");
+            // Build mapping from wiki page name to original quest name
+            // Some quests have disambiguation pages (e.g., "Immunity" -> "Immunity_(quest)")
+            // Note: MediaWiki API normalizes underscores to spaces in responses
+            var wikiPageToQuestName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var wikiPageNames = new List<string>();
 
-            // Build POST data for Special:Export
+            foreach (var questName in questList)
+            {
+                var wikiPageName = NormalizedNameGenerator.GetWikiPageName(questName);
+                wikiPageNames.Add(wikiPageName);
+                // Map both underscore and space versions (API returns spaces)
+                wikiPageToQuestName[wikiPageName] = questName;
+                wikiPageToQuestName[wikiPageName.Replace("_", " ")] = questName;
+            }
+
+            progress?.Invoke($"Requesting {wikiPageNames.Count} pages from Special:Export...");
+
+            // Build POST data for Special:Export (use wiki page names, not quest names)
             var postData = new Dictionary<string, string>
             {
                 { "catname", "" },
-                { "pages", string.Join("\n", questList) },
+                { "pages", string.Join("\n", wikiPageNames) },
                 { "curonly", "1" },  // Current revision only
                 { "wpDownload", "1" }  // Download as file
             };
@@ -568,8 +607,26 @@ namespace TarkovHelper.Services
 
             progress?.Invoke($"Parsing XML ({xmlContent.Length / 1024}KB)...");
 
-            // Parse the MediaWiki XML export
-            result = ParseMediaWikiExportXml(xmlContent);
+            // Parse the MediaWiki XML export (returns wiki page name -> content)
+            var wikiPageResults = ParseMediaWikiExportXml(xmlContent);
+
+            // Map wiki page names back to original quest names
+            foreach (var kvp in wikiPageResults)
+            {
+                var wikiPageName = kvp.Key;
+                var pageContent = kvp.Value;
+
+                // Find the original quest name for this wiki page
+                if (wikiPageToQuestName.TryGetValue(wikiPageName, out var questName))
+                {
+                    result[questName] = pageContent;
+                }
+                else
+                {
+                    // Fallback: use wiki page name as-is (shouldn't happen normally)
+                    result[wikiPageName] = pageContent;
+                }
+            }
 
             progress?.Invoke($"Successfully exported {result.Count} pages");
 
@@ -791,15 +848,31 @@ namespace TarkovHelper.Services
                 {
                     try
                     {
-                        var batchResults = await DownloadPagesBatchAsync(batch, cancellationToken);
+                        // Build mapping from wiki page name to quest name for this batch
+                        // Note: MediaWiki API normalizes underscores to spaces in responses
+                        var wikiPageToQuestName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        var wikiPageNames = new List<string>();
+                        foreach (var questName in batch)
+                        {
+                            var wikiPageName = NormalizedNameGenerator.GetWikiPageName(questName);
+                            wikiPageNames.Add(wikiPageName);
+                            // Map both underscore and space versions (API returns spaces)
+                            wikiPageToQuestName[wikiPageName] = questName;
+                            wikiPageToQuestName[wikiPageName.Replace("_", " ")] = questName;
+                        }
+
+                        var batchResults = await DownloadPagesBatchAsync(wikiPageNames, cancellationToken);
 
                         foreach (var questName in batch)
                         {
-                            if (batchResults.TryGetValue(questName, out var pageData))
+                            var wikiPageName = NormalizedNameGenerator.GetWikiPageName(questName);
+                            var wikiPageNameWithSpace = wikiPageName.Replace("_", " ");
+                            if (batchResults.TryGetValue(wikiPageName, out var pageData) ||
+                                batchResults.TryGetValue(wikiPageNameWithSpace, out pageData))
                             {
                                 var (content, pageId, revId, timestamp) = pageData;
 
-                                // Save content to file
+                                // Save content to file (using quest name, not wiki page name)
                                 await File.WriteAllTextAsync(GetQuestPageFilePath(questName), content, Encoding.UTF8, cancellationToken);
 
                                 lock (lockObj)
@@ -977,15 +1050,31 @@ namespace TarkovHelper.Services
 
                     try
                     {
-                        var batchResults = await DownloadPagesBatchAsync(batch, cancellationToken);
+                        // Build mapping from wiki page name to quest name for this batch
+                        // Note: MediaWiki API normalizes underscores to spaces in responses
+                        var wikiPageToQuestName = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        var wikiPageNames = new List<string>();
+                        foreach (var questName in batch)
+                        {
+                            var wikiPageName = NormalizedNameGenerator.GetWikiPageName(questName);
+                            wikiPageNames.Add(wikiPageName);
+                            // Map both underscore and space versions (API returns spaces)
+                            wikiPageToQuestName[wikiPageName] = questName;
+                            wikiPageToQuestName[wikiPageName.Replace("_", " ")] = questName;
+                        }
+
+                        var batchResults = await DownloadPagesBatchAsync(wikiPageNames, cancellationToken);
 
                         foreach (var questName in batch)
                         {
-                            if (batchResults.TryGetValue(questName, out var pageData))
+                            var wikiPageName = NormalizedNameGenerator.GetWikiPageName(questName);
+                            var wikiPageNameWithSpace = wikiPageName.Replace("_", " ");
+                            if (batchResults.TryGetValue(wikiPageName, out var pageData) ||
+                                batchResults.TryGetValue(wikiPageNameWithSpace, out pageData))
                             {
                                 var (content, pageId, revId, timestamp) = pageData;
 
-                                // Save content to file
+                                // Save content to file (using quest name, not wiki page name)
                                 await File.WriteAllTextAsync(GetQuestPageFilePath(questName), content, Encoding.UTF8, cancellationToken);
 
                                 // Update cache index

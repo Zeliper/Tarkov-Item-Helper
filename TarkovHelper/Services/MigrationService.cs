@@ -13,6 +13,16 @@ public static class MigrationService
     // Store .version file outside Data folder to prevent deletion during migration
     private static readonly string VersionFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, ".version");
 
+    // User data files that should be in Config folder, not Data folder
+    private static readonly string[] UserDataFiles =
+    [
+        "app_settings.json",
+        "quest_progress.json",
+        "objective_progress.json",
+        "hideout_progress.json",
+        "item_inventory.json"
+    ];
+
     /// <summary>
     /// Run migration if needed. Should be called at application startup.
     /// </summary>
@@ -20,6 +30,9 @@ public static class MigrationService
     {
         var currentVersion = GetCurrentVersion();
         var lastVersion = GetLastRunVersion();
+
+        // Always try to migrate user data from Data to Config folder
+        MigrateUserDataToConfig();
 
         // First run or fresh install
         if (lastVersion == null)
@@ -35,6 +48,35 @@ public static class MigrationService
         }
 
         SaveCurrentVersion(currentVersion);
+    }
+
+    /// <summary>
+    /// Migrate user data files from Data folder to Config folder
+    /// This ensures user settings survive Data/Cache folder deletion
+    /// </summary>
+    private static void MigrateUserDataToConfig()
+    {
+        try
+        {
+            // Create Config directory if it doesn't exist
+            Directory.CreateDirectory(AppEnv.ConfigPath);
+
+            foreach (var fileName in UserDataFiles)
+            {
+                var sourceFile = Path.Combine(AppEnv.DataPath, fileName);
+                var destFile = Path.Combine(AppEnv.ConfigPath, fileName);
+
+                // Only migrate if source exists and destination doesn't
+                if (File.Exists(sourceFile) && !File.Exists(destFile))
+                {
+                    File.Move(sourceFile, destFile);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore migration errors - not critical
+        }
     }
 
     /// <summary>
@@ -98,7 +140,7 @@ public static class MigrationService
     private static bool RequiresMigration(Version lastVersion, Version currentVersion)
     {
         // Upgrading from 1.x.x to 2.x.x requires data cleanup
-        return lastVersion.Major == 1 && currentVersion.Major >= 2;
+        return lastVersion.Major == 1 || (currentVersion.Major == 2 && currentVersion.Minor < 3);
     }
 
     /// <summary>
