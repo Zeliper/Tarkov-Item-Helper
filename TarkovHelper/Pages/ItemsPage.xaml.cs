@@ -1368,6 +1368,94 @@ namespace TarkovHelper.Pages
             DetailProgressBar.Value = _selectedItem.ProgressPercent;
         }
 
+        /// <summary>
+        /// Only allow numeric input for quantity fields
+        /// </summary>
+        private void TxtDetailOwned_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            e.Handled = !int.TryParse(e.Text, out _);
+        }
+
+        /// <summary>
+        /// Apply FIR quantity when losing focus
+        /// </summary>
+        private void TxtDetailOwnedFir_LostFocus(object sender, RoutedEventArgs e)
+        {
+            ApplyFirQuantityFromTextBox();
+        }
+
+        /// <summary>
+        /// Apply FIR quantity when pressing Enter
+        /// </summary>
+        private void TxtDetailOwnedFir_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                ApplyFirQuantityFromTextBox();
+                Keyboard.ClearFocus();
+            }
+        }
+
+        /// <summary>
+        /// Apply Non-FIR quantity when losing focus
+        /// </summary>
+        private void TxtDetailOwnedNonFir_LostFocus(object sender, RoutedEventArgs e)
+        {
+            ApplyNonFirQuantityFromTextBox();
+        }
+
+        /// <summary>
+        /// Apply Non-FIR quantity when pressing Enter
+        /// </summary>
+        private void TxtDetailOwnedNonFir_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                ApplyNonFirQuantityFromTextBox();
+                Keyboard.ClearFocus();
+            }
+        }
+
+        /// <summary>
+        /// Parse and apply FIR quantity from TextBox input
+        /// </summary>
+        private void ApplyFirQuantityFromTextBox()
+        {
+            if (_selectedItem == null) return;
+
+            if (int.TryParse(TxtDetailOwnedFir.Text, out var quantity))
+            {
+                quantity = Math.Max(0, quantity);
+                _inventoryService.SetFirQuantity(_selectedItem.ItemNormalizedName, quantity);
+                _selectedItem.OwnedFirQuantity = quantity;
+                UpdateDetailInventoryDisplay();
+            }
+            else
+            {
+                TxtDetailOwnedFir.Text = _selectedItem.OwnedFirQuantity.ToString();
+            }
+        }
+
+        /// <summary>
+        /// Parse and apply Non-FIR quantity from TextBox input
+        /// </summary>
+        private void ApplyNonFirQuantityFromTextBox()
+        {
+            if (_selectedItem == null) return;
+
+            if (int.TryParse(TxtDetailOwnedNonFir.Text, out var quantity))
+            {
+                quantity = Math.Max(0, quantity);
+                _inventoryService.SetNonFirQuantity(_selectedItem.ItemNormalizedName, quantity);
+                _selectedItem.OwnedNonFirQuantity = quantity;
+                UpdateDetailInventoryDisplay();
+            }
+            else
+            {
+                TxtDetailOwnedNonFir.Text = _selectedItem.OwnedNonFirQuantity.ToString();
+            }
+        }
+
         #endregion
     }
 }

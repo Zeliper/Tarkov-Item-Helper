@@ -343,6 +343,52 @@ public partial class MainWindow : Window
         });
     }
 
+    /// <summary>
+    /// Only allow numeric input for player level
+    /// </summary>
+    private void TxtPlayerLevel_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        e.Handled = !int.TryParse(e.Text, out _);
+    }
+
+    /// <summary>
+    /// Apply level when losing focus
+    /// </summary>
+    private void TxtPlayerLevel_LostFocus(object sender, RoutedEventArgs e)
+    {
+        ApplyPlayerLevelFromTextBox();
+    }
+
+    /// <summary>
+    /// Apply level when pressing Enter
+    /// </summary>
+    private void TxtPlayerLevel_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            ApplyPlayerLevelFromTextBox();
+            Keyboard.ClearFocus();
+        }
+    }
+
+    /// <summary>
+    /// Parse and apply player level from TextBox input
+    /// </summary>
+    private void ApplyPlayerLevelFromTextBox()
+    {
+        if (int.TryParse(TxtPlayerLevel.Text, out var level))
+        {
+            // Clamp to valid range
+            level = Math.Clamp(level, SettingsService.MinPlayerLevel, SettingsService.MaxPlayerLevel);
+            _settingsService.PlayerLevel = level;
+        }
+        else
+        {
+            // Reset to current value if invalid
+            TxtPlayerLevel.Text = _settingsService.PlayerLevel.ToString();
+        }
+    }
+
     #endregion
 
     /// <summary>

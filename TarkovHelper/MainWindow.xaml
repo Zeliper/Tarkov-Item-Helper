@@ -52,10 +52,17 @@
                                         Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                         Click="BtnLevelDown_Click"
                                         ToolTip="Decrease level"/>
-                                <TextBlock x:Name="TxtPlayerLevel" Text="15" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                           Foreground="{StaticResource AccentBrush}"
-                                           VerticalAlignment="Center" Margin="8,0"
-                                           MinWidth="20" TextAlignment="Center"/>
+                                <TextBox x:Name="TxtPlayerLevel" Text="15" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                         Foreground="{StaticResource AccentBrush}"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         VerticalAlignment="Center" Margin="8,0"
+                                         MinWidth="28" MaxWidth="40"
+                                         TextAlignment="Center"
+                                         VerticalContentAlignment="Center"
+                                         PreviewTextInput="TxtPlayerLevel_PreviewTextInput"
+                                         LostFocus="TxtPlayerLevel_LostFocus"
+                                         KeyDown="TxtPlayerLevel_KeyDown"/>
                                 <Button x:Name="BtnLevelUp" Content="+" Width="24" Height="24"
                                         Padding="0" FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
                                         Click="BtnLevelUp_Click"

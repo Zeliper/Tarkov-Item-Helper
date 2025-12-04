@@ -436,12 +436,20 @@
                                             <Button Content="-1" Style="{StaticResource QuantityButtonStyle}"
                                                     Click="BtnDetailFirMinus1_Click"/>
                                             <Border Background="{StaticResource BackgroundMediumBrush}"
-                                                    CornerRadius="4" Padding="8,4" Margin="4,0"
+                                                    CornerRadius="4" Padding="4,4" Margin="4,0"
                                                     MinWidth="40">
-                                                <TextBlock x:Name="TxtDetailOwnedFir" Text="0"
-                                                           FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                                           HorizontalAlignment="Center"/>
+                                                <TextBox x:Name="TxtDetailOwnedFir" Text="0"
+                                                         FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                                         Foreground="{StaticResource TextPrimaryBrush}"
+                                                         Background="Transparent"
+                                                         BorderThickness="0"
+                                                         HorizontalAlignment="Center"
+                                                         TextAlignment="Center"
+                                                         MinWidth="30"
+                                                         VerticalContentAlignment="Center"
+                                                         PreviewTextInput="TxtDetailOwned_PreviewTextInput"
+                                                         LostFocus="TxtDetailOwnedFir_LostFocus"
+                                                         KeyDown="TxtDetailOwnedFir_KeyDown"/>
                                             </Border>
                                             <Button Content="+1" Style="{StaticResource QuantityButtonStyle}"
                                                     Click="BtnDetailFirPlus1_Click"/>
@@ -467,12 +475,20 @@
                                             <Button Content="-1" Style="{StaticResource QuantityButtonStyle}"
                                                     Click="BtnDetailNonFirMinus1_Click"/>
                                             <Border Background="{StaticResource BackgroundMediumBrush}"
-                                                    CornerRadius="4" Padding="8,4" Margin="4,0"
+                                                    CornerRadius="4" Padding="4,4" Margin="4,0"
                                                     MinWidth="40">
-                                                <TextBlock x:Name="TxtDetailOwnedNonFir" Text="0"
-                                                           FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
-                                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                                           HorizontalAlignment="Center"/>
+                                                <TextBox x:Name="TxtDetailOwnedNonFir" Text="0"
+                                                         FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                                         Foreground="{StaticResource TextPrimaryBrush}"
+                                                         Background="Transparent"
+                                                         BorderThickness="0"
+                                                         HorizontalAlignment="Center"
+                                                         TextAlignment="Center"
+                                                         MinWidth="30"
+                                                         VerticalContentAlignment="Center"
+                                                         PreviewTextInput="TxtDetailOwned_PreviewTextInput"
+                                                         LostFocus="TxtDetailOwnedNonFir_LostFocus"
+                                                         KeyDown="TxtDetailOwnedNonFir_KeyDown"/>
                                             </Border>
                                             <Button Content="+1" Style="{StaticResource QuantityButtonStyle}"
                                                     Click="BtnDetailNonFirPlus1_Click"/>
