@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:TarkovHelper"
         mc:Ignorable="d"
-        Title="Tarkov Helper" Height="800" Width="1200"
+        Title="Tarkov Helper" Height="800" Width="1400"
         MinHeight="400" MinWidth="600"
         WindowStartupLocation="CenterScreen"
         Loaded="Window_Loaded">
@@ -188,6 +188,9 @@
                                          Style="{StaticResource TabButtonStyle}"
                                          Checked="Tab_Checked"/>
                             <RadioButton x:Name="TabItems" Content="Items"
+                                         Style="{StaticResource TabButtonStyle}"
+                                         Checked="Tab_Checked"/>
+                            <RadioButton x:Name="TabCollector" Content="Collector"
                                          Style="{StaticResource TabButtonStyle}"
                                          Checked="Tab_Checked"/>
                         </StackPanel>
