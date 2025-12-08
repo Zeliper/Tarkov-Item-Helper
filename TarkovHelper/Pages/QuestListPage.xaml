@@ -286,7 +286,7 @@
 
         <!-- Recommended Quests Section (Collapsible) -->
         <Expander x:Name="RecommendationsExpander" Grid.Row="2" Margin="0,0,0,12"
-                  IsExpanded="True" Visibility="Collapsed">
+                  IsExpanded="False" Visibility="Collapsed">
             <Expander.Header>
                 <StackPanel Orientation="Horizontal">
                     <TextBlock x:Name="TxtRecommendationsHeader" Text="Recommended Quests"
