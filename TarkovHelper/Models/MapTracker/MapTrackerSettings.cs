@@ -154,6 +154,34 @@ public sealed class MapTrackerSettings
     public double LastTranslateY { get; set; } = 0;
 
     /// <summary>
+    /// 퀘스트 마커 색상 커스터마이징 (타입별 Hex 색상)
+    /// </summary>
+    public Dictionary<string, string> MarkerColors { get; set; } = new()
+    {
+        { "visit", "#4CAF50" },      // Green
+        { "mark", "#FF9800" },       // Orange
+        { "plantItem", "#9C27B0" },  // Purple
+        { "extract", "#2196F3" },    // Blue
+        { "findItem", "#FFEB3B" }    // Yellow
+    };
+
+    /// <summary>
+    /// 특정 타입의 마커 색상을 가져옵니다.
+    /// </summary>
+    public string GetMarkerColor(string objectiveType)
+    {
+        return MarkerColors.TryGetValue(objectiveType, out var color) ? color : "#4CAF50";
+    }
+
+    /// <summary>
+    /// 특정 타입의 마커 색상을 설정합니다.
+    /// </summary>
+    public void SetMarkerColor(string objectiveType, string hexColor)
+    {
+        MarkerColors[objectiveType] = hexColor;
+    }
+
+    /// <summary>
     /// 기본 스크린샷 폴더 경로 반환.
     /// 여러 경로를 시도하여 실제 존재하는 폴더를 찾습니다.
     /// </summary>

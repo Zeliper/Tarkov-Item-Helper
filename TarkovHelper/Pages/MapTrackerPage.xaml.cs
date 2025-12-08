@@ -61,6 +61,12 @@ public partial class MapTrackerPage : UserControl
     // 로그 맵 감시 서비스 (자동 맵 전환용)
     private readonly LogMapWatcherService _logMapWatcher = LogMapWatcherService.Instance;
 
+    // 퀘스트 드로어 필터링 옵션
+    private string _drawerStatusFilter = "All";
+    private string _drawerTypeFilter = "All";
+    private bool _drawerCurrentMapOnly = false;
+    private bool _drawerGroupByQuest = false;
+
     public MapTrackerPage()
     {
         try
@@ -206,7 +212,91 @@ public partial class MapTrackerPage : UserControl
 
     private void UpdateLocalizedText()
     {
-        // 다국어 지원이 필요한 경우 여기서 처리
+        // 상단 컨트롤 바
+        TxtPageTitle.Text = _loc.MapPositionTracker;
+        TxtMapLabel.Text = _loc.MapLabel;
+        ChkShowQuestMarkers.Content = _loc.QuestMarkers;
+        ChkShowExtractMarkers.Content = _loc.Extracts;
+        BtnClearTrail.Content = _loc.ClearTrail;
+        BtnFullScreen.Content = _loc.FullScreen;
+        BtnExitFullScreen.Content = _loc.ExitFullScreen;
+        BtnSettings.Content = _loc.Settings;
+
+        // 추적 버튼 (상태에 따라)
+        var isTracking = _trackerService?.IsWatching ?? false;
+        BtnToggleTracking.Content = isTracking ? _loc.StopTracking : _loc.StartTracking;
+
+        // 상태 표시 바
+        if (!isTracking)
+        {
+            TxtStatus.Text = _loc.StatusWaiting;
+        }
+        TxtPositionLabel.Text = _loc.PositionLabel;
+        TxtLastUpdateLabel.Text = _loc.LastUpdateLabel;
+
+        // 퀘스트 드로어
+        TxtQuestObjectivesTitle.Text = _loc.QuestObjectives;
+        TxtMapProgressLabel.Text = _loc.ProgressOnThisMap;
+
+        // 필터 콤보박스
+        CmbStatusAll.Content = _loc.FilterAll;
+        CmbStatusIncomplete.Content = _loc.FilterIncomplete;
+        CmbStatusCompleted.Content = _loc.FilterCompleted;
+
+        CmbTypeAll.Content = _loc.FilterAllTypes;
+        CmbTypeVisit.Content = _loc.FilterVisit;
+        CmbTypeMark.Content = _loc.FilterMark;
+        CmbTypePlant.Content = _loc.FilterPlant;
+        CmbTypeExtract.Content = _loc.FilterExtract;
+        CmbTypeFind.Content = _loc.FilterFind;
+
+        TxtCurrentMapOnly.Text = _loc.ThisMapOnly;
+        TxtGroupByQuest.Text = _loc.GroupByQuest;
+
+        // 설정 패널
+        TxtSettingsTitle.Text = _loc.Settings;
+        TxtScreenshotFolderLabel.Text = _loc.ScreenshotFolder;
+        BtnAutoDetect.Content = _loc.AutoDetect;
+        BtnBrowseFolder.Content = _loc.Browse;
+        TxtMarkerSettingsLabel.Text = _loc.MarkerSettings;
+        ChkHideCompletedObjectives.Content = _loc.HideCompletedObjectives;
+        TxtQuestStyleLabel.Text = _loc.QuestStyle;
+        TxtQuestNameSizeLabel.Text = _loc.QuestNameSize;
+        TxtQuestMarkerSizeLabel.Text = _loc.QuestMarkerSize;
+        TxtPlayerMarkerSizeLabel.Text = _loc.PlayerMarkerSize;
+        TxtExtractSettingsLabel.Text = _loc.ExtractSettings;
+        ChkShowPmcExtracts.Content = _loc.PmcExtracts;
+        ChkShowScavExtracts.Content = _loc.ScavExtracts;
+        TxtExtractNameSizeLabel.Text = _loc.ExtractNameSize;
+
+        // 마커 색상 설정
+        TxtMarkerColorsLabel.Text = _loc.MarkerColors;
+        TxtColorVisit.Text = _loc.FilterVisit;
+        TxtColorMark.Text = _loc.FilterMark;
+        TxtColorPlant.Text = _loc.FilterPlant;
+        TxtColorExtract.Text = _loc.FilterExtract;
+        TxtColorFind.Text = _loc.FilterFind;
+        BtnResetColors.Content = _loc.ResetColors;
+
+        // 퀘스트 스타일 옵션
+        CmbStyleIconOnly.Content = _loc.StyleIconOnly;
+        CmbStyleGreenCircle.Content = _loc.StyleGreenCircle;
+        CmbStyleIconWithName.Content = _loc.StyleIconWithName;
+        CmbStyleCircleWithName.Content = _loc.StyleCircleWithName;
+
+        // 맵 없음 안내
+        TxtNoMapImage.Text = _loc.NoMapImage;
+        TxtAddMapImageHint.Text = _loc.AddMapImageHint;
+        TxtSetImagePathHint.Text = _loc.SetImagePathHint;
+
+        // 줌 컨트롤
+        BtnResetView.Content = _loc.ResetView;
+
+        // 퀘스트 드로어가 열려있으면 새로고침
+        if (QuestDrawerPanel?.Visibility == Visibility.Visible)
+        {
+            RefreshQuestDrawer();
+        }
     }
 
     private void LoadSettings()
@@ -247,6 +337,9 @@ public partial class MapTrackerPage : UserControl
             ExtractMarkersContainer.Visibility = _showExtractMarkers ? Visibility.Visible : Visibility.Collapsed;
         if (QuestMarkersContainer != null)
             QuestMarkersContainer.Visibility = _showQuestMarkers ? Visibility.Visible : Visibility.Collapsed;
+
+        // 마커 색상 UI 업데이트
+        UpdateMarkerColorUI();
     }
 
     private void PopulateMapComboBox()
@@ -271,12 +364,15 @@ public partial class MapTrackerPage : UserControl
     {
         // 감시 상태에 따른 UI 업데이트
         var isWatching = _trackerService?.IsWatching ?? false;
-        BtnToggleTracking.Content = isWatching ? "Stop Tracking" : "Start Tracking";
+        BtnToggleTracking.Content = isWatching ? _loc.StopTracking : _loc.StartTracking;
 
         var successBrush = TryFindResource("SuccessBrush") as Brush ?? Brushes.Green;
         var secondaryBrush = TryFindResource("TextSecondaryBrush") as Brush ?? Brushes.Gray;
         StatusIndicator.Fill = isWatching ? successBrush : secondaryBrush;
-        TxtStatus.Text = isWatching ? "감시 중" : "대기 중";
+        TxtStatus.Text = isWatching ? _loc.StatusTracking : _loc.StatusWaiting;
+
+        // Localization 적용
+        UpdateLocalizedText();
     }
 
     #region 이벤트 핸들러 - 서비스
@@ -396,7 +492,7 @@ public partial class MapTrackerPage : UserControl
                     PlayerMarker.Visibility = Visibility.Collapsed;
                     PlayerDot.Visibility = Visibility.Collapsed;
                     TxtCoordinates.Text = "--";
-                    TxtLastUpdate.Text = "마지막 업데이트: --";
+                    TxtLastUpdateTime.Text = "--";
 
                     // 맵 선택 변경 (이로 인해 CmbMapSelect_SelectionChanged가 호출됨)
                     CmbMapSelect.SelectedIndex = i;
@@ -432,7 +528,7 @@ public partial class MapTrackerPage : UserControl
         PlayerMarker.Visibility = Visibility.Collapsed;
         PlayerDot.Visibility = Visibility.Collapsed;
         TxtCoordinates.Text = "--";
-        TxtLastUpdate.Text = "마지막 업데이트: --";
+        TxtLastUpdateTime.Text = "--";
     }
 
     private void BtnSettings_Click(object sender, RoutedEventArgs e)
@@ -966,7 +1062,7 @@ public partial class MapTrackerPage : UserControl
             TxtCoordinates.Text = $"X: {position.X:F0}, Y: {position.Y:F0}";
         }
 
-        TxtLastUpdate.Text = $"마지막 업데이트: {DateTime.Now:HH:mm:ss}";
+        TxtLastUpdateTime.Text = DateTime.Now.ToString("HH:mm:ss");
     }
 
     private void UpdateMarkerSize(int size)
@@ -1284,7 +1380,9 @@ public partial class MapTrackerPage : UserControl
 
     private FrameworkElement CreateQuestMarker(TaskObjectiveWithLocation objective, QuestObjectiveLocation location, ScreenPosition screenPos)
     {
-        var markerColor = (Color)ColorConverter.ConvertFromString(objective.MarkerColor);
+        // 설정에서 커스텀 색상 가져오기
+        var colorHex = _trackerService?.Settings.GetMarkerColor(objective.Type) ?? objective.MarkerColor;
+        var markerColor = (Color)ColorConverter.ConvertFromString(colorHex);
         var markerBrush = new SolidColorBrush(markerColor);
         var glowBrush = new SolidColorBrush(Color.FromArgb(64, markerColor.R, markerColor.G, markerColor.B));
 
@@ -1489,9 +1587,11 @@ public partial class MapTrackerPage : UserControl
         // 맵의 마커 하이라이트 업데이트
         UpdateMarkerHighlight();
 
-        // Drawer 열기
+        // Drawer 열기 (리사이즈 가능)
         QuestDrawerColumn.Width = new GridLength(320);
+        QuestDrawerColumn.MinWidth = 250;
         QuestDrawerPanel.Visibility = Visibility.Visible;
+        DrawerSplitter.Visibility = Visibility.Visible;
 
         // RefreshQuestDrawer()의 로직을 사용하여 다중 위치 지원
         RefreshQuestDrawer();
@@ -1595,7 +1695,9 @@ public partial class MapTrackerPage : UserControl
         UpdateMarkerHighlight();
 
         QuestDrawerColumn.Width = new GridLength(0);
+        QuestDrawerColumn.MinWidth = 0;
         QuestDrawerPanel.Visibility = Visibility.Collapsed;
+        DrawerSplitter.Visibility = Visibility.Collapsed;
     }
 
     private void QuestObjectiveItem_Click(object sender, MouseButtonEventArgs e)
@@ -1982,6 +2084,83 @@ public partial class MapTrackerPage : UserControl
         }
     }
 
+    private void MarkerColor_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.Tag is string objectiveType)
+        {
+            // Windows 색상 선택 대화상자 열기
+            var colorDialog = new System.Windows.Forms.ColorDialog();
+
+            // 현재 색상 설정
+            if (border.Background is SolidColorBrush currentBrush)
+            {
+                var c = currentBrush.Color;
+                colorDialog.Color = System.Drawing.Color.FromArgb(c.R, c.G, c.B);
+            }
+
+            if (colorDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            {
+                var selectedColor = colorDialog.Color;
+                var hexColor = $"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}";
+
+                // UI 업데이트
+                border.Background = new SolidColorBrush(Color.FromRgb(selectedColor.R, selectedColor.G, selectedColor.B));
+
+                // 설정 저장
+                if (_trackerService != null)
+                {
+                    _trackerService.Settings.SetMarkerColor(objectiveType, hexColor);
+                    _trackerService.SaveSettings();
+
+                    // 마커 새로고침
+                    RefreshQuestMarkers();
+                }
+            }
+        }
+    }
+
+    private void BtnResetColors_Click(object sender, RoutedEventArgs e)
+    {
+        // 기본 색상으로 복원
+        var defaultColors = new Dictionary<string, string>
+        {
+            { "visit", "#4CAF50" },
+            { "mark", "#FF9800" },
+            { "plantItem", "#9C27B0" },
+            { "extract", "#2196F3" },
+            { "findItem", "#FFEB3B" }
+        };
+
+        if (_trackerService != null)
+        {
+            _trackerService.Settings.MarkerColors = defaultColors;
+            _trackerService.SaveSettings();
+        }
+
+        // UI 업데이트
+        UpdateMarkerColorUI();
+
+        // 마커 새로고침
+        RefreshQuestMarkers();
+    }
+
+    private void UpdateMarkerColorUI()
+    {
+        if (_trackerService == null) return;
+        var colors = _trackerService.Settings.MarkerColors;
+
+        if (colors.TryGetValue("visit", out var visit))
+            ColorVisit.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(visit));
+        if (colors.TryGetValue("mark", out var mark))
+            ColorMark.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(mark));
+        if (colors.TryGetValue("plantItem", out var plant))
+            ColorPlant.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(plant));
+        if (colors.TryGetValue("extract", out var extract))
+            ColorExtract.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(extract));
+        if (colors.TryGetValue("findItem", out var find))
+            ColorFind.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(find));
+    }
+
     #endregion
 
     #region 퀘스트 목표 체크박스 이벤트
@@ -2041,11 +2220,273 @@ public partial class MapTrackerPage : UserControl
 
     private void RefreshQuestDrawer()
     {
-        var viewModels = _currentMapObjectives.Select(obj =>
-            new QuestObjectiveViewModel(obj, _loc, _progressService,
-                obj.ObjectiveId == _selectedObjective?.ObjectiveId)).ToList();
+        // UI 요소가 아직 초기화되지 않았으면 스킵
+        if (QuestObjectivesList == null) return;
 
-        QuestObjectivesList.ItemsSource = viewModels;
+        // 현재 맵의 목표들과 다른 맵의 목표들을 구분하여 표시
+        var viewModels = new List<QuestObjectiveViewModel>();
+
+        // 현재 맵의 활성 퀘스트들에 대해 모든 위치 정보 수집 (다른 맵 목표 포함)
+        var processedTaskNames = new HashSet<string>();
+        var allObjectivesForDrawer = new List<TaskObjectiveWithLocation>();
+
+        foreach (var obj in _currentMapObjectives)
+        {
+            // 이 퀘스트의 다른 맵 목표도 가져오기
+            if (!processedTaskNames.Contains(obj.TaskNormalizedName))
+            {
+                processedTaskNames.Add(obj.TaskNormalizedName);
+
+                // 이 퀘스트의 모든 목표 가져오기
+                var allTaskObjectives = _objectiveService.GetObjectivesForTask(obj.TaskNormalizedName);
+                foreach (var taskObj in allTaskObjectives)
+                {
+                    // 퀘스트 상태 확인
+                    var task = _progressService.GetTask(taskObj.TaskNormalizedName);
+                    if (task != null)
+                    {
+                        var status = _progressService.GetStatus(task);
+                        if (status == QuestStatus.Active)
+                        {
+                            // 목표 인덱스 및 완료 상태 설정
+                            taskObj.ObjectiveIndex = GetObjectiveIndex(task, taskObj.Description);
+                            taskObj.IsCompleted = _progressService.IsObjectiveCompletedById(taskObj.ObjectiveId);
+                            allObjectivesForDrawer.Add(taskObj);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 중복 제거 후 정렬 (현재 맵 목표 먼저, 그다음 다른 맵 목표)
+        var uniqueObjectives = allObjectivesForDrawer
+            .GroupBy(o => o.ObjectiveId)
+            .Select(g => g.First())
+            .ToList();
+
+        // 현재 맵에 있는 목표 먼저, 그 다음 다른 맵 목표 (퀘스트명으로 정렬)
+        var sortedObjectives = uniqueObjectives
+            .OrderBy(obj =>
+            {
+                var isOnCurrentMap = obj.Locations.Any(loc =>
+                    loc.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true ||
+                    loc.MapName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true);
+                return isOnCurrentMap ? 0 : 1;
+            })
+            .ThenBy(obj => obj.TaskName)
+            .ToList();
+
+        foreach (var obj in sortedObjectives)
+        {
+            viewModels.Add(new QuestObjectiveViewModel(
+                obj, _loc, _progressService,
+                obj.ObjectiveId == _selectedObjective?.ObjectiveId,
+                _currentMapKey));
+        }
+
+        // 맵별 진행률 업데이트 (필터 적용 전 전체 목표 기준)
+        UpdateMapProgress(viewModels);
+
+        // 필터 적용
+        var filteredViewModels = ApplyDrawerFilters(viewModels);
+
+        // 그룹화 적용
+        if (_drawerGroupByQuest)
+        {
+            var groupedItems = ApplyQuestGrouping(filteredViewModels);
+            QuestObjectivesList.ItemsSource = groupedItems;
+        }
+        else
+        {
+            QuestObjectivesList.ItemsSource = filteredViewModels;
+        }
+    }
+
+    /// <summary>
+    /// 퀘스트별로 목표를 그룹화하여 표시합니다.
+    /// </summary>
+    private List<object> ApplyQuestGrouping(List<QuestObjectiveViewModel> viewModels)
+    {
+        var result = new List<object>();
+        var groupedByQuest = viewModels.GroupBy(vm => vm.Objective.TaskNormalizedName);
+
+        foreach (var group in groupedByQuest.OrderBy(g => g.First().QuestName))
+        {
+            // 퀘스트 헤더 추가
+            var firstObj = group.First();
+            var completedCount = group.Count(vm => vm.IsChecked);
+            var totalCount = group.Count();
+            result.Add(new QuestGroupHeader
+            {
+                QuestName = firstObj.QuestName,
+                Progress = $"{completedCount}/{totalCount}",
+                IsFullyCompleted = completedCount == totalCount
+            });
+
+            // 해당 퀘스트의 목표들 추가 (그룹화 플래그 설정)
+            foreach (var vm in group)
+            {
+                vm.IsGrouped = true;
+                result.Add(vm);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 맵별 퀘스트 진행률을 업데이트합니다.
+    /// </summary>
+    private void UpdateMapProgress(List<QuestObjectiveViewModel> viewModels)
+    {
+        // UI 요소가 아직 초기화되지 않았으면 스킵
+        if (TxtMapProgressCount == null || MapProgressBar == null) return;
+
+        // 현재 맵의 목표만 카운트
+        var currentMapObjectives = viewModels.Where(vm => vm.IsOnCurrentMap).ToList();
+        var totalCount = currentMapObjectives.Count;
+        var completedCount = currentMapObjectives.Count(vm => vm.IsChecked);
+
+        // 진행률 텍스트 업데이트
+        TxtMapProgressCount.Text = $"{completedCount}/{totalCount}";
+
+        // 진행률 바 업데이트
+        if (totalCount > 0)
+        {
+            var progressPercent = (double)completedCount / totalCount;
+            // 부모 Border의 실제 너비를 계산하여 적용
+            var parentBorder = MapProgressBar.Parent as Border;
+            if (parentBorder != null)
+            {
+                // 레이아웃 업데이트 후 너비 계산
+                parentBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                var availableWidth = parentBorder.ActualWidth > 0 ? parentBorder.ActualWidth : 280; // 기본값 280
+                MapProgressBar.Width = availableWidth * progressPercent;
+            }
+        }
+        else
+        {
+            MapProgressBar.Width = 0;
+        }
+    }
+
+    /// <summary>
+    /// 목표 설명으로 목표 인덱스를 찾습니다.
+    /// </summary>
+    private static int GetObjectiveIndex(TarkovTask task, string description)
+    {
+        if (task.Objectives == null || task.Objectives.Count == 0) return -1;
+        if (string.IsNullOrEmpty(description)) return -1;
+
+        for (int i = 0; i < task.Objectives.Count; i++)
+        {
+            if (task.Objectives[i].Equals(description, StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        // 부분 매칭 시도
+        for (int i = 0; i < task.Objectives.Count; i++)
+        {
+            if (task.Objectives[i].Contains(description, StringComparison.OrdinalIgnoreCase) ||
+                description.Contains(task.Objectives[i], StringComparison.OrdinalIgnoreCase))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    #endregion
+
+    #region 퀘스트 드로어 필터링
+
+    private void CmbStatusFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // 초기화 중에는 스킵
+        if (!IsLoaded) return;
+
+        if (CmbStatusFilter?.SelectedItem is ComboBoxItem item && item.Tag is string filter)
+        {
+            _drawerStatusFilter = filter;
+            if (QuestDrawerPanel?.Visibility == Visibility.Visible)
+            {
+                RefreshQuestDrawer();
+            }
+        }
+    }
+
+    private void CmbTypeFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // 초기화 중에는 스킵
+        if (!IsLoaded) return;
+
+        if (CmbTypeFilter?.SelectedItem is ComboBoxItem item && item.Tag is string filter)
+        {
+            _drawerTypeFilter = filter;
+            if (QuestDrawerPanel?.Visibility == Visibility.Visible)
+            {
+                RefreshQuestDrawer();
+            }
+        }
+    }
+
+    private void ChkCurrentMapOnly_Changed(object sender, RoutedEventArgs e)
+    {
+        // 초기화 중에는 스킵
+        if (!IsLoaded) return;
+
+        _drawerCurrentMapOnly = ChkCurrentMapOnly?.IsChecked ?? false;
+        if (QuestDrawerPanel?.Visibility == Visibility.Visible)
+        {
+            RefreshQuestDrawer();
+        }
+    }
+
+    private void ChkGroupByQuest_Changed(object sender, RoutedEventArgs e)
+    {
+        // 초기화 중에는 스킵
+        if (!IsLoaded) return;
+
+        _drawerGroupByQuest = ChkGroupByQuest?.IsChecked ?? false;
+        if (QuestDrawerPanel?.Visibility == Visibility.Visible)
+        {
+            RefreshQuestDrawer();
+        }
+    }
+
+    /// <summary>
+    /// 필터를 적용하여 목표 목록을 필터링합니다.
+    /// </summary>
+    private List<QuestObjectiveViewModel> ApplyDrawerFilters(List<QuestObjectiveViewModel> viewModels)
+    {
+        var result = viewModels.AsEnumerable();
+
+        // 완료/미완료 필터
+        if (_drawerStatusFilter == "Incomplete")
+        {
+            result = result.Where(vm => !vm.IsChecked);
+        }
+        else if (_drawerStatusFilter == "Completed")
+        {
+            result = result.Where(vm => vm.IsChecked);
+        }
+
+        // 타입별 필터
+        if (_drawerTypeFilter != "All")
+        {
+            result = result.Where(vm => vm.Objective.Type == _drawerTypeFilter);
+        }
+
+        // 현재 맵만 보기
+        if (_drawerCurrentMapOnly)
+        {
+            result = result.Where(vm => vm.IsOnCurrentMap);
+        }
+
+        return result.ToList();
     }
 
     #endregion
@@ -2073,12 +2514,28 @@ public class QuestObjectiveViewModel
     public TextDecorationCollection? TextDecoration { get; }
     public double ContentOpacity { get; }
 
+    // 다른 맵 목표 표시용 프로퍼티
+    public bool IsOnCurrentMap { get; }
+    public string? OtherMapName { get; }
+    public Visibility OtherMapBadgeVisibility { get; }
+    public bool IsEnabled { get; }
+
+    // 그룹화 표시용 프로퍼티
+    public bool IsGrouped { get; set; }
+    public Visibility QuestNameVisibility => IsGrouped ? Visibility.Collapsed : Visibility.Visible;
+    public Thickness ItemMargin => IsGrouped ? new Thickness(16, 0, 0, 8) : new Thickness(0, 0, 0, 8);
+
     public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, bool isSelected = false)
-        : this(objective, loc, null, isSelected)
+        : this(objective, loc, null, isSelected, null)
     {
     }
 
     public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected = false)
+        : this(objective, loc, progressService, isSelected, null)
+    {
+    }
+
+    public QuestObjectiveViewModel(TaskObjectiveWithLocation objective, LocalizationService loc, QuestProgressService? progressService, bool isSelected, string? currentMapKey)
     {
         Objective = objective;
         IsSelected = isSelected;
@@ -2110,9 +2567,37 @@ public class QuestObjectiveViewModel
         TextDecoration = IsChecked ? TextDecorations.Strikethrough : null;
         ContentOpacity = IsChecked ? 0.5 : 1.0;
 
-        // 선택 상태에 따른 테두리 스타일
-        SelectionBorderBrush = isSelected ? new SolidColorBrush(Colors.Yellow) : Brushes.Transparent;
-        SelectionBorderThickness = isSelected ? new Thickness(2) : new Thickness(2);
+        // 선택 상태에 따른 테두리 스타일 (선택 시 1px 노란 테두리, 미선택 시 투명)
+        SelectionBorderBrush = isSelected ? new SolidColorBrush(Color.FromRgb(255, 215, 0)) : Brushes.Transparent;
+        SelectionBorderThickness = isSelected ? new Thickness(1.5) : new Thickness(0);
+
+        // 현재 맵에 있는 목표인지 확인
+        if (!string.IsNullOrEmpty(currentMapKey))
+        {
+            IsOnCurrentMap = objective.Locations.Any(loc =>
+                loc.MapNormalizedName?.Equals(currentMapKey, StringComparison.OrdinalIgnoreCase) == true ||
+                loc.MapName?.Equals(currentMapKey, StringComparison.OrdinalIgnoreCase) == true);
+
+            if (!IsOnCurrentMap && objective.Locations.Count > 0)
+            {
+                // 다른 맵 이름 표시
+                var otherLocation = objective.Locations.FirstOrDefault();
+                OtherMapName = otherLocation?.MapName ?? "Other Map";
+                OtherMapBadgeVisibility = Visibility.Visible;
+                IsEnabled = false;
+            }
+            else
+            {
+                OtherMapBadgeVisibility = Visibility.Collapsed;
+                IsEnabled = true;
+            }
+        }
+        else
+        {
+            IsOnCurrentMap = true;
+            OtherMapBadgeVisibility = Visibility.Collapsed;
+            IsEnabled = true;
+        }
     }
 
     private static string GetTypeDisplay(string type) => type switch
@@ -2124,4 +2609,37 @@ public class QuestObjectiveViewModel
         "findItem" => "Find",
         _ => type
     };
+}
+
+/// <summary>
+/// 퀘스트 그룹 헤더 (그룹화 시 사용)
+/// </summary>
+public class QuestGroupHeader
+{
+    public string QuestName { get; set; } = string.Empty;
+    public string Progress { get; set; } = string.Empty;
+    public bool IsFullyCompleted { get; set; }
+    public Brush HeaderBrush => IsFullyCompleted
+        ? new SolidColorBrush(Color.FromRgb(76, 175, 80))  // Green
+        : new SolidColorBrush(Color.FromRgb(197, 168, 74)); // Accent
+    public TextDecorationCollection? TextDecoration => IsFullyCompleted ? TextDecorations.Strikethrough : null;
+    public double Opacity => IsFullyCompleted ? 0.6 : 1.0;
+}
+
+/// <summary>
+/// 퀘스트 드로어용 DataTemplateSelector
+/// </summary>
+public class QuestDrawerTemplateSelector : DataTemplateSelector
+{
+    public DataTemplate? GroupHeaderTemplate { get; set; }
+    public DataTemplate? ObjectiveTemplate { get; set; }
+
+    public override DataTemplate? SelectTemplate(object item, DependencyObject container)
+    {
+        if (item is QuestGroupHeader)
+            return GroupHeaderTemplate;
+        if (item is QuestObjectiveViewModel)
+            return ObjectiveTemplate;
+        return base.SelectTemplate(item, container);
+    }
 }

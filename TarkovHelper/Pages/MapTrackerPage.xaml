@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:svgc="http://sharpvectors.codeplex.com/svgc/"
+             xmlns:local="clr-namespace:TarkovHelper.Pages"
              mc:Ignorable="d"
              d:DesignHeight="800" d:DesignWidth="1200"
              Background="{StaticResource BackgroundDarkBrush}">
@@ -29,13 +30,13 @@
 
                 <!-- 타이틀 -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Map Position Tracker" FontSize="16" FontWeight="SemiBold"
+                    <TextBlock x:Name="TxtPageTitle" Text="Map Position Tracker" FontSize="16" FontWeight="SemiBold"
                                Foreground="{StaticResource TextPrimaryBrush}"/>
                 </StackPanel>
 
                 <!-- 맵 선택 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="24,0,0,0" VerticalAlignment="Center">
-                    <TextBlock Text="Map:" Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock x:Name="TxtMapLabel" Text="Map:" Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <ComboBox x:Name="CmbMapSelect" Width="160" SelectionChanged="CmbMapSelect_SelectionChanged"/>
                 </StackPanel>
@@ -64,7 +65,7 @@
 
                 <!-- 시작/중지 버튼 -->
                 <Button x:Name="BtnToggleTracking" Grid.Column="3" Content="Start Tracking"
-                        Padding="16,6" MinWidth="120" Click="BtnToggleTracking_Click"/>
+                        Padding="16,6" MinWidth="140" Click="BtnToggleTracking_Click"/>
             </Grid>
         </Border>
 
@@ -88,7 +89,7 @@
 
                 <!-- 좌표 표시 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="24,0,0,0">
-                    <TextBlock Text="위치:" Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock x:Name="TxtPositionLabel" Text="Position:" Foreground="{StaticResource TextSecondaryBrush}"
                                Margin="0,0,8,0" VerticalAlignment="Center"/>
                     <TextBlock x:Name="TxtCoordinates" Text="--" FontFamily="Consolas"
                                Foreground="{StaticResource TextPrimaryBrush}"
@@ -96,9 +97,14 @@
                 </StackPanel>
 
                 <!-- 마지막 업데이트 시간 -->
-                <TextBlock x:Name="TxtLastUpdate" Grid.Column="2" Text="마지막 업데이트: --"
-                           Foreground="{StaticResource TextSecondaryBrush}"
-                           VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <TextBlock x:Name="TxtLastUpdateLabel" Text="Last update:"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               VerticalAlignment="Center" Margin="0,0,4,0"/>
+                    <TextBlock x:Name="TxtLastUpdateTime" Text="--"
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
             </Grid>
         </Border>
 
@@ -106,7 +112,8 @@
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <!-- 퀘스트 상세 Drawer (왼쪽) -->
-                <ColumnDefinition x:Name="QuestDrawerColumn" Width="0"/>
+                <ColumnDefinition x:Name="QuestDrawerColumn" Width="0" MinWidth="0"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition x:Name="SettingsColumn" Width="0"/>
             </Grid.ColumnDefinitions>
@@ -114,7 +121,7 @@
             <!-- 퀘스트 상세 Drawer -->
             <Border x:Name="QuestDrawerPanel" Grid.Column="0"
                     Background="{StaticResource BackgroundMediumBrush}"
-                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,1,0"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                     Visibility="Collapsed">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -123,28 +130,139 @@
                     </Grid.RowDefinitions>
 
                     <!-- Drawer 헤더 -->
-                    <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}" Padding="12,8">
-                        <Grid>
-                            <TextBlock Text="Quest Objectives" FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"
-                                       VerticalAlignment="Center"/>
-                            <Button Content="✕" HorizontalAlignment="Right" Padding="8,4"
-                                    Click="BtnCloseQuestDrawer_Click" Background="Transparent"
-                                    BorderThickness="0"/>
-                        </Grid>
+                    <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}" Padding="10,8">
+                        <StackPanel>
+                            <!-- 첫째 줄: 제목 + 닫기 버튼 -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock x:Name="TxtQuestObjectivesTitle" Text="퀘스트 목표" FontSize="13" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                           VerticalAlignment="Center"/>
+                                <!-- 진행률 뱃지 -->
+                                <TextBlock x:Name="TxtMapProgressCount" Grid.Column="1"
+                                           Text="0/0"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <Button Content="X" Grid.Column="2" Padding="6,2"
+                                        Click="BtnCloseQuestDrawer_Click" Background="Transparent"
+                                        BorderThickness="0" FontSize="11" FontWeight="Bold"
+                                        Foreground="{StaticResource TextSecondaryBrush}"/>
+                            </Grid>
+                            <!-- 진행률 레이블 (숨김 처리용) -->
+                            <TextBlock x:Name="TxtMapProgressLabel" Visibility="Collapsed"/>
+                            <!-- 둘째 줄: 진행률 바 + 필터 -->
+                            <Grid Margin="0,6,0,0">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <!-- 진행률 바 -->
+                                <Border Grid.Row="0" Background="{StaticResource BackgroundDarkBrush}"
+                                        CornerRadius="2" Height="4">
+                                    <Border x:Name="MapProgressBar"
+                                            Background="{StaticResource SuccessBrush}"
+                                            CornerRadius="2" HorizontalAlignment="Left"
+                                            Width="0"/>
+                                </Border>
+                                <!-- 필터링 옵션 -->
+                                <WrapPanel Grid.Row="1" Margin="0,6,0,0" Orientation="Horizontal">
+                                    <!-- 완료/미완료 필터 -->
+                                    <ComboBox x:Name="CmbStatusFilter" Width="70" Height="22"
+                                              FontSize="10" Padding="3,2" Margin="0,0,4,4"
+                                              SelectionChanged="CmbStatusFilter_SelectionChanged">
+                                        <ComboBoxItem x:Name="CmbStatusAll" Content="전체" Tag="All" IsSelected="True"/>
+                                        <ComboBoxItem x:Name="CmbStatusIncomplete" Content="미완료" Tag="Incomplete"/>
+                                        <ComboBoxItem x:Name="CmbStatusCompleted" Content="완료" Tag="Completed"/>
+                                    </ComboBox>
+                                    <!-- 타입별 필터 -->
+                                    <ComboBox x:Name="CmbTypeFilter" Width="78" Height="22"
+                                              FontSize="10" Padding="3,2" Margin="0,0,4,4"
+                                              SelectionChanged="CmbTypeFilter_SelectionChanged">
+                                        <ComboBoxItem x:Name="CmbTypeAll" Content="전체 타입" Tag="All" IsSelected="True"/>
+                                        <ComboBoxItem x:Name="CmbTypeVisit" Content="방문" Tag="visit"/>
+                                        <ComboBoxItem x:Name="CmbTypeMark" Content="마크" Tag="mark"/>
+                                        <ComboBoxItem x:Name="CmbTypePlant" Content="설치" Tag="plantItem"/>
+                                        <ComboBoxItem x:Name="CmbTypeExtract" Content="탈출" Tag="extract"/>
+                                        <ComboBoxItem x:Name="CmbTypeFind" Content="획득" Tag="findItem"/>
+                                    </ComboBox>
+                                    <!-- 현재 맵만 보기 -->
+                                    <CheckBox x:Name="ChkCurrentMapOnly"
+                                              FontSize="10" Margin="0,0,8,4"
+                                              VerticalAlignment="Center"
+                                              Foreground="{StaticResource TextSecondaryBrush}"
+                                              IsChecked="False"
+                                              Checked="ChkCurrentMapOnly_Changed"
+                                              Unchecked="ChkCurrentMapOnly_Changed">
+                                        <TextBlock x:Name="TxtCurrentMapOnly" Text="이 맵만" FontSize="10"/>
+                                    </CheckBox>
+                                    <!-- 퀘스트별 그룹화 -->
+                                    <CheckBox x:Name="ChkGroupByQuest"
+                                              FontSize="10" Margin="0,0,0,4"
+                                              VerticalAlignment="Center"
+                                              Foreground="{StaticResource TextSecondaryBrush}"
+                                              IsChecked="False"
+                                              Checked="ChkGroupByQuest_Changed"
+                                              Unchecked="ChkGroupByQuest_Changed">
+                                        <TextBlock x:Name="TxtGroupByQuest" Text="그룹" FontSize="10"/>
+                                    </CheckBox>
+                                </WrapPanel>
+                            </Grid>
+                        </StackPanel>
                     </Border>
 
                     <!-- 퀘스트 목록 -->
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                         <ItemsControl x:Name="QuestObjectivesList" Margin="12">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
+                            <ItemsControl.Resources>
+                                <!-- 퀘스트 그룹 헤더 템플릿 -->
+                                <DataTemplate x:Key="QuestGroupHeaderTemplate">
+                                    <Border Background="{StaticResource BackgroundMediumBrush}"
+                                            CornerRadius="4" Padding="10,8" Margin="0,12,0,6"
+                                            Opacity="{Binding Opacity}"
+                                            BorderBrush="{Binding HeaderBrush}" BorderThickness="0,0,0,2">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding QuestName}"
+                                                       FontSize="13" FontWeight="Bold"
+                                                       Foreground="{Binding HeaderBrush}"
+                                                       TextDecorations="{Binding TextDecoration}"
+                                                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis"/>
+                                            <Border Grid.Column="1" Background="{Binding HeaderBrush}"
+                                                    CornerRadius="10" Padding="8,2" Margin="8,0,0,0"
+                                                    VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding Progress}"
+                                                           FontSize="11" FontWeight="Bold"
+                                                           Foreground="White"/>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                                <!-- 퀘스트 목표 템플릿 -->
+                                <DataTemplate x:Key="QuestObjectiveTemplate">
                                     <Border Background="{StaticResource BackgroundDarkBrush}"
-                                            CornerRadius="4" Padding="12" Margin="0,0,0,8"
+                                            CornerRadius="4" Padding="10" Margin="{Binding ItemMargin}"
                                             Cursor="Hand"
                                             BorderBrush="{Binding SelectionBorderBrush}"
                                             BorderThickness="{Binding SelectionBorderThickness}"
-                                            MouseLeftButtonDown="QuestObjectiveItem_Click">
+                                            MouseLeftButtonDown="QuestObjectiveItem_Click"
+                                            IsEnabled="{Binding IsEnabled}">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsOnCurrentMap}" Value="False">
+                                                        <Setter Property="Opacity" Value="0.5"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
@@ -152,35 +270,43 @@
                                             </Grid.ColumnDefinitions>
 
                                             <!-- 체크박스 -->
-                                            <CheckBox Grid.Column="0" VerticalAlignment="Top" Margin="0,2,12,0"
+                                            <CheckBox Grid.Column="0" VerticalAlignment="Center" Margin="0,0,10,0"
                                                       IsChecked="{Binding IsChecked, Mode=TwoWay}"
                                                       Checked="ObjectiveCheckBox_Checked"
                                                       Unchecked="ObjectiveCheckBox_Unchecked"
-                                                      Tag="{Binding Objective}">
+                                                      Tag="{Binding Objective}"
+                                                      IsEnabled="{Binding IsEnabled}">
                                                 <CheckBox.LayoutTransform>
-                                                    <ScaleTransform ScaleX="1.5" ScaleY="1.5"/>
+                                                    <ScaleTransform ScaleX="1.3" ScaleY="1.3"/>
                                                 </CheckBox.LayoutTransform>
                                             </CheckBox>
 
                                             <StackPanel Grid.Column="1">
-                                                <!-- 퀘스트 이름 -->
+                                                <!-- 퀘스트 이름 (그룹화 시 숨김) -->
                                                 <TextBlock Text="{Binding QuestName}"
-                                                           FontSize="13" FontWeight="SemiBold"
+                                                           FontSize="12" FontWeight="SemiBold"
                                                            Foreground="{StaticResource AccentBrush}"
                                                            TextWrapping="Wrap" Margin="0,0,0,4"
-                                                           TextDecorations="{Binding TextDecoration}"/>
-                                                <!-- 목표 타입 배지 -->
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                           TextDecorations="{Binding TextDecoration}"
+                                                           Visibility="{Binding QuestNameVisibility}"/>
+                                                <!-- 목표 타입 배지 + 다른 맵 배지 -->
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                                     <Border Background="{Binding TypeBrush}"
-                                                            CornerRadius="3" Padding="6,2"
+                                                            CornerRadius="3" Padding="5,2"
                                                             Opacity="{Binding ContentOpacity}">
                                                         <TextBlock Text="{Binding TypeDisplay}"
-                                                                   FontSize="10" Foreground="White" FontWeight="SemiBold"/>
+                                                                   FontSize="9" Foreground="White" FontWeight="SemiBold"/>
+                                                    </Border>
+                                                    <!-- 다른 맵 배지 -->
+                                                    <Border Background="#607D8B" CornerRadius="3" Padding="5,2" Margin="4,0,0,0"
+                                                            Visibility="{Binding OtherMapBadgeVisibility}">
+                                                        <TextBlock Text="{Binding OtherMapName}"
+                                                                   FontSize="9" Foreground="White" FontWeight="SemiBold"/>
                                                     </Border>
                                                 </StackPanel>
                                                 <!-- 목표 설명 -->
                                                 <TextBlock Text="{Binding Description}"
-                                                           FontSize="12"
+                                                           FontSize="11"
                                                            Foreground="{StaticResource TextSecondaryBrush}"
                                                            TextWrapping="Wrap"
                                                            Opacity="{Binding ContentOpacity}"/>
@@ -188,14 +314,26 @@
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
+                            </ItemsControl.Resources>
+                            <ItemsControl.ItemTemplateSelector>
+                                <local:QuestDrawerTemplateSelector
+                                    GroupHeaderTemplate="{StaticResource QuestGroupHeaderTemplate}"
+                                    ObjectiveTemplate="{StaticResource QuestObjectiveTemplate}"/>
+                            </ItemsControl.ItemTemplateSelector>
                         </ItemsControl>
                     </ScrollViewer>
                 </Grid>
             </Border>
 
+            <!-- Drawer 리사이즈 핸들 -->
+            <GridSplitter x:Name="DrawerSplitter" Grid.Column="1" Width="5"
+                          HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                          Background="{StaticResource BorderBrush}"
+                          Visibility="Collapsed" Cursor="SizeWE"
+                          ShowsPreview="True"/>
+
             <!-- 맵 뷰어 -->
-            <Border Grid.Column="1" Background="{StaticResource BackgroundDarkBrush}"
+            <Border Grid.Column="2" Background="{StaticResource BackgroundDarkBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="0,1,0,0"
                     ClipToBounds="True">
                 <Grid x:Name="MapViewerGrid"
@@ -315,13 +453,13 @@
                     <!-- 맵 없음 안내 -->
                     <StackPanel x:Name="NoMapPanel" HorizontalAlignment="Center"
                                 VerticalAlignment="Center" Visibility="Visible">
-                        <TextBlock Text="맵 이미지가 없습니다" FontSize="18"
+                        <TextBlock x:Name="TxtNoMapImage" Text="No map image available" FontSize="18"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center"/>
-                        <TextBlock Text="Assets/Maps/ 폴더에 맵 이미지를 추가하세요" FontSize="12"
+                        <TextBlock x:Name="TxtAddMapImageHint" Text="Add map image to Assets/Maps/ folder" FontSize="12"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center" Margin="0,8,0,0"/>
-                        <TextBlock Text="또는 설정에서 이미지 경로를 지정하세요" FontSize="12"
+                        <TextBlock x:Name="TxtSetImagePathHint" Text="Or specify image path in settings" FontSize="12"
                                    Foreground="{StaticResource TextSecondaryBrush}"
                                    HorizontalAlignment="Center" Margin="0,4,0,0"/>
                     </StackPanel>
@@ -329,7 +467,7 @@
             </Border>
 
             <!-- 설정 패널 (토글 가능) -->
-            <Border x:Name="SettingsPanel" Grid.Column="2"
+            <Border x:Name="SettingsPanel" Grid.Column="3"
                     Background="{StaticResource BackgroundMediumBrush}"
                     BorderBrush="{StaticResource BorderBrush}" BorderThickness="1,1,0,0"
                     Visibility="Collapsed">
@@ -337,7 +475,7 @@
                     <StackPanel Margin="16">
                         <!-- 설정 헤더 -->
                         <Grid Margin="0,0,0,16">
-                            <TextBlock Text="Settings" FontSize="16" FontWeight="SemiBold"
+                            <TextBlock x:Name="TxtSettingsTitle" Text="Settings" FontSize="16" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}"/>
                             <Button Content="✕" HorizontalAlignment="Right" Padding="8,4"
                                     Click="BtnCloseSettings_Click" Background="Transparent"
@@ -345,7 +483,7 @@
                         </Grid>
 
                         <!-- 스크린샷 폴더 설정 -->
-                        <TextBlock Text="Screenshot Folder" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtScreenshotFolderLabel" Text="Screenshot Folder" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
                         <TextBox x:Name="TxtScreenshotFolder" IsReadOnly="True" Margin="0,0,0,8"/>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
@@ -356,7 +494,7 @@
                         </StackPanel>
 
                         <!-- 마커 설정 -->
-                        <TextBlock Text="Marker Settings" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtMarkerSettingsLabel" Text="Marker Settings" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
 
                         <!-- 완료된 퀘스트 목표 숨기기 -->
@@ -368,20 +506,20 @@
 
                         <!-- 퀘스트 마커 스타일 -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="Quest Style:" Foreground="{StaticResource TextSecondaryBrush}"
+                            <TextBlock x:Name="TxtQuestStyleLabel" Text="Quest Style:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
                             <ComboBox x:Name="CmbQuestMarkerStyle" Width="160"
                                       SelectionChanged="CmbQuestMarkerStyle_SelectionChanged">
-                                <ComboBoxItem Content="Icon Only" Tag="Default"/>
-                                <ComboBoxItem Content="Green Circle" Tag="GreenCircle"/>
-                                <ComboBoxItem Content="Icon + Name" Tag="DefaultWithName"/>
-                                <ComboBoxItem Content="Circle + Name" Tag="GreenCircleWithName"/>
+                                <ComboBoxItem x:Name="CmbStyleIconOnly" Content="Icon Only" Tag="Default"/>
+                                <ComboBoxItem x:Name="CmbStyleGreenCircle" Content="Green Circle" Tag="GreenCircle"/>
+                                <ComboBoxItem x:Name="CmbStyleIconWithName" Content="Icon + Name" Tag="DefaultWithName"/>
+                                <ComboBoxItem x:Name="CmbStyleCircleWithName" Content="Circle + Name" Tag="GreenCircleWithName"/>
                             </ComboBox>
                         </StackPanel>
 
                         <!-- 퀘스트명 텍스트 크기 -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="Quest Name:" Foreground="{StaticResource TextSecondaryBrush}"
+                            <TextBlock x:Name="TxtQuestNameSizeLabel" Text="Quest Name:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
                             <Slider x:Name="SliderQuestNameTextSize" Width="120" Minimum="8" Maximum="50"
                                     Value="12" ValueChanged="SliderQuestNameTextSize_ValueChanged"/>
@@ -392,7 +530,7 @@
 
                         <!-- 퀘스트 마커 크기 -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="Quest Marker:" Foreground="{StaticResource TextSecondaryBrush}"
+                            <TextBlock x:Name="TxtQuestMarkerSizeLabel" Text="Quest Marker:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
                             <Slider x:Name="SliderMarkerSize" Width="120" Minimum="8" Maximum="48"
                                     Value="16" ValueChanged="SliderMarkerSize_ValueChanged"/>
@@ -403,7 +541,7 @@
 
                         <!-- 플레이어 위치 마커 크기 -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
-                            <TextBlock Text="Player Marker:" Foreground="{StaticResource TextSecondaryBrush}"
+                            <TextBlock x:Name="TxtPlayerMarkerSizeLabel" Text="Player Marker:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
                             <Slider x:Name="SliderPlayerMarkerSize" Width="120" Minimum="8" Maximum="64"
                                     Value="16" ValueChanged="SliderPlayerMarkerSize_ValueChanged"/>
@@ -413,7 +551,7 @@
                         </StackPanel>
 
                         <!-- 탈출구 설정 -->
-                        <TextBlock Text="Extract Settings" FontWeight="SemiBold"
+                        <TextBlock x:Name="TxtExtractSettingsLabel" Text="Extract Settings" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
 
                         <CheckBox x:Name="ChkShowPmcExtracts" Content="PMC Extracts"
@@ -429,8 +567,8 @@
                                   Unchecked="ChkExtractFilter_Changed"/>
 
                         <!-- 탈출구 이름 텍스트 크기 -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <TextBlock Text="Name Size:" Foreground="{StaticResource TextSecondaryBrush}"
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
+                            <TextBlock x:Name="TxtExtractNameSizeLabel" Text="Name Size:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
                             <Slider x:Name="SliderExtractTextSize" Width="120" Minimum="6" Maximum="20"
                                     Value="10" ValueChanged="SliderExtractTextSize_ValueChanged"/>
@@ -438,6 +576,49 @@
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        VerticalAlignment="Center" Margin="8,0,0,0"/>
                         </StackPanel>
+
+                        <!-- 마커 색상 설정 -->
+                        <TextBlock x:Name="TxtMarkerColorsLabel" Text="Marker Colors" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,8"/>
+
+                        <!-- Visit 색상 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Border x:Name="ColorVisit" Width="24" Height="24" Background="#4CAF50"
+                                    CornerRadius="4" Cursor="Hand" MouseLeftButtonDown="MarkerColor_Click" Tag="visit"/>
+                            <TextBlock x:Name="TxtColorVisit" Text="Visit" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0" FontSize="12"/>
+                        </StackPanel>
+                        <!-- Mark 색상 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Border x:Name="ColorMark" Width="24" Height="24" Background="#FF9800"
+                                    CornerRadius="4" Cursor="Hand" MouseLeftButtonDown="MarkerColor_Click" Tag="mark"/>
+                            <TextBlock x:Name="TxtColorMark" Text="Mark" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0" FontSize="12"/>
+                        </StackPanel>
+                        <!-- Plant 색상 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Border x:Name="ColorPlant" Width="24" Height="24" Background="#9C27B0"
+                                    CornerRadius="4" Cursor="Hand" MouseLeftButtonDown="MarkerColor_Click" Tag="plantItem"/>
+                            <TextBlock x:Name="TxtColorPlant" Text="Plant" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0" FontSize="12"/>
+                        </StackPanel>
+                        <!-- Extract 색상 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Border x:Name="ColorExtract" Width="24" Height="24" Background="#2196F3"
+                                    CornerRadius="4" Cursor="Hand" MouseLeftButtonDown="MarkerColor_Click" Tag="extract"/>
+                            <TextBlock x:Name="TxtColorExtract" Text="Extract" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0" FontSize="12"/>
+                        </StackPanel>
+                        <!-- Find 색상 -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Border x:Name="ColorFind" Width="24" Height="24" Background="#FFEB3B"
+                                    CornerRadius="4" Cursor="Hand" MouseLeftButtonDown="MarkerColor_Click" Tag="findItem"/>
+                            <TextBlock x:Name="TxtColorFind" Text="Find" Foreground="{StaticResource TextSecondaryBrush}"
+                                       VerticalAlignment="Center" Margin="8,0,0,0" FontSize="12"/>
+                        </StackPanel>
+                        <!-- 기본값 복원 버튼 -->
+                        <Button x:Name="BtnResetColors" Content="Reset Colors" FontSize="11" Padding="8,4"
+                                Margin="0,8,0,0" Click="BtnResetColors_Click" HorizontalAlignment="Left"/>
                     </StackPanel>
                 </ScrollViewer>
             </Border>

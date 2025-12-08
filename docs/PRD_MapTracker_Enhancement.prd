@@ -1,5 +1,5 @@
 # Map Tracker Enhancement PRD
-## Version 1.1 | 2024-12
+## Version 1.4 | 2024-12
 
 ---
 
@@ -195,12 +195,154 @@ CheckBox Click → Index 추출 → ObjectiveId 조회 → SetObjectiveCompleted
 
 ---
 
-## 7. Future Considerations
+## 7. Implemented Enhancements (v1.2)
 
-### 7.1 Potential Enhancements
-1. 퀘스트 드로어에서 다른 맵 목표 표시 (비활성 상태로)
-2. 맵별 퀘스트 진행률 표시
-3. 퀘스트 필터링 옵션 (완료/미완료, 타입별)
+### 7.1 ENH-004: Other Map Objectives Display
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- 퀘스트 드로어에서 현재 맵이 아닌 다른 맵의 목표도 비활성 상태로 표시
+- 다른 맵 목표는 0.5 투명도로 표시되고 체크박스 비활성화
+- 맵 이름 배지로 어느 맵에서 완료해야 하는지 표시
+
+#### 관련 코드
+- `QuestObjectiveViewModel` - `IsOnCurrentMap`, `OtherMapName`, `OtherMapBadgeVisibility`, `IsEnabled` 프로퍼티 추가
+- `RefreshQuestDrawer()` - 퀘스트의 모든 목표(다른 맵 포함)를 수집하여 표시
+
+### 7.2 ENH-005: Map Progress Display
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- 퀘스트 드로어 상단에 현재 맵의 퀘스트 진행률 표시
+- 완료된 목표/전체 목표 카운트 표시 (예: "3/5")
+- 시각적 진행률 바 (녹색)
+
+#### 관련 코드
+- `UpdateMapProgress()` - 진행률 계산 및 UI 업데이트
+- XAML에 `TxtMapProgressCount`, `MapProgressBar` 추가
+
+### 7.3 ENH-006: Quest Filtering Options
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- **상태 필터**: All / Incomplete / Completed
+- **타입 필터**: All Types / Visit / Mark / Plant / Extract / Find
+- **현재 맵만 보기**: 체크박스로 다른 맵 목표 숨기기
+
+#### 관련 코드
+- `_drawerStatusFilter`, `_drawerTypeFilter`, `_drawerCurrentMapOnly` 필드
+- `ApplyDrawerFilters()` - 필터 적용 로직
+- XAML에 `CmbStatusFilter`, `CmbTypeFilter`, `ChkCurrentMapOnly` 추가
+
+---
+
+## 8. Implemented Enhancements (v1.3)
+
+### 8.1 ENH-007: UI Enhancement
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- 상단 컨트롤 바 구조 개선
+- 상태 표시 바 레이아웃 개선 (라벨과 값 분리)
+- 퀘스트 드로어 필터 UI 개선 (콤보박스 크기 최적화)
+- 설정 패널 전체 레이블 구조화
+- 맵 없음 안내 텍스트 영문화
+
+#### 관련 코드
+- `MapTrackerPage.xaml` - 모든 UI 요소에 x:Name 추가
+- `TxtLastUpdate` → `TxtLastUpdateLabel` + `TxtLastUpdateTime` 분리
+
+### 8.2 ENH-008: Full Localization Support
+**상태**: ✅ Implemented
+
+#### 구현 내용
+Map 탭 전체에 한국어/영어/일본어 다국어 지원 추가:
+
+**상단 컨트롤 바:**
+- 페이지 타이틀 (맵 위치 트래커)
+- 맵 라벨, 퀘스트 마커, 탈출구
+- 버튼: 경로 지우기, 전체 화면, 설정, 추적 시작/중지
+
+**상태 표시 바:**
+- 상태: 대기 중 / 추적 중
+- 위치, 마지막 업데이트 라벨
+
+**퀘스트 드로어:**
+- 퀘스트 목표 타이틀
+- 맵 진행률 라벨
+- 필터 옵션: 전체/미완료/완료, 타입별 (방문/마킹/설치/탈출/찾기)
+- 이 맵만 체크박스
+
+**설정 패널:**
+- 섹션 헤더: 스크린샷 폴더, 마커 설정, 탈출구 설정
+- 버튼: 자동 감지, 찾아보기
+- 체크박스: 완료된 목표 숨기기, PMC/Scav 탈출구
+- 슬라이더 라벨: 퀘스트 스타일, 퀘스트명, 퀘스트 마커, 플레이어 마커, 이름 크기
+
+**퀘스트 스타일 옵션:**
+- 아이콘만, 녹색 원, 아이콘+이름, 원+이름
+
+**맵 없음 안내:**
+- 맵 이미지 없음 메시지 및 힌트
+
+#### 관련 코드
+- `LocalizationService.cs` - Map Tracker 섹션 추가 (40+ 문자열)
+- `MapTrackerPage.xaml.cs` - `UpdateLocalizedText()` 메서드 구현
+- `MapTrackerPage.xaml` - 모든 텍스트 요소에 x:Name 추가
+
+---
+
+## 9. Implemented Enhancements (v1.4)
+
+### 9.1 ENH-009: Quest Grouping Option
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- 퀘스트 드로어에서 목표를 퀘스트별로 그룹화하는 옵션 추가
+- 그룹 헤더에 퀘스트명과 진행률(완료/전체) 표시
+- 완료된 퀘스트 그룹은 취소선과 투명도로 표시
+
+#### 관련 코드
+- `MapTrackerPage.xaml` - `ChkGroupByQuest` 체크박스 추가
+- `MapTrackerPage.xaml.cs` - `ApplyQuestGrouping()` 메서드, `QuestGroupHeader` 클래스
+- `QuestDrawerTemplateSelector` - DataTemplate 선택을 위한 템플릿 셀렉터
+
+### 9.2 ENH-010: Dark/Light Theme Support
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- 다크/라이트 테마 선택 옵션 추가 (설정 패널)
+- 런타임 테마 전환 지원
+- 설정 파일에 테마 저장 및 복원
+
+#### 관련 코드
+- `Services/ThemeService.cs` - 테마 관리 서비스 (싱글톤)
+- `MapTrackerPage.xaml` - 테마 콤보박스 추가
+- `MapTrackerSettings.cs` - `Theme` 속성 추가
+- `LocalizationService.cs` - 테마 관련 로컬라이제이션 문자열
+
+### 9.3 ENH-011: Marker Color Customization
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- 퀘스트 목표 타입별 마커 색상 커스터마이징
+- Visit, Mark, Plant, Extract, Find 각 타입별 색상 설정
+- 색상 선택 대화상자 (Windows ColorDialog)
+- 기본값 복원 버튼
+
+#### 관련 코드
+- `MapTrackerSettings.cs` - `MarkerColors` Dictionary, `GetMarkerColor()`/`SetMarkerColor()` 메서드
+- `MapTrackerPage.xaml` - 색상 박스 UI 추가
+- `MapTrackerPage.xaml.cs` - `MarkerColor_Click()`, `BtnResetColors_Click()`, `UpdateMarkerColorUI()` 메서드
+- `CreateQuestMarker()` - 커스텀 색상 적용 로직
+
+---
+
+## 10. Future Considerations
+
+### 10.1 Potential Enhancements
+1. 퀘스트 검색 기능 (드로어 내)
+2. 맵 간 퀘스트 이동 시 자동 맵 전환 제안
 
 ---
 
@@ -210,3 +352,6 @@ CheckBox Click → Index 추출 → ObjectiveId 조회 → SetObjectiveCompleted
 |---------|------|--------|---------|
 | 1.0 | 2024-12 | Claude | Initial document creation |
 | 1.1 | 2024-12 | Claude | BUG-001, BUG-002 수정 완료, ENH-001/002 구현, ENH-003 제거 |
+| 1.2 | 2024-12 | Claude | ENH-004/005/006 구현 (다른 맵 목표 표시, 진행률, 필터링) |
+| 1.3 | 2024-12 | Claude | ENH-007/008 구현 (UI 개선, 전체 Localization 지원) |
+| 1.4 | 2024-12 | Claude | ENH-009/010/011 구현 (퀘스트 그룹화, 테마 지원, 마커 색상 커스터마이징) |
