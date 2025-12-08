@@ -1179,6 +1179,38 @@ public partial class MapTrackerPage : UserControl
         }
     }
 
+    /// <summary>
+    /// 위치가 현재 맵에 해당하는지 확인합니다.
+    /// </summary>
+    private bool IsLocationOnCurrentMap(QuestObjectiveLocation location, MapConfig config)
+    {
+        if (string.IsNullOrEmpty(_currentMapKey)) return false;
+
+        // 검색할 맵 이름 목록 구성
+        var mapNamesToMatch = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            _currentMapKey
+        };
+
+        if (config.Aliases != null)
+        {
+            foreach (var alias in config.Aliases)
+                mapNamesToMatch.Add(alias);
+        }
+
+        if (!string.IsNullOrEmpty(config.DisplayName))
+            mapNamesToMatch.Add(config.DisplayName);
+
+        // 위치의 맵 이름이 현재 맵과 일치하는지 확인
+        if (!string.IsNullOrEmpty(location.MapName) && mapNamesToMatch.Contains(location.MapName))
+            return true;
+
+        if (!string.IsNullOrEmpty(location.MapNormalizedName) && mapNamesToMatch.Contains(location.MapNormalizedName))
+            return true;
+
+        return false;
+    }
+
     private void RefreshQuestMarkers()
     {
         if (string.IsNullOrEmpty(_currentMapKey)) return;
@@ -1222,16 +1254,20 @@ public partial class MapTrackerPage : UserControl
 
         foreach (var objective in _currentMapObjectives)
         {
-            // 인덱스 기반으로 완료 상태 확인 (Quests 탭과 연동)
-            var isCompleted = objective.ObjectiveIndex >= 0 &&
-                _progressService.IsObjectiveCompleted(objective.TaskNormalizedName, objective.ObjectiveIndex);
+            // ObjectiveId 기반으로 완료 상태 확인 (동일 설명 목표 개별 추적)
+            var isCompleted = _progressService.IsObjectiveCompletedById(objective.ObjectiveId);
             objective.IsCompleted = isCompleted;
 
             // 완료된 목표 숨기기 설정이 활성화되어 있으면 스킵
             if (_hideCompletedObjectives && isCompleted)
                 continue;
 
-            foreach (var location in objective.Locations)
+            // 현재 맵에 해당하는 위치만 필터링
+            var locationsOnCurrentMap = objective.Locations
+                .Where(loc => IsLocationOnCurrentMap(loc, config))
+                .ToList();
+
+            foreach (var location in locationsOnCurrentMap)
             {
                 // tarkov.dev API 좌표를 화면 좌표로 변환 (Transform 배열 사용)
                 // API position: x, y(높이), z → tarkov.dev 방식: [z, x]
@@ -1457,11 +1493,8 @@ public partial class MapTrackerPage : UserControl
         QuestDrawerColumn.Width = new GridLength(320);
         QuestDrawerPanel.Visibility = Visibility.Visible;
 
-        // 현재 맵의 모든 활성 목표를 표시 (선택 상태 포함)
-        // progressService에서 최신 완료 상태를 가져와서 표시
-        var viewModels = _currentMapObjectives.Select(obj =>
-            new QuestObjectiveViewModel(obj, _loc, _progressService, obj.ObjectiveId == _selectedObjective?.ObjectiveId)).ToList();
-        QuestObjectivesList.ItemsSource = viewModels;
+        // RefreshQuestDrawer()의 로직을 사용하여 다중 위치 지원
+        RefreshQuestDrawer();
 
         // 선택된 목표가 있으면 해당 위치로 맵 이동
         if (_selectedObjective != null)
@@ -1957,13 +1990,15 @@ public partial class MapTrackerPage : UserControl
     {
         if (sender is CheckBox checkBox && checkBox.Tag is TaskObjectiveWithLocation objective)
         {
-            if (objective.ObjectiveIndex >= 0)
-            {
-                _progressService.SetObjectiveCompleted(objective.TaskNormalizedName, objective.ObjectiveIndex, true);
-                // 마커 새로고침
-                RefreshQuestMarkers();
-                RefreshQuestDrawer();
-            }
+            // ObjectiveId 기반 추적 + Quests 탭과 동기화를 위해 index도 함께 저장
+            _progressService.SetObjectiveCompletedById(
+                objective.ObjectiveId,
+                true,
+                objective.TaskNormalizedName,
+                objective.ObjectiveIndex);
+            // 마커 새로고침
+            RefreshQuestMarkers();
+            RefreshQuestDrawer();
         }
     }
 
@@ -1971,13 +2006,15 @@ public partial class MapTrackerPage : UserControl
     {
         if (sender is CheckBox checkBox && checkBox.Tag is TaskObjectiveWithLocation objective)
         {
-            if (objective.ObjectiveIndex >= 0)
-            {
-                _progressService.SetObjectiveCompleted(objective.TaskNormalizedName, objective.ObjectiveIndex, false);
-                // 마커 새로고침
-                RefreshQuestMarkers();
-                RefreshQuestDrawer();
-            }
+            // ObjectiveId 기반 추적 + Quests 탭과 동기화를 위해 index도 함께 저장
+            _progressService.SetObjectiveCompletedById(
+                objective.ObjectiveId,
+                false,
+                objective.TaskNormalizedName,
+                objective.ObjectiveIndex);
+            // 마커 새로고침
+            RefreshQuestMarkers();
+            RefreshQuestDrawer();
         }
     }
 
@@ -2005,7 +2042,9 @@ public partial class MapTrackerPage : UserControl
     private void RefreshQuestDrawer()
     {
         var viewModels = _currentMapObjectives.Select(obj =>
-            new QuestObjectiveViewModel(obj, _loc, _progressService, obj.ObjectiveId == _selectedObjective?.ObjectiveId)).ToList();
+            new QuestObjectiveViewModel(obj, _loc, _progressService,
+                obj.ObjectiveId == _selectedObjective?.ObjectiveId)).ToList();
+
         QuestObjectivesList.ItemsSource = viewModels;
     }
 
@@ -2056,10 +2095,10 @@ public class QuestObjectiveViewModel
         TypeDisplay = GetTypeDisplay(objective.Type);
         TypeBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString(objective.MarkerColor));
 
-        // 체크박스 상태 설정 (인덱스 기반 - Quests 탭과 연동)
-        if (progressService != null && objective.ObjectiveIndex >= 0)
+        // 체크박스 상태 설정 (ObjectiveId 기반 - 동일 설명 목표 개별 추적)
+        if (progressService != null)
         {
-            IsChecked = progressService.IsObjectiveCompleted(objective.TaskNormalizedName, objective.ObjectiveIndex);
+            IsChecked = progressService.IsObjectiveCompletedById(objective.ObjectiveId);
         }
         else
         {

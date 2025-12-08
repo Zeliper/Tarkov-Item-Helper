@@ -170,13 +170,14 @@
                                                            TextWrapping="Wrap" Margin="0,0,0,4"
                                                            TextDecorations="{Binding TextDecoration}"/>
                                                 <!-- 목표 타입 배지 -->
-                                                <Border Background="{Binding TypeBrush}"
-                                                        CornerRadius="3" Padding="6,2"
-                                                        HorizontalAlignment="Left" Margin="0,0,0,6"
-                                                        Opacity="{Binding ContentOpacity}">
-                                                    <TextBlock Text="{Binding TypeDisplay}"
-                                                               FontSize="10" Foreground="White" FontWeight="SemiBold"/>
-                                                </Border>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                    <Border Background="{Binding TypeBrush}"
+                                                            CornerRadius="3" Padding="6,2"
+                                                            Opacity="{Binding ContentOpacity}">
+                                                        <TextBlock Text="{Binding TypeDisplay}"
+                                                                   FontSize="10" Foreground="White" FontWeight="SemiBold"/>
+                                                    </Border>
+                                                </StackPanel>
                                                 <!-- 목표 설명 -->
                                                 <TextBlock Text="{Binding Description}"
                                                            FontSize="12"

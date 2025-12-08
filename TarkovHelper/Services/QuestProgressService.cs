@@ -446,19 +446,30 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Set objective completion status
+        /// Set objective completion status (index 기반 - Quests 탭용)
+        /// ObjectiveId도 함께 저장하여 Map Tracker와 동기화
         /// </summary>
-        public void SetObjectiveCompleted(string questNormalizedName, int objectiveIndex, bool completed)
+        public void SetObjectiveCompleted(string questNormalizedName, int objectiveIndex, bool completed, string? objectiveId = null)
         {
-            var key = $"{questNormalizedName}:{objectiveIndex}";
+            var indexKey = $"{questNormalizedName}:{objectiveIndex}";
 
             if (completed)
             {
-                _objectiveProgress[key] = true;
+                _objectiveProgress[indexKey] = true;
+                // ObjectiveId도 함께 저장 (동기화)
+                if (!string.IsNullOrEmpty(objectiveId))
+                {
+                    _objectiveProgress[$"id:{objectiveId}"] = true;
+                }
             }
             else
             {
-                _objectiveProgress.Remove(key);
+                _objectiveProgress.Remove(indexKey);
+                // ObjectiveId도 함께 제거 (동기화)
+                if (!string.IsNullOrEmpty(objectiveId))
+                {
+                    _objectiveProgress.Remove($"id:{objectiveId}");
+                }
             }
 
             SaveObjectiveProgress();
@@ -466,23 +477,34 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Set objective completion status by objective ID
+        /// Set objective completion status by objective ID (Map Tracker용)
+        /// Index 기반 키도 함께 저장하여 Quests 탭과 동기화
         /// </summary>
-        public void SetObjectiveCompletedById(string objectiveId, bool completed)
+        public void SetObjectiveCompletedById(string objectiveId, bool completed, string? questNormalizedName = null, int objectiveIndex = -1)
         {
-            var key = $"id:{objectiveId}";
+            var idKey = $"id:{objectiveId}";
 
             if (completed)
             {
-                _objectiveProgress[key] = true;
+                _objectiveProgress[idKey] = true;
+                // Index 기반 키도 함께 저장 (동기화)
+                if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                {
+                    _objectiveProgress[$"{questNormalizedName}:{objectiveIndex}"] = true;
+                }
             }
             else
             {
-                _objectiveProgress.Remove(key);
+                _objectiveProgress.Remove(idKey);
+                // Index 기반 키도 함께 제거 (동기화)
+                if (!string.IsNullOrEmpty(questNormalizedName) && objectiveIndex >= 0)
+                {
+                    _objectiveProgress.Remove($"{questNormalizedName}:{objectiveIndex}");
+                }
             }
 
             SaveObjectiveProgress();
-            ObjectiveProgressChanged?.Invoke(this, new ObjectiveProgressChangedEventArgs(objectiveId, -1, completed));
+            ObjectiveProgressChanged?.Invoke(this, new ObjectiveProgressChangedEventArgs(objectiveId, objectiveIndex, completed));
         }
 
         /// <summary>

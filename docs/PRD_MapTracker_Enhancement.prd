@@ -1,0 +1,212 @@
+# Map Tracker Enhancement PRD
+## Version 1.1 | 2024-12
+
+---
+
+## 1. Overview
+
+### 1.1 Purpose
+Map Tracker 기능의 기존 구현 강화 및 발견된 버그 수정을 위한 Product Requirements Document.
+
+### 1.2 Background
+현재 Map Tracker는 게임 내 퀘스트 목표를 맵에 시각적으로 표시하고, 플레이어 위치를 추적하는 기능을 제공합니다. 그러나 다중 지역 퀘스트 처리 및 동일 지역 내 다중 목표 체크박스 관련 버그가 발견되었습니다.
+
+---
+
+## 2. Current Implementation Summary (현재 구현 상태)
+
+### 2.1 Core Features
+
+#### A. Map Display System
+- **다중 맵 지원**: Customs, Woods, Shoreline, Streets, Labs, Factory, Ground Zero, Interchange, Lighthouse
+- **SVG/래스터 이미지 지원**: PNG/JPG 및 SVG (CSS 전처리 포함)
+- **좌표 변환**: tarkov.dev Transform 배열 및 CoordinateRotation 사용
+- **관련 파일**:
+  - `Services/MapTracker/MapTrackerService.cs`
+  - `Services/MapTracker/MapCoordinateTransformer.cs`
+  - `Models/MapTracker/MapConfig.cs`
+
+#### B. Quest Objective Tracking
+- **활성 퀘스트 목표 마커**: 맵에 색상 코딩된 마커 표시
+- **마커 스타일**: 기본 원형, 녹색 원형, 퀘스트명 포함/미포함 변형
+- **목표 유형별 색상**:
+  - Green (#4CAF50): visit
+  - Orange (#FF9800): mark
+  - Purple (#9C27B0): plantItem
+  - Blue (#2196F3): extract
+  - Yellow (#FFEB3B): findItem
+- **관련 파일**:
+  - `Services/MapTracker/QuestObjectiveService.cs`
+  - `Models/MapTracker/QuestObjectiveLocation.cs`
+  - `Pages/MapTrackerPage.xaml.cs`
+
+#### C. Objective Completion System
+- **체크박스 기반 완료 추적**: 사이드 드로어에서 목표 완료 체크
+- **ObjectiveId 기반 추적**: 각 목표를 고유 ID로 개별 추적 (v1.1에서 개선)
+- **이중 키 동기화**: Map Tracker와 Quests 탭 간 양방향 동기화
+- **시각적 피드백**: 완료 시 체크마크 오버레이 및 반투명 처리
+- **관련 파일**:
+  - `Services/QuestProgressService.cs`
+  - `Pages/MapTrackerPage.xaml.cs`
+  - `Pages/QuestListPage.xaml.cs`
+
+#### D. Player Position Tracking
+- **스크린샷 모니터링**: EFT Screenshots 폴더 감시
+- **이동 경로 표시**: 폴리라인으로 플레이어 이동 시각화
+- **방향 지시자**: 플레이어 바라보는 방향 화살표
+- **관련 파일**:
+  - `Services/MapTracker/ScreenshotWatcherService.cs`
+  - `Services/MapTracker/ScreenshotCoordinateParser.cs`
+
+#### E. Extract Points
+- **PMC/Scav 탈출구 마커**: 팩션별 색상 구분
+- **그룹화된 탈출구 처리**: 동일 위치 탈출구 그룹핑
+- **관련 파일**:
+  - `Services/MapTracker/ExtractService.cs`
+  - `Models/MapTracker/MapExtract.cs`
+
+---
+
+## 3. Bug Reports (발견된 버그)
+
+### 3.1 BUG-001: Multi-Location Quest Display Issue
+**심각도**: High
+**상태**: ✅ Fixed (v1.1)
+
+#### 문제 설명
+여러 지역에 걸쳐진 퀘스트의 목표가 해당 맵에 표시되지 않는 문제.
+
+#### 근본 원인
+1. GraphQL 쿼리에서 `TaskObjectiveQuestItem`, `TaskObjectiveItem` 타입의 zone 정보를 가져오지 않음
+2. "Delivery From the Past" 같은 `findQuestItem`, `plantQuestItem` 타입 퀘스트 누락
+
+#### 해결 방법
+`QuestObjectiveService.cs`의 GraphQL 쿼리에 누락된 타입 추가:
+```csharp
+objectives {{
+    ...
+    ... on TaskObjectiveQuestItem {{ {zoneFragment} }}
+    ... on TaskObjectiveItem {{ {zoneFragment} }}
+}}
+```
+
+#### 추가 개선
+`IsLocationOnCurrentMap()` 메서드 추가로 현재 맵에 해당하는 위치만 필터링하여 마커 표시.
+
+---
+
+### 3.2 BUG-002: Checkbox Batch Check Bug
+**심각도**: High
+**상태**: ✅ Fixed (v1.1)
+
+#### 문제 설명
+WiFi 카메라 설치, 마커 설치 등 한 지역에서 동일한 유형의 여러 임무를 수행해야 할 때, 하나의 체크박스를 체크하면 같은 퀘스트의 모든 목표가 함께 체크되는 버그.
+
+#### 근본 원인
+1. `GetObjectiveIndex()` 메서드가 설명 텍스트 기반 매칭 사용
+2. 동일한 설명을 가진 목표들(예: "Wi-Fi 카메라 설치" x 3)이 같은 인덱스 반환
+3. `ObjectiveIndex` 기반 완료 추적이 이들을 구분하지 못함
+
+#### 해결 방법
+ObjectiveId 기반 추적으로 전환:
+```csharp
+// Map Tracker에서 ObjectiveId로 완료 상태 추적
+_progressService.SetObjectiveCompletedById(objective.ObjectiveId, completed,
+    objective.QuestNormalizedName, objectiveIndex);
+```
+
+---
+
+## 4. Implemented Enhancements (v1.1)
+
+### 4.1 ENH-001: Checkbox Synchronization
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- Map Tracker와 Quests 탭 간 체크박스 상태 양방향 동기화
+- `QuestProgressService`에 이중 키 저장 방식 구현
+- ObjectiveId 키와 Index 키를 동시에 저장하여 양쪽 탭에서 동기화
+
+#### 관련 코드
+- `QuestProgressService.SetObjectiveCompleted()` - Index 키와 함께 ObjectiveId 키 저장
+- `QuestProgressService.SetObjectiveCompletedById()` - ObjectiveId 키와 함께 Index 키 저장
+- `QuestObjectiveService.GetObjectiveIdByIndex()` - Index로 ObjectiveId 조회 헬퍼
+
+### 4.2 ENH-002: Multi-Location Marker Display
+**상태**: ✅ Implemented
+
+#### 구현 내용
+- 현재 맵에 해당하는 위치만 필터링하여 마커 표시
+- `IsLocationOnCurrentMap()` 메서드로 맵 이름/alias 매칭
+
+### 4.3 ENH-003: Visual Distinction for Same-Quest Objectives
+**상태**: ❌ Removed (v1.1)
+
+#### 결정 사항
+- 위치 번호 배지(1/2, 2/3 등) 기능 제거
+- 사용자 피드백에 따라 단순화된 UI 유지
+
+---
+
+## 5. Technical Specifications
+
+### 5.1 Affected Files (v1.1 Changes)
+
+| File | Changes |
+|------|---------|
+| `Services/MapTracker/QuestObjectiveService.cs` | GraphQL 쿼리 확장, GetObjectiveIdByIndex() 추가 |
+| `Services/QuestProgressService.cs` | 이중 키 동기화 로직 추가 |
+| `Pages/MapTrackerPage.xaml.cs` | ObjectiveId 기반 체크박스 처리, IsLocationOnCurrentMap() 추가 |
+| `Pages/QuestListPage.xaml.cs` | ObjectiveId 동기화 연동 |
+
+### 5.2 Data Flow (v1.1)
+
+```
+Map Tracker 체크박스:
+CheckBox Click → ObjectiveId 추출 → SetObjectiveCompletedById(objectiveId, completed, questName, index)
+                                                ↓
+                                    저장: "id:{objectiveId}" = true
+                                          "{questName}:{index}" = true  (동기화용)
+                                                ↓
+                                    Quests 탭에서도 완료 상태 반영
+
+Quests 탭 체크박스:
+CheckBox Click → Index 추출 → ObjectiveId 조회 → SetObjectiveCompleted(questName, index, completed, objectiveId)
+                                                ↓
+                                    저장: "{questName}:{index}" = true
+                                          "id:{objectiveId}" = true  (동기화용)
+                                                ↓
+                                    Map Tracker에서도 완료 상태 반영
+```
+
+---
+
+## 6. Testing Requirements
+
+### 6.1 Test Cases
+
+| TC | Description | Expected Result | Status |
+|----|-------------|-----------------|--------|
+| TC-001 | 다중 맵 퀘스트(Delivery From the Past) 표시 | Customs, Factory 모두에서 마커 표시 | ✅ Pass |
+| TC-002 | 동일 퀘스트 내 첫 번째 목표만 체크 | 해당 목표만 완료 표시 | ✅ Pass |
+| TC-003 | Map Tracker에서 체크 → Quests 탭 확인 | 동일하게 체크됨 | ✅ Pass |
+| TC-004 | Quests 탭에서 체크 → Map Tracker 확인 | 동일하게 체크됨 | ✅ Pass |
+| TC-005 | 앱 재시작 후 완료 상태 유지 | 완료 상태 유지됨 | ✅ Pass |
+
+---
+
+## 7. Future Considerations
+
+### 7.1 Potential Enhancements
+1. 퀘스트 드로어에서 다른 맵 목표 표시 (비활성 상태로)
+2. 맵별 퀘스트 진행률 표시
+3. 퀘스트 필터링 옵션 (완료/미완료, 타입별)
+
+---
+
+## Document History
+
+| Version | Date | Author | Changes |
+|---------|------|--------|---------|
+| 1.0 | 2024-12 | Claude | Initial document creation |
+| 1.1 | 2024-12 | Claude | BUG-001, BUG-002 수정 완료, ENH-001/002 구현, ENH-003 제거 |

@@ -309,7 +309,9 @@ public sealed class QuestObjectiveService : IDisposable
                 bottom
             }";
 
-        // zones 필드가 있는 타입만 쿼리 (TaskObjectiveExtract, TaskObjectiveBuildItem 등은 zones 없음)
+        // zones 필드가 있는 타입들을 쿼리
+        // TaskObjectiveQuestItem: findQuestItem, plantQuestItem 등 (예: Delivery from the Past)
+        // TaskObjectiveItem: plantItem 등
         var query = $@"{{
             tasks(lang: {lang}) {{
                 id
@@ -322,6 +324,8 @@ public sealed class QuestObjectiveService : IDisposable
                     ... on TaskObjectiveBasic {{ {zoneFragment} }}
                     ... on TaskObjectiveMark {{ {zoneFragment} }}
                     ... on TaskObjectiveShoot {{ {zoneFragment} }}
+                    ... on TaskObjectiveQuestItem {{ {zoneFragment} }}
+                    ... on TaskObjectiveItem {{ {zoneFragment} }}
                 }}
             }}
         }}";
@@ -489,19 +493,12 @@ public sealed class QuestObjectiveService : IDisposable
             // Active 상태인 퀘스트만
             if (status != QuestStatus.Active) continue;
 
-            // 목표 인덱스 설정 (Quests 탭과 연동용)
+            // 목표 인덱스 설정 (Quests 탭 연동용 - 레거시 호환)
             var objectiveIndex = GetObjectiveIndex(task, objective.Description);
             objective.ObjectiveIndex = objectiveIndex;
 
-            // 목표가 이미 완료되었는지 확인
-            if (objectiveIndex >= 0 && progressService.IsObjectiveCompleted(task.NormalizedName!, objectiveIndex))
-            {
-                objective.IsCompleted = true;
-            }
-            else
-            {
-                objective.IsCompleted = false;
-            }
+            // ObjectiveId 기반으로 완료 상태 확인 (동일 설명 목표 개별 추적)
+            objective.IsCompleted = progressService.IsObjectiveCompletedById(objective.ObjectiveId);
 
             result.Add(objective);
         }
@@ -518,6 +515,32 @@ public sealed class QuestObjectiveService : IDisposable
             return objectives;
 
         return new List<TaskObjectiveWithLocation>();
+    }
+
+    /// <summary>
+    /// 퀘스트 이름과 목표 인덱스로 ObjectiveId를 찾습니다.
+    /// Quests 탭에서 Map Tracker와 동기화할 때 사용합니다.
+    /// </summary>
+    public string? GetObjectiveIdByIndex(string taskNormalizedName, int objectiveIndex, TarkovTask? task = null)
+    {
+        if (!_objectivesByTask.TryGetValue(taskNormalizedName, out var objectives))
+            return null;
+
+        if (task?.Objectives == null || objectiveIndex < 0 || objectiveIndex >= task.Objectives.Count)
+            return null;
+
+        var targetDescription = task.Objectives[objectiveIndex];
+
+        // 목표 설명으로 매칭하여 ObjectiveId 찾기
+        foreach (var objective in objectives)
+        {
+            if (GetObjectiveIndex(task, objective.Description) == objectiveIndex)
+            {
+                return objective.ObjectiveId;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

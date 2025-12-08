@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using TarkovHelper.Models;
 using TarkovHelper.Services;
+using TarkovHelper.Services.MapTracker;
 
 namespace TarkovHelper.Pages
 {
@@ -105,6 +106,7 @@ namespace TarkovHelper.Pages
     {
         private readonly LocalizationService _loc = LocalizationService.Instance;
         private readonly QuestProgressService _progressService = QuestProgressService.Instance;
+        private readonly QuestObjectiveService _objectiveService = QuestObjectiveService.Instance;
         private readonly ImageCacheService _imageCache = ImageCacheService.Instance;
         private readonly ItemInventoryService _inventoryService = ItemInventoryService.Instance;
         private List<QuestViewModel> _allQuestViewModels = new();
@@ -1093,7 +1095,22 @@ namespace TarkovHelper.Pages
             if (checkBox?.Tag is int objectiveIndex)
             {
                 var isCompleted = checkBox.IsChecked ?? false;
-                _progressService.SetObjectiveCompleted(_currentDetailTask.NormalizedName, objectiveIndex, isCompleted);
+
+                // Map Tracker와 동기화를 위해 ObjectiveId도 함께 저장
+                string? objectiveId = null;
+                if (_objectiveService.IsLoaded)
+                {
+                    objectiveId = _objectiveService.GetObjectiveIdByIndex(
+                        _currentDetailTask.NormalizedName,
+                        objectiveIndex,
+                        _currentDetailTask);
+                }
+
+                _progressService.SetObjectiveCompleted(
+                    _currentDetailTask.NormalizedName,
+                    objectiveIndex,
+                    isCompleted,
+                    objectiveId);
 
                 // Update the text style (strikethrough)
                 var parent = checkBox.Parent as StackPanel;
