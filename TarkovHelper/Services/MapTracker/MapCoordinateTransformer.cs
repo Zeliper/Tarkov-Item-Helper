@@ -235,4 +235,109 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
     {
         return _mapConfigs.Keys.ToList().AsReadOnly();
     }
+
+    /// <summary>
+    /// 구 지도 변환을 기반으로 게임 좌표를 신 지도 좌표로 변환합니다.
+    /// 수동 보정 데이터가 있으면 구→신 매핑을 적용합니다.
+    /// </summary>
+    /// <param name="mapKey">맵 키</param>
+    /// <param name="gameX">게임 X 좌표</param>
+    /// <param name="gameZ">게임 Z 좌표</param>
+    /// <param name="angle">방향 각도</param>
+    /// <param name="screenPosition">변환된 화면 좌표</param>
+    /// <returns>변환 성공 여부</returns>
+    public bool TryTransformWithAutoCalibration(string mapKey, double gameX, double gameZ, double? angle, out ScreenPosition? screenPosition)
+    {
+        screenPosition = null;
+
+        var config = GetMapConfig(mapKey);
+        if (config == null)
+            return false;
+
+        try
+        {
+            double finalX, finalY;
+
+            // 수동 보정 데이터가 있으면 자동 보정 사용
+            if (config.CalibrationPoints != null && config.CalibrationPoints.Count >= 3)
+            {
+                var autoCalibration = AutoCalibrationService.Instance;
+                var result = autoCalibration.CalibrateFromExistingPoints(config);
+
+                if (result.Success && result.OldToNewMapping != null)
+                {
+                    var transformed = autoCalibration.TransformWithMapping(mapKey, gameX, gameZ, result.OldToNewMapping);
+                    if (transformed != null)
+                    {
+                        finalX = transformed.Value.x;
+                        finalY = transformed.Value.y;
+                    }
+                    else
+                    {
+                        // 폴백: IDW 변환
+                        return TryTransformGameCoordinate(mapKey, gameX, gameZ, angle, out screenPosition);
+                    }
+                }
+                else
+                {
+                    // 폴백: IDW 변환
+                    return TryTransformGameCoordinate(mapKey, gameX, gameZ, angle, out screenPosition);
+                }
+            }
+            else
+            {
+                // 보정 데이터 없으면 구 지도 기반 단순 변환
+                var oldTransform = OldMapTransformService.Instance;
+                var result = oldTransform.TransformToNewScreenSimple(mapKey, gameX, gameZ);
+                if (result == null)
+                    return false;
+
+                finalX = result.Value.x;
+                finalY = result.Value.y;
+            }
+
+            screenPosition = new ScreenPosition
+            {
+                MapKey = config.Key,
+                X = finalX,
+                Y = finalY,
+                Angle = angle,
+                OriginalPosition = new EftPosition
+                {
+                    MapName = mapKey,
+                    X = gameX,
+                    Y = 0,
+                    Z = gameZ,
+                    Angle = angle,
+                    Timestamp = DateTime.Now
+                }
+            };
+
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 맵의 자동 보정 결과를 가져옵니다.
+    /// </summary>
+    public AutoCalibrationResult? GetAutoCalibrationResult(string mapKey)
+    {
+        var config = GetMapConfig(mapKey);
+        if (config == null)
+            return null;
+
+        return AutoCalibrationService.Instance.CalibrateFromExistingPoints(config);
+    }
+
+    /// <summary>
+    /// 모든 맵의 자동 보정 결과를 가져옵니다.
+    /// </summary>
+    public Dictionary<string, AutoCalibrationResult> GetAllAutoCalibrationResults()
+    {
+        return AutoCalibrationService.Instance.CalibrateAllMaps(_mapConfigs.Values);
+    }
 }
