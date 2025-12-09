@@ -367,7 +367,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "Woods",
                 DisplayName = "Woods",
-                ImagePath = "Assets/Maps/Woods_tarkovdev.svg",
+                ImagePath = "Assets/Maps/Woods.svg",
                 ImageWidth = 1402,
                 ImageHeight = 1421,
                 Transform = [0.1855, 113.1, 0.1855, 167.8],
@@ -379,7 +379,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "Customs",
                 DisplayName = "Customs",
-                ImagePath = "Assets/Maps/Customs_tarkovdev.svg",
+                ImagePath = "Assets/Maps/Customs.svg",
                 ImageWidth = 1062,
                 ImageHeight = 535,
                 Transform = [0.239, 168.65, 0.239, 136.35],
@@ -391,7 +391,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "Shoreline",
                 DisplayName = "Shoreline",
-                ImagePath = "Assets/Maps/Shoreline_tarkovdev.svg",
+                ImagePath = "Assets/Maps/Shoreline.svg",
                 ImageWidth = 1560,
                 ImageHeight = 1032,
                 Transform = [0.16, 83.2, 0.16, 111.1],
@@ -403,7 +403,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "Interchange",
                 DisplayName = "Interchange",
-                ImagePath = "Assets/Maps/Interchange_tarkovdev.svg",
+                ImagePath = "Assets/Maps/Interchange.svg",
                 ImageWidth = 977,
                 ImageHeight = 977,
                 Transform = [0.265, 150.6, 0.265, 134.6],
@@ -415,7 +415,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "Reserve",
                 DisplayName = "Reserve",
-                ImagePath = "Assets/Maps/Reserve_tarkovdev.svg",
+                ImagePath = "Assets/Maps/Reserve.svg",
                 ImageWidth = 827,
                 ImageHeight = 761,
                 Transform = [0.395, 122.0, 0.395, 137.65],
@@ -427,7 +427,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "Lighthouse",
                 DisplayName = "Lighthouse",
-                ImagePath = "Assets/Maps/Lighthouse_tarkovdev.svg",
+                ImagePath = "Assets/Maps/Lighthouse.svg",
                 ImageWidth = 1059,
                 ImageHeight = 1723,
                 Transform = [0.2, 0, 0.2, 0],
@@ -439,7 +439,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "StreetsOfTarkov",
                 DisplayName = "Streets of Tarkov",
-                ImagePath = "Assets/Maps/StreetsOfTarkov_tarkovdev.svg",
+                ImagePath = "Assets/Maps/StreetsOfTarkov.svg",
                 ImageWidth = 605,
                 ImageHeight = 832,
                 Transform = [0.38, 0, 0.38, 0],
@@ -451,7 +451,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "Factory",
                 DisplayName = "Factory",
-                ImagePath = "Assets/Maps/Factory_tarkovdev.svg",
+                ImagePath = "Assets/Maps/Factory.svg",
                 ImageWidth = 655 * 5,
                 ImageHeight = 706 * 5,
                 Transform = [1.629 * 5, 119.9 * 5, 1.629 * 5, 139.3 * 5],
@@ -464,7 +464,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "GroundZero",
                 DisplayName = "Ground Zero",
-                ImagePath = "Assets/Maps/GroundZero_tarkovdev.svg",
+                ImagePath = "Assets/Maps/GroundZero.svg",
                 ImageWidth = 1047 * 3,
                 ImageHeight = 1465 * 3,
                 Transform = [0.524 * 3, 167.3 * 3, 0.524 * 3, 65.1 * 3],
@@ -477,7 +477,7 @@ public sealed class MapTrackerSettings
             {
                 Key = "Labs",
                 DisplayName = "The Lab",
-                ImagePath = "Assets/Maps/Labs_tarkovdev.svg",
+                ImagePath = "Assets/Maps/Labs.svg",
                 ImageWidth = 720,
                 ImageHeight = 586,
                 Transform = [0.575, 281.2, 0.575, 193.7],
