@@ -353,134 +353,155 @@ public sealed class MapTrackerSettings
 
     /// <summary>
     /// 기본 맵 설정 목록 생성.
-    /// tarkov.dev의 maps.json 데이터 기반.
+    /// tarkov.dev의 maps.json 데이터 기반, Tarkov Market SVG 맵에 맞게 조정됨.
     /// SVG 파일 사용, Transform 좌표 변환 방식.
+    ///
+    /// [Tarkov Market 맵 마이그레이션 공식]
+    /// - ImageWidth/Height: 새 SVG viewBox 크기
+    /// - Transform: [scaleX * ratioX, marginX * ratioX, scaleY * ratioY, marginY * ratioY]
+    ///   여기서 ratioX = newWidth / oldWidth, ratioY = newHeight / oldHeight
+    /// - SvgBounds: 그대로 유지 (게임 좌표 기준)
     /// </summary>
     private static List<MapConfig> GetDefaultMaps()
     {
         // tarkov.dev maps.json 데이터 기반
         // Transform: [scaleX, marginX, scaleY, marginY]
         // SvgBounds: [[maxLat, minLng], [minLat, maxLng]]
+        //
+        // Tarkov Market SVG로 마이그레이션됨:
+        // - 새 viewBox 크기에 맞게 ImageWidth/Height 업데이트
+        // - Transform 값은 viewBox 비율에 맞게 스케일링
         return new List<MapConfig>
         {
+            // Woods: Old 1401.87 x 1420.60 → New 4800 x 4800 (ratio: 3.424, 3.379)
             new()
             {
                 Key = "Woods",
                 DisplayName = "Woods",
                 ImagePath = "Assets/Maps/Woods.svg",
-                ImageWidth = 1402,
-                ImageHeight = 1421,
-                Transform = [0.1855, 113.1, 0.1855, 167.8],
+                ImageWidth = 4800,
+                ImageHeight = 4800,
+                Transform = [0.1855 * 3.424, 113.1 * 3.424, 0.1855 * 3.379, 167.8 * 3.379],
                 CoordinateRotation = 180,
                 SvgBounds = [[650, -945], [-695, 470]],
                 Aliases = new List<string> { "woods", "WOODS" }
             },
+            // Customs: Old 1062.48 x 535.17 → New 4400 x 3200 (ratio: 4.142, 5.979)
             new()
             {
                 Key = "Customs",
                 DisplayName = "Customs",
                 ImagePath = "Assets/Maps/Customs.svg",
-                ImageWidth = 1062,
-                ImageHeight = 535,
-                Transform = [0.239, 168.65, 0.239, 136.35],
+                ImageWidth = 4400,
+                ImageHeight = 3200,
+                Transform = [0.239 * 4.142, 168.65 * 4.142, 0.239 * 5.979, 136.35 * 5.979],
                 CoordinateRotation = 180,
                 SvgBounds = [[698, -307], [-372, 237]],
                 Aliases = new List<string> { "customs", "CUSTOMS", "bigmap" }
             },
+            // Shoreline: Old 1559.57 x 1032.49 → New 3700 x 3100 (ratio: 2.372, 3.003)
             new()
             {
                 Key = "Shoreline",
                 DisplayName = "Shoreline",
                 ImagePath = "Assets/Maps/Shoreline.svg",
-                ImageWidth = 1560,
-                ImageHeight = 1032,
-                Transform = [0.16, 83.2, 0.16, 111.1],
+                ImageWidth = 3700,
+                ImageHeight = 3100,
+                Transform = [0.16 * 2.372, 83.2 * 2.372, 0.16 * 3.003, 111.1 * 3.003],
                 CoordinateRotation = 180,
                 SvgBounds = [[508, -415], [-1060, 618]],
                 Aliases = new List<string> { "shoreline", "SHORELINE" }
             },
+            // Interchange: Old 977.10 x 977.10 → New 4000 x 3900 (ratio: 4.094, 3.992)
             new()
             {
                 Key = "Interchange",
                 DisplayName = "Interchange",
                 ImagePath = "Assets/Maps/Interchange.svg",
-                ImageWidth = 977,
-                ImageHeight = 977,
-                Transform = [0.265, 150.6, 0.265, 134.6],
+                ImageWidth = 4000,
+                ImageHeight = 3900,
+                Transform = [0.265 * 4.094, 150.6 * 4.094, 0.265 * 3.992, 134.6 * 3.992],
                 CoordinateRotation = 180,
                 SvgBounds = [[532.75, -442.75], [-364, 453.5]],
                 Aliases = new List<string> { "interchange", "INTERCHANGE" }
             },
+            // Reserve: Old 827.29 x 761.16 → New 3200 x 3000 (ratio: 3.867, 3.941)
             new()
             {
                 Key = "Reserve",
                 DisplayName = "Reserve",
                 ImagePath = "Assets/Maps/Reserve.svg",
-                ImageWidth = 827,
-                ImageHeight = 761,
-                Transform = [0.395, 122.0, 0.395, 137.65],
+                ImageWidth = 3200,
+                ImageHeight = 3000,
+                Transform = [0.395 * 3.867, 122.0 * 3.867, 0.395 * 3.941, 137.65 * 3.941],
                 CoordinateRotation = 180,
                 SvgBounds = [[289, -338], [-303, 336]],
                 Aliases = new List<string> { "reserve", "RESERVE", "RezervBase" }
             },
+            // Lighthouse: Old 1059.38 x 1722.95 → New 3100 x 3700 (ratio: 2.926, 2.147)
             new()
             {
                 Key = "Lighthouse",
                 DisplayName = "Lighthouse",
                 ImagePath = "Assets/Maps/Lighthouse.svg",
-                ImageWidth = 1059,
-                ImageHeight = 1723,
-                Transform = [0.2, 0, 0.2, 0],
+                ImageWidth = 3100,
+                ImageHeight = 3700,
+                Transform = [0.2 * 2.926, 0 * 2.926, 0.2 * 2.147, 0 * 2.147],
                 CoordinateRotation = 180,
                 SvgBounds = [[515, -998], [-545, 725]],
                 Aliases = new List<string> { "lighthouse", "LIGHTHOUSE" }
             },
+            // Streets: Old 605.32 x 831.58 → New 3260 x 3500 (ratio: 5.386, 4.208)
             new()
             {
                 Key = "StreetsOfTarkov",
                 DisplayName = "Streets of Tarkov",
                 ImagePath = "Assets/Maps/StreetsOfTarkov.svg",
-                ImageWidth = 605,
-                ImageHeight = 832,
-                Transform = [0.38, 0, 0.38, 0],
+                ImageWidth = 3260,
+                ImageHeight = 3500,
+                Transform = [0.38 * 5.386, 0 * 5.386, 0.38 * 4.208, 0 * 4.208],
                 CoordinateRotation = 180,
                 SvgBounds = [[323, -317], [-280, 554]],
                 Aliases = new List<string> { "streets", "STREETS", "TarkovStreets", "streets-of-tarkov" }
             },
+            // Factory: Old 130.82 x 141.23 → New 3600 x 3600 (ratio: 27.519, 25.489)
+            // Note: Factory uses large MarkerScale multiplier
             new()
             {
                 Key = "Factory",
                 DisplayName = "Factory",
                 ImagePath = "Assets/Maps/Factory.svg",
-                ImageWidth = 655 * 5,
-                ImageHeight = 706 * 5,
-                Transform = [1.629 * 5, 119.9 * 5, 1.629 * 5, 139.3 * 5],
+                ImageWidth = 3600,
+                ImageHeight = 3600,
+                Transform = [1.629 * 27.519, 119.9 * 27.519, 1.629 * 25.489, 139.3 * 25.489],
                 CoordinateRotation = 90,
                 SvgBounds = [[79, -64.5], [-66.5, 67.4]],
                 Aliases = new List<string> { "factory", "FACTORY", "factory4_day", "factory4_night" },
                 MarkerScale = 5.0
             },
+            // GroundZero: Old 348.93 x 488.45 → New 2800 x 3100 (ratio: 8.025, 6.347)
             new()
             {
                 Key = "GroundZero",
                 DisplayName = "Ground Zero",
                 ImagePath = "Assets/Maps/GroundZero.svg",
-                ImageWidth = 1047 * 3,
-                ImageHeight = 1465 * 3,
-                Transform = [0.524 * 3, 167.3 * 3, 0.524 * 3, 65.1 * 3],
+                ImageWidth = 2800,
+                ImageHeight = 3100,
+                Transform = [0.524 * 8.025, 167.3 * 8.025, 0.524 * 6.347, 65.1 * 6.347],
                 CoordinateRotation = 180,
                 SvgBounds = [[249, -124], [-99, 364]],
                 Aliases = new List<string> { "groundzero", "GROUNDZERO", "Sandbox", "sandbox", "ground-zero", "ground-zero-21" },
                 MarkerScale = 3.0
             },
+            // Labs: Old 720 x 586 → New 5500 x 4200 (ratio: 7.639, 7.167)
             new()
             {
                 Key = "Labs",
                 DisplayName = "The Lab",
                 ImagePath = "Assets/Maps/Labs.svg",
-                ImageWidth = 720,
-                ImageHeight = 586,
-                Transform = [0.575, 281.2, 0.575, 193.7],
+                ImageWidth = 5500,
+                ImageHeight = 4200,
+                Transform = [0.575 * 7.639, 281.2 * 7.639, 0.575 * 7.167, 193.7 * 7.167],
                 CoordinateRotation = 270,
                 SvgBounds = [[-80, -477], [-287, -193]],
                 Aliases = new List<string> { "labs", "LABS", "laboratory", "the-lab" }
