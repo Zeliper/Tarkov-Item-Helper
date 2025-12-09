@@ -124,6 +124,12 @@ public partial class MapTrackerPage : UserControl
             LoadSettings();
             PopulateMapComboBox();
 
+            // Debug 빌드에서만 보정 버튼 표시
+#if DEBUG
+            BtnCalibrationMode.Visibility = Visibility.Visible;
+            BtnAutoCalibrate.Visibility = Visibility.Visible;
+#endif
+
             // 저장된 맵 상태 복원
             RestoreMapState();
 

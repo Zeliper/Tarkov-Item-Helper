@@ -60,9 +60,9 @@
                     <Button x:Name="BtnFullScreen" Content="Full Screen" Padding="12,6"
                             Margin="0,0,8,0" Click="BtnFullScreen_Click"/>
                     <ToggleButton x:Name="BtnCalibrationMode" Content="Calibrate" Padding="12,6"
-                            Margin="0,0,8,0" Checked="BtnCalibrationMode_Changed" Unchecked="BtnCalibrationMode_Changed"/>
+                            Margin="0,0,8,0" Visibility="Collapsed" Checked="BtnCalibrationMode_Changed" Unchecked="BtnCalibrationMode_Changed"/>
                     <Button x:Name="BtnAutoCalibrate" Content="Auto-Cal" Padding="12,6"
-                            Margin="0,0,8,0" Click="BtnAutoCalibrate_Click" ToolTip="Analyze calibration accuracy"/>
+                            Margin="0,0,8,0" Visibility="Collapsed" Click="BtnAutoCalibrate_Click" ToolTip="Analyze calibration accuracy"/>
                     <Button x:Name="BtnSettings" Content="Settings" Padding="12,6"
                             Click="BtnSettings_Click"/>
                 </StackPanel>
