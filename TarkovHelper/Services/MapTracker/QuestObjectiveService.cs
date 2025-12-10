@@ -548,7 +548,13 @@ public sealed class QuestObjectiveService : IDisposable
         foreach (var objective in mapObjectives)
         {
             // 퀘스트 상태 확인
-            var task = progressService.GetTask(objective.TaskNormalizedName);
+            // API와 Wiki 간 이름 불일치를 처리하기 위해 여러 정규화된 이름으로 검색
+            TarkovTask? task = null;
+            foreach (var normalizedName in GetNormalizedTaskNames(objective.TaskNormalizedName))
+            {
+                task = progressService.GetTask(normalizedName);
+                if (task != null) break;
+            }
             if (task == null) continue;
 
             var status = progressService.GetStatus(task);
@@ -665,6 +671,75 @@ public sealed class QuestObjectiveService : IDisposable
 
         System.Diagnostics.Debug.WriteLine($"[GetObjectiveIndex] Failed to match: task={task.NormalizedName}, desc={description}");
         return -1;
+    }
+
+    /// <summary>
+    /// API 퀘스트 이름을 Wiki 퀘스트 이름 형식으로 정규화합니다.
+    /// API와 Wiki 간의 이름 불일치를 해결합니다.
+    /// </summary>
+    /// <remarks>
+    /// 처리하는 케이스:
+    /// - PVP ZONE 접미사: "easy-money-part-1-pvp-zone" → "easy-money-part-1"
+    /// - 팩션별 퀘스트: "green-corridor-bear" → "green-corridor"
+    /// - 특수문자 차이: "hindsight-2020" → "hindsight-20/20"
+    /// - 이름 차이: "reserve" → "reserve-quest"
+    /// - 숫자 접미사 (반복 퀘스트): "make-amends-2" → "make-amends"
+    /// </remarks>
+    private static IEnumerable<string> GetNormalizedTaskNames(string taskNormalizedName)
+    {
+        if (string.IsNullOrEmpty(taskNormalizedName))
+            yield break;
+
+        // 원본 이름
+        yield return taskNormalizedName;
+
+        // 1. PVP ZONE 접미사 제거: "easy-money-part-1-pvp-zone" → "easy-money-part-1"
+        const string pvpZoneSuffix = "-pvp-zone";
+        if (taskNormalizedName.EndsWith(pvpZoneSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return taskNormalizedName[..^pvpZoneSuffix.Length];
+        }
+
+        // 2. 팩션별 퀘스트: "-bear", "-usec" 접미사 제거
+        if (taskNormalizedName.EndsWith("-bear", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return taskNormalizedName[..^5];  // "-bear".Length = 5
+        }
+        else if (taskNormalizedName.EndsWith("-usec", StringComparison.OrdinalIgnoreCase))
+        {
+            yield return taskNormalizedName[..^5];  // "-usec".Length = 5
+        }
+
+        // 3. 특수문자 차이: "hindsight-2020" → "hindsight-20/20"
+        if (taskNormalizedName == "hindsight-2020")
+        {
+            yield return "hindsight-20/20";
+        }
+
+        // 4. 이름 차이: "reserve" → "reserve-quest"
+        if (taskNormalizedName == "reserve")
+        {
+            yield return "reserve-quest";
+        }
+
+        // 5. 숫자 접미사 제거 (반복 퀘스트): "make-amends-2" → "make-amends"
+        // "-숫자" 패턴 감지 (단, "part-1" 같은 패턴은 제외)
+        var lastDashIndex = taskNormalizedName.LastIndexOf('-');
+        if (lastDashIndex > 0)
+        {
+            var suffix = taskNormalizedName[(lastDashIndex + 1)..];
+            // 순수 숫자인 경우에만 제거 (예: "-2", "-3")
+            // "part-1" 같은 경우는 "1"이지만 앞에 "part-"가 있으므로 제외
+            if (int.TryParse(suffix, out _))
+            {
+                var prefix = taskNormalizedName[..lastDashIndex];
+                // "xxx-part" 패턴이 아닌 경우에만
+                if (!prefix.EndsWith("-part", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return prefix;
+                }
+            }
+        }
     }
 
     /// <summary>

@@ -205,10 +205,28 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Check if all prerequisites are completed
+        /// Check if all prerequisites are met based on taskRequirements or legacy Previous field
         /// </summary>
         public bool ArePrerequisitesMet(TarkovTask task)
         {
+            // Use taskRequirements if available (more accurate status conditions)
+            if (task.TaskRequirements != null && task.TaskRequirements.Count > 0)
+            {
+                foreach (var req in task.TaskRequirements)
+                {
+                    var reqTask = GetTask(req.TaskNormalizedName);
+                    if (reqTask == null) continue;
+
+                    var reqStatus = GetStatus(reqTask);
+
+                    // Check if current status satisfies the requirement
+                    if (!IsStatusSatisfied(reqStatus, req.Status))
+                        return false;
+                }
+                return true;
+            }
+
+            // Fallback to legacy Previous field (assumes 'complete' required)
             if (task.Previous == null || task.Previous.Count == 0)
                 return true;
 
@@ -223,6 +241,46 @@ namespace TarkovHelper.Services
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Check if the current quest status satisfies the required status conditions
+        /// </summary>
+        private bool IsStatusSatisfied(QuestStatus currentStatus, List<string>? requiredStatuses)
+        {
+            if (requiredStatuses == null || requiredStatuses.Count == 0)
+            {
+                // Default: require 'complete'
+                return currentStatus == QuestStatus.Done;
+            }
+
+            // Check each required status
+            foreach (var required in requiredStatuses)
+            {
+                switch (required.ToLowerInvariant())
+                {
+                    case "active":
+                        // Quest is active (started but not completed)
+                        if (currentStatus == QuestStatus.Active)
+                            return true;
+                        // Also satisfied if quest is done (was active before)
+                        if (currentStatus == QuestStatus.Done)
+                            return true;
+                        break;
+
+                    case "complete":
+                        if (currentStatus == QuestStatus.Done)
+                            return true;
+                        break;
+
+                    case "failed":
+                        if (currentStatus == QuestStatus.Failed)
+                            return true;
+                        break;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

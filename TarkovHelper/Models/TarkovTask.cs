@@ -125,6 +125,32 @@ namespace TarkovHelper.Models
         /// </summary>
         [JsonPropertyName("alternativeQuests")]
         public List<string>? AlternativeQuests { get; set; }
+
+        /// <summary>
+        /// Task requirements with status conditions from tarkov.dev API
+        /// Each requirement specifies which status(es) the prerequisite task must have
+        /// </summary>
+        [JsonPropertyName("taskRequirements")]
+        public List<TaskRequirement>? TaskRequirements { get; set; }
+    }
+
+    /// <summary>
+    /// Task requirement with status condition
+    /// </summary>
+    public class TaskRequirement
+    {
+        /// <summary>
+        /// Normalized name of the required task
+        /// </summary>
+        [JsonPropertyName("taskNormalizedName")]
+        public string TaskNormalizedName { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Required status(es) for the task: "active", "complete", or both
+        /// If "active" is included, the prerequisite only needs to be started (not completed)
+        /// </summary>
+        [JsonPropertyName("status")]
+        public List<string>? Status { get; set; }
     }
 
     /// <summary>

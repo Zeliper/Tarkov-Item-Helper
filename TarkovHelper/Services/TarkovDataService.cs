@@ -76,12 +76,30 @@ namespace TarkovHelper.Services
 
             [JsonPropertyName("factionName")]
             public string? FactionName { get; set; }
+
+            [JsonPropertyName("taskRequirements")]
+            public List<ApiTaskRequirement>? TaskRequirements { get; set; }
         }
 
         private class ApiTrader
         {
             [JsonPropertyName("name")]
             public string Name { get; set; } = string.Empty;
+        }
+
+        private class ApiTaskRequirement
+        {
+            [JsonPropertyName("task")]
+            public ApiTaskRef? Task { get; set; }
+
+            [JsonPropertyName("status")]
+            public List<string>? Status { get; set; }
+        }
+
+        private class ApiTaskRef
+        {
+            [JsonPropertyName("normalizedName")]
+            public string NormalizedName { get; set; } = string.Empty;
         }
 
         #endregion
@@ -246,6 +264,10 @@ namespace TarkovHelper.Services
                     kappaRequired
                     factionName
                     trader {{ name }}
+                    taskRequirements {{
+                        task {{ normalizedName }}
+                        status
+                    }}
                 }}
             }}";
 
@@ -381,7 +403,9 @@ namespace TarkovHelper.Services
                             Caption = g.Caption
                         }).ToList(),
                         Faction = finalFaction,
-                        AlternativeQuests = wikiData.AlternativeQuests
+                        AlternativeQuests = wikiData.AlternativeQuests,
+                        // API taskRequirements with status conditions (active/complete)
+                        TaskRequirements = ConvertTaskRequirements(firstTask.TaskRequirements)
                     });
                 }
                 else
@@ -475,6 +499,30 @@ namespace TarkovHelper.Services
             progressCallback?.Invoke("Setup Collector quest prerequisites");
 
             return (result, missingTasks);
+        }
+
+        /// <summary>
+        /// Convert API taskRequirements to model TaskRequirements
+        /// </summary>
+        private static List<TaskRequirement>? ConvertTaskRequirements(List<ApiTaskRequirement>? apiRequirements)
+        {
+            if (apiRequirements == null || apiRequirements.Count == 0)
+                return null;
+
+            var result = new List<TaskRequirement>();
+            foreach (var req in apiRequirements)
+            {
+                if (req.Task == null || string.IsNullOrEmpty(req.Task.NormalizedName))
+                    continue;
+
+                result.Add(new TaskRequirement
+                {
+                    TaskNormalizedName = req.Task.NormalizedName,
+                    Status = req.Status
+                });
+            }
+
+            return result.Count > 0 ? result : null;
         }
 
         /// <summary>
