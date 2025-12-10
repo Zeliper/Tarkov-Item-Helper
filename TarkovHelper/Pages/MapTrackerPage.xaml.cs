@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -64,8 +65,12 @@ public partial class MapTrackerPage : UserControl
     // 퀘스트 드로어 필터링 옵션
     private string _drawerStatusFilter = "All";
     private string _drawerTypeFilter = "All";
-    private bool _drawerCurrentMapOnly = false;
-    private bool _drawerGroupByQuest = false;
+    private bool _drawerCurrentMapOnly = true;  // XAML 기본값과 일치
+    private bool _drawerGroupByQuest = true;    // XAML 기본값과 일치
+
+    // 겹치는 마커 그룹 관련
+    private readonly List<FrameworkElement> _groupedMarkerElements = new();
+    private Popup? _markerGroupPopup;
 
     // 보정 모드 관련 필드
     private readonly MapCalibrationService _calibrationService = MapCalibrationService.Instance;
@@ -138,8 +143,8 @@ public partial class MapTrackerPage : UserControl
             // 탈출구 데이터 로드
             await LoadExtractsAsync();
 
-            // Drawer 기본 표시 및 내용 새로고침
-            RefreshQuestDrawer();
+            // Drawer 기본 열기 및 내용 새로고침
+            OpenQuestDrawer();
 
             // 퀘스트 진행 상태 변경 이벤트 구독
             _progressService.ProgressChanged += OnQuestProgressChanged;
@@ -1295,6 +1300,24 @@ public partial class MapTrackerPage : UserControl
             }
         }
 
+        // 그룹 마커 업데이트
+        foreach (var marker in _groupedMarkerElements)
+        {
+            if (marker is Canvas canvas)
+            {
+                canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
+            }
+        }
+
+        // 이름을 표시하는 스타일일 때 겹침 재계산
+        var showName = _questMarkerStyle == QuestMarkerStyle.DefaultWithName ||
+                       _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
+        if (showName)
+        {
+            // 줌 변경 후 레이아웃 업데이트가 필요할 수 있음
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, DetectAndGroupOverlappingMarkers);
+        }
+
         // 플레이어 마커 업데이트
         UpdatePlayerMarkerScale(inverseScale);
     }
@@ -1583,6 +1606,15 @@ public partial class MapTrackerPage : UserControl
                 }
             }
         }
+
+        // 이름을 표시하는 스타일일 때만 겹침 감지 수행
+        var showName = _questMarkerStyle == QuestMarkerStyle.DefaultWithName ||
+                       _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
+        if (showName)
+        {
+            // 레이아웃 완료 후 그룹화 수행 (Measure가 정확한 크기를 반환하도록)
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, DetectAndGroupOverlappingMarkers);
+        }
     }
 
     private FrameworkElement CreateQuestMarker(TaskObjectiveWithLocation objective, QuestObjectiveLocation location, ScreenPosition screenPos)
@@ -1729,6 +1761,12 @@ public partial class MapTrackerPage : UserControl
             // 텍스트를 마커 중앙 아래에 위치
             Canvas.SetLeft(nameBorder, -textWidth / 2);
             Canvas.SetTop(nameBorder, markerSize / 2 + 4);
+
+            // 텍스트 클릭 이벤트 추가
+            nameBorder.Tag = objective;
+            nameBorder.MouseLeftButtonDown += QuestMarkerText_Click;
+            nameBorder.Cursor = Cursors.Hand;
+
             canvas.Children.Add(nameBorder);
         }
 
@@ -1757,13 +1795,528 @@ public partial class MapTrackerPage : UserControl
         return canvas;
     }
 
+    /// <summary>
+    /// 마커의 텍스트가 겹치는지 감지하고 그룹화합니다.
+    /// </summary>
+    private void DetectAndGroupOverlappingMarkers()
+    {
+        // 기존 그룹 마커 제거
+        ClearGroupedMarkers();
+
+        // 모든 텍스트 Border를 먼저 보이게 복원
+        foreach (var marker in _questMarkerElements)
+        {
+            if (marker is Canvas canvas)
+            {
+                foreach (var child in canvas.Children)
+                {
+                    if (child is Border border && border.Tag is TaskObjectiveWithLocation)
+                    {
+                        border.Visibility = Visibility.Visible;
+                    }
+                }
+            }
+        }
+
+        if (_questMarkerElements.Count < 2) return;
+
+        // 마커와 텍스트 경계 정보 수집
+        var markerInfos = new List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)>();
+
+        foreach (var marker in _questMarkerElements)
+        {
+            if (marker is Canvas canvas && canvas.Tag is TaskObjectiveWithLocation objective)
+            {
+                // 텍스트 Border 찾기
+                Border? textBorder = null;
+                foreach (var child in canvas.Children)
+                {
+                    if (child is Border border && border.Tag is TaskObjectiveWithLocation)
+                    {
+                        textBorder = border;
+                        break;
+                    }
+                }
+
+                if (textBorder != null)
+                {
+                    // 마커의 화면 위치
+                    var markerX = Canvas.GetLeft(canvas);
+                    var markerY = Canvas.GetTop(canvas);
+
+                    // 텍스트의 상대 위치
+                    var textLeft = Canvas.GetLeft(textBorder);
+                    var textTop = Canvas.GetTop(textBorder);
+
+                    // 줌 레벨에 따른 역스케일 고려
+                    var textInverseScale = 1.0 / _zoomLevel;
+
+                    // 텍스트의 실제 크기
+                    textBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                    var textWidth = textBorder.DesiredSize.Width;
+                    var textHeight = textBorder.DesiredSize.Height;
+
+                    // 실제 화면상의 텍스트 경계 계산 (줌 적용)
+                    var bounds = new Rect(
+                        markerX + textLeft * textInverseScale,
+                        markerY + textTop * textInverseScale,
+                        textWidth * textInverseScale,
+                        textHeight * textInverseScale
+                    );
+
+                    markerInfos.Add((marker, bounds, objective));
+                }
+            }
+        }
+
+        // 겹치는 마커 그룹 찾기 (Union-Find 방식)
+        var groups = FindOverlappingGroups(markerInfos);
+
+        // 마커 크기 계산 (그룹 리스트 위치 예측용)
+        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
+        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
+        var mapScale = mapConfig?.MarkerScale ?? 1.0;
+        var markerSize = baseMarkerSize * mapScale;
+        var inverseScale = 1.0 / _zoomLevel;
+
+        // 2개 이상 겹치는 그룹만 처리
+        foreach (var group in groups.Where(g => g.Count >= 2).ToList())
+        {
+            // 그룹 리스트가 표시될 영역과 겹치는 텍스트를 반복적으로 추가
+            var expandedGroup = ExpandGroupToIncludeOverlappingTexts(group, markerInfos, markerSize, inverseScale);
+
+            // 마커들의 위치 정보 수집
+            var markerPositions = new List<(double X, double Y)>();
+            foreach (var info in expandedGroup)
+            {
+                if (info.Marker is Canvas c)
+                {
+                    markerPositions.Add((Canvas.GetLeft(c), Canvas.GetTop(c)));
+                }
+            }
+
+            // 마커들의 중심 X와 가장 아래 Y 계산
+            var centerX = markerPositions.Average(p => p.X);
+            var bottomY = markerPositions.Max(p => p.Y);
+
+            // 그룹 내 각 마커의 텍스트만 숨기기 (마커 원은 그대로 유지)
+            foreach (var info in expandedGroup)
+            {
+                if (info.Marker is Canvas c)
+                {
+                    foreach (var child in c.Children)
+                    {
+                        if (child is Border border && border.Tag is TaskObjectiveWithLocation)
+                        {
+                            border.Visibility = Visibility.Collapsed;
+                        }
+                    }
+                }
+
+                // markerInfos에서 제거 (다른 그룹에서 중복 처리 방지)
+                markerInfos.RemoveAll(m => m.Objective.ObjectiveId == info.Objective.ObjectiveId);
+            }
+
+            // 텍스트 그룹 인디케이터 생성 (마커 아래에 위치)
+            var groupIndicator = CreateTextGroupIndicator(expandedGroup, centerX, bottomY);
+            _groupedMarkerElements.Add(groupIndicator);
+            QuestMarkersContainer.Children.Add(groupIndicator);
+        }
+    }
+
+    /// <summary>
+    /// 그룹 리스트가 표시될 영역과 겹치는 텍스트들을 그룹에 추가합니다.
+    /// </summary>
+    private List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> ExpandGroupToIncludeOverlappingTexts(
+        List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> initialGroup,
+        List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> allMarkers,
+        double markerSize, double inverseScale)
+    {
+        var expandedGroup = new List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)>(initialGroup);
+        var groupObjectiveIds = new HashSet<string>(initialGroup.Select(g => g.Objective.ObjectiveId));
+
+        bool changed;
+        do
+        {
+            changed = false;
+
+            // 현재 그룹의 마커 위치로 그룹 리스트 영역 계산
+            var markerPositions = expandedGroup
+                .Where(info => info.Marker is Canvas)
+                .Select(info => (Canvas.GetLeft((Canvas)info.Marker), Canvas.GetTop((Canvas)info.Marker)))
+                .ToList();
+
+            if (markerPositions.Count == 0) break;
+
+            var centerX = markerPositions.Average(p => p.Item1);
+            var bottomY = markerPositions.Max(p => p.Item2);
+
+            // 그룹 리스트의 예상 크기 계산 (항목당 약 20픽셀 높이, 최대 너비 200픽셀)
+            var estimatedListHeight = expandedGroup.Count * 20 * inverseScale;
+            var estimatedListWidth = 200 * inverseScale;
+
+            // 그룹 리스트가 표시될 영역 (마커 아래)
+            var groupListBounds = new Rect(
+                centerX - estimatedListWidth / 2,
+                bottomY + (markerSize / 2 + 4) * inverseScale,
+                estimatedListWidth,
+                estimatedListHeight
+            );
+
+            // 그룹에 포함되지 않은 마커들 중 그룹 리스트 영역과 겹치는 것 찾기
+            foreach (var marker in allMarkers.ToList())
+            {
+                if (groupObjectiveIds.Contains(marker.Objective.ObjectiveId))
+                    continue;
+
+                if (groupListBounds.IntersectsWith(marker.TextBounds))
+                {
+                    expandedGroup.Add(marker);
+                    groupObjectiveIds.Add(marker.Objective.ObjectiveId);
+                    changed = true;
+                }
+            }
+        } while (changed);
+
+        return expandedGroup;
+    }
+
+    /// <summary>
+    /// 겹치는 마커 그룹을 찾습니다 (Union-Find 알고리즘).
+    /// </summary>
+    private List<List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)>> FindOverlappingGroups(
+        List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> markerInfos)
+    {
+        var n = markerInfos.Count;
+        var parent = Enumerable.Range(0, n).ToArray();
+
+        int Find(int x)
+        {
+            if (parent[x] != x) parent[x] = Find(parent[x]);
+            return parent[x];
+        }
+
+        void Union(int x, int y)
+        {
+            var px = Find(x);
+            var py = Find(y);
+            if (px != py) parent[px] = py;
+        }
+
+        // 겹치는 마커끼리 연결
+        for (int i = 0; i < n; i++)
+        {
+            for (int j = i + 1; j < n; j++)
+            {
+                if (markerInfos[i].TextBounds.IntersectsWith(markerInfos[j].TextBounds))
+                {
+                    Union(i, j);
+                }
+            }
+        }
+
+        // 그룹화
+        var groups = new Dictionary<int, List<(FrameworkElement, Rect, TaskObjectiveWithLocation)>>();
+        for (int i = 0; i < n; i++)
+        {
+            var root = Find(i);
+            if (!groups.ContainsKey(root))
+                groups[root] = new List<(FrameworkElement, Rect, TaskObjectiveWithLocation)>();
+            groups[root].Add(markerInfos[i]);
+        }
+
+        return groups.Values.ToList();
+    }
+
+    /// <summary>
+    /// 겹치는 텍스트 그룹의 인디케이터를 생성합니다.
+    /// 마커 원은 그대로 두고 텍스트만 그룹화하여 리스트 형태로 표시합니다.
+    /// </summary>
+    private FrameworkElement CreateTextGroupIndicator(
+        List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> group,
+        double centerX, double bottomY)
+    {
+        var canvas = new Canvas
+        {
+            Width = 0,
+            Height = 0,
+            Tag = group.Select(g => g.Objective).ToList()
+        };
+
+        // 리스트 형태로 퀘스트 이름들을 표시하는 StackPanel
+        var stackPanel = new StackPanel
+        {
+            Orientation = Orientation.Vertical
+        };
+
+        foreach (var item in group)
+        {
+            var questName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(item.Objective.TaskNameKo)
+                ? item.Objective.TaskNameKo
+                : item.Objective.TaskName;
+
+            var itemText = new TextBlock
+            {
+                Text = $"• {questName}",
+                FontSize = _questNameTextSize,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                Margin = new Thickness(0, 1, 0, 1)
+            };
+
+            // 완료 상태 표시
+            if (item.Objective.IsCompleted)
+            {
+                itemText.TextDecorations = TextDecorations.Strikethrough;
+                itemText.Foreground = new SolidColorBrush(Colors.LightGray);
+            }
+
+            // 개별 항목에 Tag 설정 (클릭 시 사용)
+            var itemBorder = new Border
+            {
+                Child = itemText,
+                Tag = item.Objective,
+                Cursor = Cursors.Hand,
+                Padding = new Thickness(2, 0, 2, 0)
+            };
+
+            // 호버 효과
+            itemBorder.MouseEnter += (s, e) =>
+            {
+                itemBorder.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
+            };
+            itemBorder.MouseLeave += (s, e) =>
+            {
+                itemBorder.Background = Brushes.Transparent;
+            };
+
+            // 개별 클릭 이벤트
+            itemBorder.MouseLeftButtonDown += GroupListItem_Click;
+
+            stackPanel.Children.Add(itemBorder);
+        }
+
+        var groupBorder = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(220, 30, 30, 30)),
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(6, 4, 6, 4),
+            Child = stackPanel,
+            BorderBrush = new SolidColorBrush(Color.FromArgb(180, 70, 130, 180)),
+            BorderThickness = new Thickness(1)
+        };
+
+        // 크기 측정
+        groupBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var textWidth = groupBorder.DesiredSize.Width;
+
+        // 마커 크기 계산 (마커 아래에 배치하기 위함)
+        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
+        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
+        var mapScale = mapConfig?.MarkerScale ?? 1.0;
+        var markerSize = baseMarkerSize * mapScale;
+
+        // 마커 아래에 위치 (X는 중앙 정렬, Y는 마커 아래)
+        Canvas.SetLeft(groupBorder, -textWidth / 2);
+        Canvas.SetTop(groupBorder, markerSize / 2 + 4);  // 마커 반경 + 여백
+        canvas.Children.Add(groupBorder);
+
+        // 위치 설정 (마커들의 중심 X, 가장 아래 마커의 Y)
+        Canvas.SetLeft(canvas, centerX);
+        Canvas.SetTop(canvas, bottomY);
+
+        // 줌에 상관없이 고정 크기 유지
+        var inverseScale = 1.0 / _zoomLevel;
+        canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
+        canvas.RenderTransformOrigin = new Point(0, 0);
+
+        return canvas;
+    }
+
+    /// <summary>
+    /// 그룹 리스트의 개별 항목 클릭 시 해당 퀘스트를 선택합니다.
+    /// </summary>
+    private void GroupListItem_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.Tag is TaskObjectiveWithLocation objective)
+        {
+            ShowQuestDrawer(objective);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// 그룹 인디케이터 클릭 시 퀘스트 목록 팝업을 표시합니다.
+    /// </summary>
+    private void GroupIndicator_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Canvas canvas && canvas.Tag is List<TaskObjectiveWithLocation> objectives)
+        {
+            ShowGroupPopup(canvas, objectives);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// 겹치는 퀘스트 목록을 팝업으로 표시합니다.
+    /// </summary>
+    private void ShowGroupPopup(Canvas indicator, List<TaskObjectiveWithLocation> objectives)
+    {
+        // 기존 팝업 닫기
+        CloseGroupPopup();
+
+        var stackPanel = new StackPanel
+        {
+            Background = new SolidColorBrush(Color.FromArgb(240, 30, 30, 30)),
+            MinWidth = 200
+        };
+
+        foreach (var objective in objectives)
+        {
+            var questName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
+                ? objective.TaskNameKo
+                : objective.TaskName;
+
+            var itemBorder = new Border
+            {
+                Padding = new Thickness(10, 8, 10, 8),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                Tag = objective,
+                Cursor = Cursors.Hand
+            };
+
+            var itemText = new TextBlock
+            {
+                Text = questName,
+                Foreground = Brushes.White,
+                FontSize = 13,
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            // 완료 상태 표시
+            if (objective.IsCompleted)
+            {
+                itemText.TextDecorations = TextDecorations.Strikethrough;
+                itemText.Foreground = new SolidColorBrush(Colors.Gray);
+            }
+
+            itemBorder.Child = itemText;
+
+            // 호버 효과
+            itemBorder.MouseEnter += (s, ev) =>
+            {
+                itemBorder.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
+            };
+            itemBorder.MouseLeave += (s, ev) =>
+            {
+                itemBorder.Background = Brushes.Transparent;
+            };
+
+            // 클릭 시 퀘스트 선택
+            itemBorder.MouseLeftButtonDown += (s, ev) =>
+            {
+                if (itemBorder.Tag is TaskObjectiveWithLocation obj)
+                {
+                    CloseGroupPopup();
+                    ShowQuestDrawer(obj);
+                    ev.Handled = true;
+                }
+            };
+
+            stackPanel.Children.Add(itemBorder);
+        }
+
+        var popupBorder = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(240, 30, 30, 30)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(200, 70, 130, 180)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            Child = stackPanel,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 10,
+                ShadowDepth = 3,
+                Opacity = 0.5
+            }
+        };
+
+        _markerGroupPopup = new Popup
+        {
+            Child = popupBorder,
+            PlacementTarget = indicator,
+            Placement = PlacementMode.Bottom,
+            StaysOpen = false,
+            AllowsTransparency = true,
+            PopupAnimation = PopupAnimation.Fade,
+            IsOpen = true
+        };
+
+        // 팝업 외부 클릭 시 닫기
+        _markerGroupPopup.Closed += (s, ev) => _markerGroupPopup = null;
+    }
+
+    /// <summary>
+    /// 그룹 팝업을 닫습니다.
+    /// </summary>
+    private void CloseGroupPopup()
+    {
+        if (_markerGroupPopup != null)
+        {
+            _markerGroupPopup.IsOpen = false;
+            _markerGroupPopup = null;
+        }
+    }
+
+    /// <summary>
+    /// 그룹 마커들을 제거합니다.
+    /// </summary>
+    private void ClearGroupedMarkers()
+    {
+        foreach (var marker in _groupedMarkerElements)
+        {
+            if (marker is Canvas c)
+            {
+                // 리스트 내 개별 항목의 이벤트 핸들러 해제
+                foreach (var child in c.Children)
+                {
+                    if (child is Border groupBorder && groupBorder.Child is StackPanel stackPanel)
+                    {
+                        foreach (var item in stackPanel.Children)
+                        {
+                            if (item is Border itemBorder)
+                            {
+                                itemBorder.MouseLeftButtonDown -= GroupListItem_Click;
+                            }
+                        }
+                    }
+                }
+            }
+            QuestMarkersContainer.Children.Remove(marker);
+        }
+        _groupedMarkerElements.Clear();
+        CloseGroupPopup();
+    }
+
     private void ClearQuestMarkers()
     {
+        // 그룹 마커 먼저 제거
+        ClearGroupedMarkers();
+
         foreach (var marker in _questMarkerElements)
         {
             if (marker is Canvas c)
             {
                 c.MouseLeftButtonDown -= QuestMarker_Click;
+                // 텍스트 Border의 클릭 이벤트도 해제
+                foreach (var child in c.Children)
+                {
+                    if (child is Border border)
+                    {
+                        border.MouseLeftButtonDown -= QuestMarkerText_Click;
+                    }
+                }
             }
         }
         _questMarkerElements.Clear();
@@ -1771,6 +2324,15 @@ public partial class MapTrackerPage : UserControl
     }
 
     private void QuestMarker_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.Tag is TaskObjectiveWithLocation objective)
+        {
+            ShowQuestDrawer(objective);
+            e.Handled = true;
+        }
+    }
+
+    private void QuestMarkerText_Click(object sender, MouseButtonEventArgs e)
     {
         if (sender is FrameworkElement element && element.Tag is TaskObjectiveWithLocation objective)
         {
@@ -1918,7 +2480,7 @@ public partial class MapTrackerPage : UserControl
         QuestDrawerColumn.MinWidth = 250;
         QuestDrawerPanel.Visibility = Visibility.Visible;
         DrawerSplitter.Visibility = Visibility.Visible;
-        TxtDrawerToggleIcon.Text = "◀";
+        TxtDrawerToggleIcon.Text = "<<";
 
         // Drawer 내용 새로고침
         RefreshQuestDrawer();
@@ -1934,7 +2496,7 @@ public partial class MapTrackerPage : UserControl
         QuestDrawerColumn.MinWidth = 0;
         QuestDrawerPanel.Visibility = Visibility.Collapsed;
         DrawerSplitter.Visibility = Visibility.Collapsed;
-        TxtDrawerToggleIcon.Text = "▶";
+        TxtDrawerToggleIcon.Text = ">>";
     }
 
     private void QuestObjectiveItem_Click(object sender, MouseButtonEventArgs e)
@@ -2655,15 +3217,77 @@ public partial class MapTrackerPage : UserControl
         var filteredViewModels = ApplyDrawerFilters(viewModels);
 
         // 그룹화 적용
+        object? itemToScrollTo = null;
+
         if (_drawerGroupByQuest)
         {
             var groupedItems = ApplyQuestGrouping(filteredViewModels);
             QuestObjectivesList.ItemsSource = groupedItems;
+
+            // 선택된 목표 찾기
+            if (_selectedObjective != null)
+            {
+                itemToScrollTo = groupedItems.FirstOrDefault(item =>
+                    item is QuestObjectiveViewModel vm && vm.Objective.ObjectiveId == _selectedObjective.ObjectiveId);
+            }
         }
         else
         {
             QuestObjectivesList.ItemsSource = filteredViewModels;
+
+            // 선택된 목표 찾기
+            if (_selectedObjective != null)
+            {
+                itemToScrollTo = filteredViewModels.FirstOrDefault(vm =>
+                    vm.Objective.ObjectiveId == _selectedObjective.ObjectiveId);
+            }
         }
+
+        // 선택된 항목으로 스크롤
+        if (itemToScrollTo != null)
+        {
+            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, () =>
+            {
+                ScrollToItemInItemsControl(QuestObjectivesList, itemToScrollTo);
+            });
+        }
+    }
+
+    /// <summary>
+    /// ItemsControl 내의 특정 항목으로 스크롤합니다.
+    /// </summary>
+    private void ScrollToItemInItemsControl(ItemsControl itemsControl, object item)
+    {
+        // ItemsControl의 부모 ScrollViewer 찾기
+        var scrollViewer = FindVisualParent<ScrollViewer>(itemsControl);
+        if (scrollViewer == null) return;
+
+        // 항목의 컨테이너 찾기
+        var container = itemsControl.ItemContainerGenerator.ContainerFromItem(item) as FrameworkElement;
+        if (container == null) return;
+
+        // 항목의 위치 계산
+        var transform = container.TransformToAncestor(scrollViewer);
+        var position = transform.Transform(new Point(0, 0));
+
+        // 스크롤 (항목이 보이는 영역 중앙에 오도록)
+        var targetOffset = scrollViewer.VerticalOffset + position.Y - scrollViewer.ViewportHeight / 3;
+        scrollViewer.ScrollToVerticalOffset(Math.Max(0, targetOffset));
+    }
+
+    /// <summary>
+    /// 시각적 트리에서 부모 요소를 찾습니다.
+    /// </summary>
+    private static T? FindVisualParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        var parent = VisualTreeHelper.GetParent(child);
+        while (parent != null)
+        {
+            if (parent is T found)
+                return found;
+            parent = VisualTreeHelper.GetParent(parent);
+        }
+        return null;
     }
 
     /// <summary>

@@ -348,7 +348,7 @@
                         Click="BtnToggleDrawer_Click"
                         Cursor="Hand"
                         Panel.ZIndex="10">
-                    <TextBlock x:Name="TxtDrawerToggleIcon" Text="◀" FontSize="10"
+                    <TextBlock x:Name="TxtDrawerToggleIcon" Text="&lt;&lt;" FontSize="10"
                                Foreground="{StaticResource TextSecondaryBrush}"/>
                 </Button>
             </Grid>
