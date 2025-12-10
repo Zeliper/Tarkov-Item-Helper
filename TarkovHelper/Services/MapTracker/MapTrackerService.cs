@@ -412,7 +412,11 @@ public sealed class MapTrackerService : IDisposable
                 var json = File.ReadAllText(SettingsPath);
                 var settings = JsonSerializer.Deserialize<MapTrackerSettings>(json, JsonOptions);
                 if (settings != null)
+                {
+                    // 저장된 설정에 Floors 정보가 없는 맵에 기본값 병합
+                    MergeDefaultFloors(settings);
                     return settings;
+                }
             }
         }
         catch
@@ -421,6 +425,30 @@ public sealed class MapTrackerService : IDisposable
         }
 
         return new MapTrackerSettings();
+    }
+
+    /// <summary>
+    /// 저장된 설정에 기본 Floors 정보가 없는 맵에 기본값을 병합합니다.
+    /// </summary>
+    private static void MergeDefaultFloors(MapTrackerSettings settings)
+    {
+        var defaultSettings = new MapTrackerSettings();
+        var defaultMaps = defaultSettings.Maps;
+
+        foreach (var map in settings.Maps)
+        {
+            // 저장된 맵에 Floors가 없는 경우 기본값에서 복사
+            if (map.Floors == null || map.Floors.Count == 0)
+            {
+                var defaultMap = defaultMaps.FirstOrDefault(m =>
+                    string.Equals(m.Key, map.Key, StringComparison.OrdinalIgnoreCase));
+
+                if (defaultMap?.Floors != null && defaultMap.Floors.Count > 0)
+                {
+                    map.Floors = defaultMap.Floors;
+                }
+            }
+        }
     }
 
     public void Dispose()

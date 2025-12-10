@@ -451,7 +451,13 @@ public sealed class MapTrackerSettings
                     new() { Id = "2a589e01386c564a296894e93a3aaf18ec53207d", Name = "Emercom Checkpoint", GameX = -321.56, GameZ = 266.74, ScreenX = 3587.1584767810928, ScreenY = 3070.7823547485436 },
                     new() { Id = "1abefb699e1a8304defcd8b41dcbbeee14adde52", Name = "Power Station V-Ex", GameX = -251.92, GameZ = -367.13, ScreenX = 3579.8980404914364, ScreenY = 484.7171599232468 }
                 },
-                Aliases = new List<string> { "interchange", "INTERCHANGE" }
+                Aliases = new List<string> { "interchange", "INTERCHANGE" },
+                Floors = new List<MapFloorConfig>
+                {
+                    new() { LayerId = "main", DisplayName = "Ground Floor", Order = 0, IsDefault = true },
+                    new() { LayerId = "level2", DisplayName = "Level 2", Order = 1 },
+                    new() { LayerId = "level3", DisplayName = "Level 3", Order = 2 }
+                }
             },
             // Reserve: Calibrated from 5 reference points
             new()
@@ -470,7 +476,16 @@ public sealed class MapTrackerSettings
                     new() { Id = "4cd3f8f23a3092756fb509287ccc5332aeea6453", Name = "Sewer Manhole", GameX = 40.18, GameZ = 76.45, ScreenX = 1500.1236024311852, ScreenY = 2071.4646994792292 },
                     new() { Id = "6eb9d336eb71fbf68c7d809b55dec62ec89e7627", Name = "Cliff Descent", GameX = -9.24, GameZ = 208.43, ScreenX = 1978.025404998793, ScreenY = 2788.1564818572683 }
                 },
-                Aliases = new List<string> { "reserve", "RESERVE", "RezervBase" }
+                Aliases = new List<string> { "reserve", "RESERVE", "RezervBase" },
+                Floors = new List<MapFloorConfig>
+                {
+                    new() { LayerId = "bunker", DisplayName = "Bunker", Order = -1 },
+                    new() { LayerId = "main", DisplayName = "Ground Floor", Order = 0, IsDefault = true },
+                    new() { LayerId = "level2", DisplayName = "Level 2", Order = 1 },
+                    new() { LayerId = "level3", DisplayName = "Level 3", Order = 2 },
+                    new() { LayerId = "level4", DisplayName = "Level 4", Order = 3 },
+                    new() { LayerId = "level5", DisplayName = "Level 5", Order = 4 }
+                }
             },
             // Lighthouse: Calibrated from 8 reference points
             new()
@@ -535,7 +550,14 @@ public sealed class MapTrackerSettings
                     new() { Id = "ffb8b37a6390d2c3b00baeee3295492ea1e19a93", Name = "Cellars", GameX = 73.89422, GameZ = -29.0818882, ScreenX = 2425.516676313653, ScreenY = 177.16654345998157 }
                 },
                 Aliases = new List<string> { "factory", "FACTORY", "factory4_day", "factory4_night" },
-                MarkerScale = 5.0
+                MarkerScale = 5.0,
+                Floors = new List<MapFloorConfig>
+                {
+                    new() { LayerId = "basement", DisplayName = "Basement", Order = -1 },
+                    new() { LayerId = "main", DisplayName = "Ground Floor", Order = 0, IsDefault = true },
+                    new() { LayerId = "level2", DisplayName = "Level 2", Order = 1 },
+                    new() { LayerId = "level3", DisplayName = "Level 3", Order = 2 }
+                }
             },
             // GroundZero: Calibrated from 5 reference points
             new()
@@ -574,7 +596,13 @@ public sealed class MapTrackerSettings
                     new() { Id = "ed029f26c9d60bf00d926b4d7e7876b0591b411a", Name = "Medical Block Elevator", GameX = -112.423, GameZ = -343.986, ScreenX = 2607.884374465454, ScreenY = 3645.1769947510384 },
                     new() { Id = "4cfc8fb5003e428d6cb9f8492690068afba50c71", Name = "Cargo Elevator", GameX = -112.152, GameZ = -408.64, ScreenX = 1595.2620604394808, ScreenY = 3651.4213017493394 }
                 },
-                Aliases = new List<string> { "labs", "LABS", "laboratory", "the-lab" }
+                Aliases = new List<string> { "labs", "LABS", "laboratory", "the-lab" },
+                Floors = new List<MapFloorConfig>
+                {
+                    new() { LayerId = "basement", DisplayName = "Basement", Order = -1 },
+                    new() { LayerId = "main", DisplayName = "Main Floor", Order = 0, IsDefault = true },
+                    new() { LayerId = "level2", DisplayName = "Level 2", Order = 1 }
+                }
             }
         };
     }

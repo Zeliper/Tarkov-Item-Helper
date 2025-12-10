@@ -39,6 +39,12 @@
                     <TextBlock x:Name="TxtMapLabel" Text="Map:" Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <ComboBox x:Name="CmbMapSelect" Width="160" SelectionChanged="CmbMapSelect_SelectionChanged"/>
+
+                    <!-- 층 선택 (다층 맵에서만 표시) -->
+                    <TextBlock x:Name="TxtFloorLabel" Text="Floor:" Foreground="{StaticResource TextSecondaryBrush}"
+                               VerticalAlignment="Center" Margin="16,0,8,0" Visibility="Collapsed"/>
+                    <ComboBox x:Name="CmbFloorSelect" Width="120" SelectionChanged="CmbFloorSelect_SelectionChanged"
+                              Visibility="Collapsed"/>
                 </StackPanel>
 
                 <!-- 버튼들 -->
@@ -59,10 +65,6 @@
                             Margin="0,0,8,0" Click="BtnClearTrail_Click"/>
                     <Button x:Name="BtnFullScreen" Content="Full Screen" Padding="12,6"
                             Margin="0,0,8,0" Click="BtnFullScreen_Click"/>
-                    <ToggleButton x:Name="BtnCalibrationMode" Content="Calibrate" Padding="12,6"
-                            Margin="0,0,8,0" Visibility="Collapsed" Checked="BtnCalibrationMode_Changed" Unchecked="BtnCalibrationMode_Changed"/>
-                    <Button x:Name="BtnAutoCalibrate" Content="Auto-Cal" Padding="12,6"
-                            Margin="0,0,8,0" Visibility="Collapsed" Click="BtnAutoCalibrate_Click" ToolTip="Analyze calibration accuracy"/>
                     <Button x:Name="BtnSettings" Content="Settings" Padding="12,6"
                             Click="BtnSettings_Click"/>
                 </StackPanel>

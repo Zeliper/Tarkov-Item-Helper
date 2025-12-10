@@ -131,4 +131,12 @@ public sealed class MapConfig
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double[]? CalibratedTransform { get; set; }
+
+    /// <summary>
+    /// 맵의 층(레벨) 설정 목록.
+    /// SVG 파일에 여러 층이 있는 맵(Labs, Interchange, Factory, Reserve)에서 사용됩니다.
+    /// null이거나 비어있으면 단일 층 맵으로 처리됩니다.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<MapFloorConfig>? Floors { get; set; }
 }

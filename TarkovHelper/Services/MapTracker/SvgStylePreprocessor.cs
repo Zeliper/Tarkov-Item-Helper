@@ -8,6 +8,7 @@ namespace TarkovHelper.Services.MapTracker;
 /// <summary>
 /// SVG 파일의 CSS 클래스 스타일을 인라인 스타일로 변환하는 전처리기.
 /// SharpVectors가 CSS 클래스를 제대로 처리하지 못하는 문제를 해결합니다.
+/// 또한 특정 층(레이어)만 표시하도록 필터링할 수 있습니다.
 /// </summary>
 public partial class SvgStylePreprocessor
 {
@@ -23,20 +24,48 @@ public partial class SvgStylePreprocessor
     }
 
     /// <summary>
+    /// SVG 파일을 읽어서 CSS 클래스를 인라인 스타일로 변환하고,
+    /// 특정 층(레이어)만 표시하도록 필터링합니다.
+    /// </summary>
+    /// <param name="svgFilePath">SVG 파일 경로</param>
+    /// <param name="visibleFloorIds">표시할 층의 ID 목록. null이면 모든 층 표시.</param>
+    /// <param name="allFloorIds">맵에 정의된 모든 층 ID 목록. 이 목록에 있는 층만 숨기기/보이기 처리됨.</param>
+    /// <param name="backgroundFloorId">배경으로 반투명하게 표시할 층의 ID (예: "main"). null이면 배경 층 없음.</param>
+    /// <param name="backgroundOpacity">배경 층의 투명도 (0.0 ~ 1.0). 기본값 0.3</param>
+    /// <returns>변환된 SVG 문자열</returns>
+    public string ProcessSvgFile(string svgFilePath, IEnumerable<string>? visibleFloorIds, IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null, double backgroundOpacity = 0.3)
+    {
+        var svgContent = File.ReadAllText(svgFilePath);
+        return ProcessSvgContent(svgContent, visibleFloorIds, allFloorIds, backgroundFloorId, backgroundOpacity);
+    }
+
+    /// <summary>
     /// SVG 콘텐츠의 CSS 클래스를 인라인 스타일로 변환합니다.
     /// </summary>
     /// <param name="svgContent">원본 SVG 콘텐츠</param>
     /// <returns>변환된 SVG 콘텐츠</returns>
     public string ProcessSvgContent(string svgContent)
     {
+        return ProcessSvgContent(svgContent, null, null);
+    }
+
+    /// <summary>
+    /// SVG 콘텐츠의 CSS 클래스를 인라인 스타일로 변환하고,
+    /// 특정 층(레이어)만 표시하도록 필터링합니다.
+    /// </summary>
+    /// <param name="svgContent">원본 SVG 콘텐츠</param>
+    /// <param name="visibleFloorIds">표시할 층의 ID 목록. null이면 모든 층 표시.</param>
+    /// <param name="allFloorIds">맵에 정의된 모든 층 ID 목록. 이 목록에 있는 층만 숨기기/보이기 처리됨.</param>
+    /// <param name="backgroundFloorId">배경으로 반투명하게 표시할 층의 ID (예: "main"). null이면 배경 층 없음.</param>
+    /// <param name="backgroundOpacity">배경 층의 투명도 (0.0 ~ 1.0). 기본값 0.3</param>
+    /// <returns>변환된 SVG 콘텐츠</returns>
+    public string ProcessSvgContent(string svgContent, IEnumerable<string>? visibleFloorIds, IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null, double backgroundOpacity = 0.3)
+    {
         // 1. CSS 스타일 블록 추출 및 파싱
         var styleRules = ExtractAndParseCssStyles(svgContent);
 
-        if (styleRules.Count == 0)
-            return svgContent;
-
-        // 2. XML 파싱 및 클래스→스타일 변환
-        var processedSvg = ConvertClassesToInlineStyles(svgContent, styleRules);
+        // 2. XML 파싱 및 클래스→스타일 변환 + 층 필터링
+        var processedSvg = ConvertClassesToInlineStyles(svgContent, styleRules, visibleFloorIds, allFloorIds, backgroundFloorId, backgroundOpacity);
 
         return processedSvg;
     }
@@ -95,9 +124,15 @@ public partial class SvgStylePreprocessor
     }
 
     /// <summary>
-    /// XML을 파싱하여 class 속성을 style 속성으로 변환합니다.
+    /// XML을 파싱하여 class 속성을 style 속성으로 변환하고, 층 필터링을 적용합니다.
     /// </summary>
-    private string ConvertClassesToInlineStyles(string svgContent, Dictionary<string, Dictionary<string, string>> styleRules)
+    private string ConvertClassesToInlineStyles(
+        string svgContent,
+        Dictionary<string, Dictionary<string, string>> styleRules,
+        IEnumerable<string>? visibleFloorIds = null,
+        IEnumerable<string>? allFloorIds = null,
+        string? backgroundFloorId = null,
+        double backgroundOpacity = 0.3)
     {
         var doc = new XmlDocument();
         doc.PreserveWhitespace = true;
@@ -115,8 +150,12 @@ public partial class SvgStylePreprocessor
         var nsmgr = new XmlNamespaceManager(doc.NameTable);
         nsmgr.AddNamespace("svg", "http://www.w3.org/2000/svg");
 
-        // class 속성이 있는 모든 요소 처리
-        ProcessElementsWithClass(doc.DocumentElement!, styleRules);
+        // 층 필터링을 위한 HashSet 생성
+        HashSet<string>? visibleFloors = visibleFloorIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        HashSet<string>? allFloors = allFloorIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        // class 속성이 있는 모든 요소 처리 + 층 필터링
+        ProcessElementsWithClass(doc.DocumentElement!, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
 
         // <style> 태그 제거 (선택적 - 이미 인라인으로 변환됨)
         RemoveStyleTags(doc);
@@ -134,10 +173,69 @@ public partial class SvgStylePreprocessor
     }
 
     /// <summary>
-    /// 요소와 그 자식들의 class 속성을 style로 변환합니다.
+    /// 요소와 그 자식들의 class 속성을 style로 변환하고, 층 필터링을 적용합니다.
     /// </summary>
-    private void ProcessElementsWithClass(XmlElement element, Dictionary<string, Dictionary<string, string>> styleRules)
+    /// <param name="element">처리할 XML 요소</param>
+    /// <param name="styleRules">CSS 스타일 규칙</param>
+    /// <param name="visibleFloors">표시할 층 ID 집합 (null이면 필터링 없음)</param>
+    /// <param name="allFloors">모든 층 ID 집합 (이 집합에 있는 레이어만 숨기기/보이기 처리)</param>
+    /// <param name="backgroundFloorId">배경으로 반투명하게 표시할 층의 ID</param>
+    /// <param name="backgroundOpacity">배경 층의 투명도 (0.0 ~ 1.0)</param>
+    private void ProcessElementsWithClass(
+        XmlElement element,
+        Dictionary<string, Dictionary<string, string>> styleRules,
+        HashSet<string>? visibleFloors = null,
+        HashSet<string>? allFloors = null,
+        string? backgroundFloorId = null,
+        double backgroundOpacity = 0.3)
     {
+        // 층 필터링: <g id="..."> 요소에 대해 display/opacity 스타일 적용
+        if (visibleFloors != null && allFloors != null && element.Name == "g")
+        {
+            var elementId = element.GetAttribute("id");
+            if (!string.IsNullOrEmpty(elementId) && allFloors.Contains(elementId))
+            {
+                // 이 요소가 층 레이어인 경우
+                var isVisible = visibleFloors.Contains(elementId);
+                var isBackgroundLayer = !string.IsNullOrEmpty(backgroundFloorId) &&
+                                        string.Equals(elementId, backgroundFloorId, StringComparison.OrdinalIgnoreCase) &&
+                                        !visibleFloors.Contains(elementId); // 현재 선택된 층이 아닐 때만 배경으로 표시
+
+                var existingStyle = element.GetAttribute("style");
+
+                string newStyle;
+                if (isVisible)
+                {
+                    // 선택된 층: display:block, opacity:1
+                    newStyle = "display:block;opacity:1";
+                }
+                else if (isBackgroundLayer)
+                {
+                    // 배경 층: display:block, opacity 적용
+                    newStyle = $"display:block;opacity:{backgroundOpacity.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                }
+                else
+                {
+                    // 숨길 층: display:none
+                    newStyle = "display:none";
+                }
+
+                if (!string.IsNullOrEmpty(existingStyle))
+                {
+                    // 기존 스타일에서 display, opacity 속성 제거 후 새로 추가
+                    existingStyle = RemoveStyleProperty(existingStyle, "display");
+                    existingStyle = RemoveStyleProperty(existingStyle, "opacity");
+                    element.SetAttribute("style", string.IsNullOrEmpty(existingStyle)
+                        ? newStyle
+                        : $"{existingStyle};{newStyle}");
+                }
+                else
+                {
+                    element.SetAttribute("style", newStyle);
+                }
+            }
+        }
+
         // 현재 요소의 class 속성 처리
         var classAttr = element.GetAttribute("class");
         if (!string.IsNullOrWhiteSpace(classAttr))
@@ -164,9 +262,19 @@ public partial class SvgStylePreprocessor
         {
             if (child is XmlElement childElement)
             {
-                ProcessElementsWithClass(childElement, styleRules);
+                ProcessElementsWithClass(childElement, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
             }
         }
+    }
+
+    /// <summary>
+    /// 스타일 문자열에서 특정 속성을 제거합니다.
+    /// </summary>
+    private string RemoveStyleProperty(string style, string propertyName)
+    {
+        var props = ParseCssProperties(style);
+        props.Remove(propertyName);
+        return props.Count == 0 ? string.Empty : string.Join(";", props.Select(p => $"{p.Key}:{p.Value}"));
     }
 
     /// <summary>
