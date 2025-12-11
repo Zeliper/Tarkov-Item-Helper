@@ -1,0 +1,677 @@
+<Window x:Class="TarkovDBEditor.Views.QuestRequirementsView"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:TarkovDBEditor.ViewModels"
+        Title="Quest Requirements Validator" Height="750" Width="1200"
+        Background="{StaticResource PrimaryBrush}"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+
+        <!-- Status Color Converter -->
+        <Style x:Key="ApprovalStatusStyle" TargetType="Border">
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Margin" Value="2"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsApproved}" Value="True">
+                    <Setter Property="Background" Value="#2E7D32"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsApproved}" Value="False">
+                    <Setter Property="Background" Value="#C62828"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header / Filter Bar -->
+        <Border Grid.Row="0" Background="{StaticResource SecondaryBrush}" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Filter:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}"/>
+                    <ComboBox x:Name="FilterCombo" Width="150" SelectedIndex="0" SelectionChanged="FilterCombo_SelectionChanged">
+                        <ComboBoxItem Content="All Quests"/>
+                        <ComboBoxItem Content="Pending Approval"/>
+                        <ComboBoxItem Content="Approved"/>
+                        <ComboBoxItem Content="Has Requirements"/>
+                        <ComboBoxItem Content="No Requirements"/>
+                    </ComboBox>
+                </StackPanel>
+
+                <TextBox Grid.Column="1" x:Name="SearchBox" Margin="16,0"
+                         Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                         VerticalContentAlignment="Center">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Background">
+                                        <Setter.Value>
+                                            <VisualBrush AlignmentX="Left" AlignmentY="Center" Stretch="None">
+                                                <VisualBrush.Visual>
+                                                    <TextBlock Text="  Search quests..." Foreground="Gray" Margin="5,0,0,0"/>
+                                                </VisualBrush.Visual>
+                                            </VisualBrush>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,16,0">
+                    <TextBlock Text="Progress:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock x:Name="ProgressText" VerticalAlignment="Center" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
+                </StackPanel>
+
+                <Button Grid.Column="3" Content="Refresh" Click="Refresh_Click" Style="{StaticResource SecondaryButton}" Padding="12,4"/>
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1" Margin="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="350" MinWidth="250"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel: Quest List -->
+            <Border Grid.Column="0" Background="{StaticResource SecondaryBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Border Grid.Row="0" Background="{StaticResource AccentBrush}" CornerRadius="4,4,0,0" Padding="10,8">
+                        <TextBlock Text="Quests" FontWeight="Bold" Foreground="White" FontSize="{StaticResource FontSizeLarge}"/>
+                    </Border>
+
+                    <ListBox Grid.Row="1" x:Name="QuestList"
+                             ItemsSource="{Binding FilteredQuests}"
+                             SelectedItem="{Binding SelectedQuest}"
+                             BorderThickness="0"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="4,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Approval Status Indicator -->
+                                    <Ellipse Grid.Column="0" Width="10" Height="10" Margin="0,0,8,0">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="Gray"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ApprovalStatus}" Value="AllApproved">
+                                                        <Setter Property="Fill" Value="#4CAF50"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding ApprovalStatus}" Value="PartialApproved">
+                                                        <Setter Property="Fill" Value="#FF9800"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding ApprovalStatus}" Value="NoneApproved">
+                                                        <Setter Property="Fill" Value="#F44336"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding ApprovalStatus}" Value="NoRequirements">
+                                                        <Setter Property="Fill" Value="#9E9E9E"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Text="{Binding Trader}" Foreground="{StaticResource TextDimBrush}" FontSize="11"/>
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Column="2" VerticalAlignment="Center" Margin="4,0"
+                                               Foreground="{StaticResource TextDimBrush}" FontSize="11">
+                                        <Run Text="{Binding ApprovedCount, Mode=OneWay}"/>/<Run Text="{Binding TotalRequirements, Mode=OneWay}"/>
+                                    </TextBlock>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+            <!-- Splitter -->
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch" Background="Transparent"/>
+
+            <!-- Right Panel: Quest Details -->
+            <Border Grid.Column="2" Background="{StaticResource SecondaryBrush}"
+                    BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="4">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Border Grid.Row="0" Background="{StaticResource AccentBrush}" CornerRadius="4,4,0,0" Padding="10,8">
+                        <Grid>
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" Foreground="White" FontSize="{StaticResource FontSizeLarge}"
+                                           Text="{Binding SelectedQuest.Name, FallbackValue='(Select a quest)'}"/>
+                                <TextBlock Foreground="#CCFFFFFF" FontSize="12"
+                                           Text="{Binding SelectedQuest.Trader, FallbackValue=''}"/>
+                            </StackPanel>
+                            <Button Content="Open Wiki" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                    Click="OpenWiki_Click" Style="{StaticResource SecondaryButton}" Padding="12,4"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Quest Info -->
+                    <Border Grid.Row="1" Background="{StaticResource PrimaryBrush}" Padding="10" Margin="8,8,8,0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="EN:" Foreground="{StaticResource TextDimBrush}" Margin="0,0,8,4"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedQuest.NameEN}" TextTrimming="CharacterEllipsis"/>
+
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="KO:" Foreground="{StaticResource TextDimBrush}" Margin="16,0,8,4"/>
+                            <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding SelectedQuest.NameKO}" TextTrimming="CharacterEllipsis"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="JA:" Foreground="{StaticResource TextDimBrush}" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedQuest.NameJA}" TextTrimming="CharacterEllipsis"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="BSG ID:" Foreground="{StaticResource TextDimBrush}" Margin="16,0,8,0"/>
+                            <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding SelectedQuest.BsgId}" TextTrimming="CharacterEllipsis" FontFamily="Consolas" FontSize="11"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- TabControl for Requirements and Objectives -->
+                    <TabControl Grid.Row="2" Margin="8" Background="Transparent" BorderThickness="0">
+                        <!-- Requirements Tab -->
+                        <TabItem Header="Requirements">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Unlock Requirements (MinLevel, MinScavKarma) -->
+                                <StackPanel Grid.Row="0" Margin="0,8,0,12">
+                                    <TextBlock Text="Unlock Requirements" FontWeight="Bold"
+                                               Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+
+                                    <!-- Min Level -->
+                                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4"
+                                            Margin="0,2" Padding="10,8"
+                                            Visibility="{Binding SelectedQuest.HasMinLevel, Converter={StaticResource BoolToVisibility}}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0" x:Name="MinLevelCheckbox"
+                                                      IsChecked="{Binding SelectedQuest.MinLevelApproved}"
+                                                      Margin="0,0,10,0" VerticalAlignment="Center"
+                                                      Checked="MinLevelCheckbox_Changed" Unchecked="MinLevelCheckbox_Changed"/>
+
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="Minimum Level" FontWeight="SemiBold"/>
+                                                    <Border Background="#1976D2" CornerRadius="3" Padding="6,1" Margin="8,0,0,0">
+                                                        <TextBlock Foreground="White" FontSize="10">
+                                                            <Run Text="Lv. "/><Run Text="{Binding SelectedQuest.MinLevel, Mode=OneWay}"/>
+                                                        </TextBlock>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="Player must reach this level to unlock the quest"
+                                                           Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,4,0,0"/>
+                                            </StackPanel>
+
+                                            <Border Grid.Column="2" CornerRadius="3" Padding="6,2" Margin="2">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#C62828"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedQuest.MinLevelApproved}" Value="True">
+                                                                <Setter Property="Background" Value="#2E7D32"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Foreground="White" FontSize="10">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Pending"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SelectedQuest.MinLevelApproved}" Value="True">
+                                                                    <Setter Property="Text" Value="Approved"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Min Scav Karma -->
+                                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4"
+                                            Margin="0,2" Padding="10,8"
+                                            Visibility="{Binding SelectedQuest.HasMinScavKarma, Converter={StaticResource BoolToVisibility}}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0" x:Name="MinScavKarmaCheckbox"
+                                                      IsChecked="{Binding SelectedQuest.MinScavKarmaApproved}"
+                                                      Margin="0,0,10,0" VerticalAlignment="Center"
+                                                      Checked="MinScavKarmaCheckbox_Changed" Unchecked="MinScavKarmaCheckbox_Changed"/>
+
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="Minimum Scav Karma" FontWeight="SemiBold"/>
+                                                    <Border Background="#6A1B9A" CornerRadius="3" Padding="6,1" Margin="8,0,0,0">
+                                                        <TextBlock Foreground="White" FontSize="10">
+                                                            <Run Text="+"/><Run Text="{Binding SelectedQuest.MinScavKarma, Mode=OneWay}"/>
+                                                        </TextBlock>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="Player must have this Scav karma standing with Fence"
+                                                           Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,4,0,0"/>
+                                            </StackPanel>
+
+                                            <Border Grid.Column="2" CornerRadius="3" Padding="6,2" Margin="2">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#C62828"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedQuest.MinScavKarmaApproved}" Value="True">
+                                                                <Setter Property="Background" Value="#2E7D32"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Foreground="White" FontSize="10">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Pending"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SelectedQuest.MinScavKarmaApproved}" Value="True">
+                                                                    <Setter Property="Text" Value="Approved"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+
+                                <TextBlock Grid.Row="1" Text="Previous Quest Requirements" FontWeight="Bold"
+                                           Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+
+                                <ListBox Grid.Row="2" x:Name="RequirementsList"
+                                         ItemsSource="{Binding SelectedQuestRequirements}"
+                                         BorderThickness="0"
+                                         Background="Transparent">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4"
+                                                    Margin="0,2" Padding="10,8">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Approval Checkbox -->
+                                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsApproved}"
+                                                              Margin="0,0,10,0" VerticalAlignment="Center"
+                                                              Checked="ApprovalCheckbox_Changed" Unchecked="ApprovalCheckbox_Changed"/>
+
+                                                    <!-- Requirement Info -->
+                                                    <StackPanel Grid.Column="1">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="{Binding RequiredQuestName}" FontWeight="SemiBold"/>
+                                                            <Border Background="{StaticResource AccentBrush}" CornerRadius="3"
+                                                                    Padding="6,1" Margin="8,0,0,0">
+                                                                <TextBlock Text="{Binding RequirementType}" Foreground="White" FontSize="10"/>
+                                                            </Border>
+                                                            <Border Background="#6D4C41" CornerRadius="3" Padding="6,1" Margin="4,0,0,0"
+                                                                    Visibility="{Binding HasDelay, Converter={StaticResource BoolToVisibility}}">
+                                                                <TextBlock Foreground="White" FontSize="10">
+                                                                    <Run Text="+"/><Run Text="{Binding DelayDisplay, Mode=OneWay}"/>
+                                                                </TextBlock>
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                            <TextBlock Text="Group:" Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,0,4,0"/>
+                                                            <TextBlock Text="{Binding GroupId}" FontSize="11"/>
+                                                            <TextBlock Text=" | " Foreground="{StaticResource TextDimBrush}" FontSize="11"
+                                                                       Visibility="{Binding IsApproved, Converter={StaticResource BoolToVisibility}}"/>
+                                                            <TextBlock Text="{Binding ApprovedAtDisplay}" Foreground="#4CAF50" FontSize="11"
+                                                                       Visibility="{Binding IsApproved, Converter={StaticResource BoolToVisibility}}"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+
+                                                    <!-- Open Required Quest Wiki -->
+                                                    <Button Grid.Column="2" Content="Wiki" Margin="8,0"
+                                                            Click="OpenRequiredQuestWiki_Click"
+                                                            Style="{StaticResource SecondaryButton}" Padding="8,2" FontSize="11"/>
+
+                                                    <!-- Status -->
+                                                    <Border Grid.Column="3" Style="{StaticResource ApprovalStatusStyle}">
+                                                        <TextBlock Foreground="White" FontSize="10">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Text" Value="Pending"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsApproved}" Value="True">
+                                                                            <Setter Property="Text" Value="Approved"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <!-- Empty State -->
+                                <TextBlock Grid.Row="2" Text="No previous quest requirements"
+                                           Foreground="{StaticResource TextDimBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="{Binding HasNoRequirements, Converter={StaticResource BoolToVisibility}}"/>
+                            </Grid>
+                        </TabItem>
+
+                        <!-- Objectives Tab -->
+                        <TabItem Header="Objectives">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <ListBox Grid.Row="0" x:Name="ObjectivesList"
+                                         ItemsSource="{Binding SelectedQuestObjectives}"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         Margin="0,8,0,0"
+                                         SelectionChanged="ObjectivesList_SelectionChanged"
+                                         MouseDoubleClick="ObjectivesList_MouseDoubleClick">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4"
+                                                    Margin="0,2" Padding="10,8">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Approval Checkbox -->
+                                                    <CheckBox Grid.Column="0" IsChecked="{Binding IsApproved}"
+                                                              Margin="0,0,10,0" VerticalAlignment="Top"
+                                                              Checked="ObjectiveApprovalCheckbox_Changed" Unchecked="ObjectiveApprovalCheckbox_Changed"/>
+
+                                                    <!-- Item Icon -->
+                                                    <Border Grid.Column="1" Width="48" Height="48" Margin="0,0,10,0"
+                                                            Background="#1A1A1A" CornerRadius="4"
+                                                            Visibility="{Binding HasItem, Converter={StaticResource BoolToVisibility}}">
+                                                        <Image Source="{Binding ItemIcon}" Stretch="Uniform" Margin="4"/>
+                                                    </Border>
+
+                                                    <!-- Objective Info -->
+                                                    <StackPanel Grid.Column="2">
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                            <!-- Type Badge -->
+                                                            <Border CornerRadius="3" Padding="6,1" Margin="0,0,4,0">
+                                                                <Border.Style>
+                                                                    <Style TargetType="Border">
+                                                                        <Setter Property="Background" Value="#607D8B"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="Kill">
+                                                                                <Setter Property="Background" Value="#C62828"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="Collect">
+                                                                                <Setter Property="Background" Value="#1976D2"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="HandOver">
+                                                                                <Setter Property="Background" Value="#7B1FA2"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="Visit">
+                                                                                <Setter Property="Background" Value="#388E3C"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="Mark">
+                                                                                <Setter Property="Background" Value="#F57C00"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="Stash">
+                                                                                <Setter Property="Background" Value="#00796B"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="Survive">
+                                                                                <Setter Property="Background" Value="#455A64"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="Build">
+                                                                                <Setter Property="Background" Value="#5D4037"/>
+                                                                            </DataTrigger>
+                                                                            <DataTrigger Binding="{Binding ObjectiveType}" Value="Task">
+                                                                                <Setter Property="Background" Value="#6A1B9A"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Border.Style>
+                                                                <TextBlock Text="{Binding TypeDisplay}" Foreground="White" FontSize="10"/>
+                                                            </Border>
+
+                                                            <!-- Count Badge -->
+                                                            <Border Background="#37474F" CornerRadius="3" Padding="6,1" Margin="0,0,4,0"
+                                                                    Visibility="{Binding TargetCount, Converter={StaticResource BoolToVisibility}}">
+                                                                <TextBlock Text="{Binding CountDisplay}" Foreground="White" FontSize="10"/>
+                                                            </Border>
+
+                                                            <!-- FIR Badge -->
+                                                            <Border Background="#FFC107" CornerRadius="3" Padding="6,1" Margin="0,0,4,0"
+                                                                    Visibility="{Binding RequiresFIR, Converter={StaticResource BoolToVisibility}}">
+                                                                <TextBlock Text="FIR" Foreground="Black" FontSize="10" FontWeight="Bold"/>
+                                                            </Border>
+
+                                                            <!-- Map Badge -->
+                                                            <Border Background="#0277BD" CornerRadius="3" Padding="6,1"
+                                                                    Visibility="{Binding HasLocation, Converter={StaticResource BoolToVisibility}}">
+                                                                <TextBlock Text="{Binding MapName}" Foreground="White" FontSize="10"/>
+                                                            </Border>
+                                                        </StackPanel>
+
+                                                        <!-- Description -->
+                                                        <TextBlock Text="{Binding Description}" TextWrapping="Wrap" FontSize="12"/>
+
+                                                        <!-- Location Info -->
+                                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                                                    Visibility="{Binding HasLocation, Converter={StaticResource BoolToVisibility}}">
+                                                            <TextBlock Text="Location:" Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,0,4,0"/>
+                                                            <TextBlock Text="{Binding LocationName}" FontSize="11" Foreground="{StaticResource AccentBrush}"/>
+                                                            <TextBlock Text="{Binding CoordinatesDisplay}" FontSize="11" Margin="8,0,0,0"
+                                                                       Foreground="#4CAF50" FontFamily="Consolas"
+                                                                       Visibility="{Binding HasCoordinates, Converter={StaticResource BoolToVisibility}}"/>
+                                                        </StackPanel>
+
+                                                        <!-- Item Name (if present) -->
+                                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                                                    Visibility="{Binding HasItem, Converter={StaticResource BoolToVisibility}}">
+                                                            <TextBlock Text="Item:" Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,0,4,0"/>
+                                                            <TextBlock Text="{Binding ItemName}" FontSize="11" Foreground="{StaticResource AccentBrush}"/>
+                                                        </StackPanel>
+
+                                                        <!-- Conditions (if present) -->
+                                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                                                    Visibility="{Binding Conditions, Converter={StaticResource BoolToVisibility}}">
+                                                            <TextBlock Text="Conditions:" Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,0,4,0"/>
+                                                            <TextBlock Text="{Binding Conditions}" FontSize="11" FontFamily="Consolas"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+
+                                                    <!-- Status -->
+                                                    <Border Grid.Column="3" VerticalAlignment="Top" Style="{StaticResource ApprovalStatusStyle}">
+                                                        <TextBlock Foreground="White" FontSize="10">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Text" Value="Pending"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsApproved}" Value="True">
+                                                                            <Setter Property="Text" Value="Approved"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Border>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+
+                                <!-- Empty State -->
+                                <TextBlock Grid.Row="0" Text="No objectives found for this quest"
+                                           Foreground="{StaticResource TextDimBrush}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Visibility="{Binding HasNoObjectives, Converter={StaticResource BoolToVisibility}}"/>
+
+                                <!-- Location Points Edit Panel -->
+                                <Border Grid.Row="1" Background="{StaticResource PrimaryBrush}" Padding="10" Margin="0,8,0,0"
+                                        CornerRadius="4">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Header -->
+                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                                            <TextBlock Text="Location Points" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                            <TextBlock x:Name="PolygonTypeLabel" Text="" Margin="8,0,0,0"
+                                                       Foreground="{StaticResource AccentBrush}" FontSize="11" VerticalAlignment="Center"/>
+                                        </StackPanel>
+
+                                        <!-- Points List -->
+                                        <ItemsControl Grid.Row="1" x:Name="PointsItemsControl" Margin="0,0,0,8">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="{StaticResource SecondaryBrush}" CornerRadius="3" Padding="8,4" Margin="0,2">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="60"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="60"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="60"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <TextBlock Grid.Column="0" Text="X:" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource TextDimBrush}"/>
+                                                            <TextBox Grid.Column="2" Text="{Binding X, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Width="55" Margin="0,0,8,0"/>
+
+                                                            <TextBlock Grid.Column="3" Text="Y:" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource TextDimBrush}"/>
+                                                            <TextBox Grid.Column="4" Text="{Binding Y, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Width="55" Margin="0,0,8,0"/>
+
+                                                            <TextBlock Grid.Column="5" Text="Z:" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource TextDimBrush}"/>
+                                                            <TextBox Grid.Column="6" Text="{Binding Z, UpdateSourceTrigger=PropertyChanged}"
+                                                                     Width="55"/>
+
+                                                            <Button Grid.Column="8" Content="✕" Click="RemovePoint_Click"
+                                                                    Tag="{Binding}"
+                                                                    Width="24" Height="24" Padding="0"
+                                                                    Background="#C62828" Foreground="White"
+                                                                    BorderThickness="0" FontWeight="Bold"/>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <!-- Add Point / Save Buttons -->
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                            <Button Content="+ Add Point" Click="AddPoint_Click"
+                                                    Style="{StaticResource SecondaryButton}" Padding="12,4" Margin="0,0,8,0"/>
+                                            <Button Content="Save Points" Click="SaveLocationPoints_Click"
+                                                    Style="{StaticResource PrimaryButton}" Padding="12,4"/>
+                                            <TextBlock x:Name="PointsCountLabel" Text="" Margin="12,0,0,0"
+                                                       VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" FontSize="11"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
+
+                    <!-- Action Buttons -->
+                    <Border Grid.Row="3" Background="{StaticResource PrimaryBrush}" Padding="8">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="Approve All" Click="ApproveAll_Click"
+                                    Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Padding="12,6"/>
+                            <Button Content="Unapprove All" Click="UnapproveAll_Click"
+                                    Style="{StaticResource SecondaryButton}" Padding="12,6"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2" Background="{StaticResource SecondaryBrush}" Padding="8,4">
+            <TextBlock x:Name="StatusText" Text="Ready" Foreground="{StaticResource TextDimBrush}"/>
+        </Border>
+    </Grid>
+</Window>
