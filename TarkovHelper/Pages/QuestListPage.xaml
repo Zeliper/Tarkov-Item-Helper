@@ -444,6 +444,9 @@
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                                 <Button x:Name="BtnWiki" Content="Wiki" Padding="12,6"
                                         Margin="0,0,8,0" Click="BtnWiki_Click"/>
+                                <Button x:Name="BtnShowOnMap" Content="Show on Map" Padding="12,6"
+                                        Margin="0,0,8,0" Click="BtnShowOnMap_Click"
+                                        ToolTip="Show quest markers on the map"/>
                                 <Button x:Name="BtnComplete" Content="Mark Complete" Padding="12,6"
                                         Margin="0,0,8,0" Click="BtnComplete_Click"/>
                                 <Button x:Name="BtnReset" Content="Reset" Padding="12,6"
