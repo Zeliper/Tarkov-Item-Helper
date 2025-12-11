@@ -29,6 +29,7 @@ namespace TarkovHelper.Models
         public string Map { get; set; } = string.Empty;
 
         [JsonPropertyName("level")]
+        [JsonConverter(typeof(FlexibleIntConverter))]
         public int? Level { get; set; }
 
         [JsonPropertyName("geometry")]
@@ -207,5 +208,43 @@ namespace TarkovHelper.Models
 
         [JsonPropertyName("mismatches")]
         public List<QuestMismatchInfo> Mismatches { get; set; } = new();
+    }
+
+    /// <summary>
+    /// JSON에서 int? 필드를 유연하게 파싱하는 컨버터.
+    /// 빈 문자열, null, 또는 숫자를 처리합니다.
+    /// </summary>
+    public class FlexibleIntConverter : JsonConverter<int?>
+    {
+        public override int? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+                return null;
+
+            if (reader.TokenType == JsonTokenType.Number)
+                return reader.GetInt32();
+
+            if (reader.TokenType == JsonTokenType.String)
+            {
+                var str = reader.GetString();
+                if (string.IsNullOrWhiteSpace(str))
+                    return null;
+
+                if (int.TryParse(str, out var result))
+                    return result;
+
+                return null;
+            }
+
+            return null;
+        }
+
+        public override void Write(Utf8JsonWriter writer, int? value, JsonSerializerOptions options)
+        {
+            if (value.HasValue)
+                writer.WriteNumberValue(value.Value);
+            else
+                writer.WriteNullValue();
+        }
     }
 }

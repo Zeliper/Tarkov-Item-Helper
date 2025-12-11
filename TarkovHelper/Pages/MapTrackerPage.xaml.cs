@@ -24,7 +24,7 @@ namespace TarkovHelper.Pages;
 public partial class MapTrackerPage : UserControl
 {
     private readonly MapTrackerService? _trackerService;
-    private readonly QuestObjectiveService _objectiveService = QuestObjectiveService.Instance;
+    private readonly TarkovMarketMarkerService _tmMarkerService = TarkovMarketMarkerService.Instance;
     private readonly QuestProgressService _progressService = QuestProgressService.Instance;
     private readonly LocalizationService _loc = LocalizationService.Instance;
     private string? _currentMapKey;
@@ -44,6 +44,7 @@ public partial class MapTrackerPage : UserControl
     // 퀘스트 마커 관련 필드
     private readonly List<FrameworkElement> _questMarkerElements = new();
     private List<TaskObjectiveWithLocation> _currentMapObjectives = new();
+    private List<TarkovMarketMarker> _currentMapTmQuestMarkers = new();  // tarkov-market 퀘스트 마커
     private bool _showQuestMarkers = true;
     private QuestMarkerStyle _questMarkerStyle = QuestMarkerStyle.Default;
     private double _questNameTextSize = 12.0;
@@ -52,6 +53,7 @@ public partial class MapTrackerPage : UserControl
 
     // 탈출구 마커 관련 필드
     private readonly ExtractService _extractService = ExtractService.Instance;
+    private List<TarkovMarketMarker> _currentMapTmExtractMarkers = new();  // tarkov-market 탈출구 마커
     private readonly List<FrameworkElement> _extractMarkerElements = new();
     private bool _showExtractMarkers = true;
     private bool _showPmcExtracts = true;
@@ -602,11 +604,11 @@ public partial class MapTrackerPage : UserControl
             UpdatePlayerMarkerSize(playerMarkerSize);
 
             // 초기화 완료 후에만 호출
-            if (_objectiveService.IsLoaded)
+            if (_tmMarkerService.IsLoaded)
             {
                 RefreshQuestMarkers();
             }
-            if (_extractService.IsLoaded)
+            if (_tmMarkerService.IsLoaded)
             {
                 RefreshExtractMarkers();
             }
@@ -1462,15 +1464,18 @@ public partial class MapTrackerPage : UserControl
     {
         try
         {
-            TxtStatus.Text = "Loading quest objectives...";
+            TxtStatus.Text = "Loading tarkov-market markers...";
 
-            await _objectiveService.EnsureLoadedAsync(msg =>
+            // tarkov-market 마커 로드
+            await _tmMarkerService.EnsureLoadedAsync(msg =>
             {
                 Dispatcher.Invoke(() => TxtStatus.Text = msg);
             });
 
-            var count = _objectiveService.AllObjectives.Count;
-            TxtStatus.Text = $"Loaded {count} quest objectives";
+            var cacheInfo = _tmMarkerService.CacheLastUpdated.HasValue
+                ? $" (Updated: {_tmMarkerService.CacheLastUpdated:yyyy-MM-dd})"
+                : "";
+            TxtStatus.Text = $"{_tmMarkerService.TotalMarkerCount} markers loaded{cacheInfo}";
 
             if (!string.IsNullOrEmpty(_currentMapKey))
             {
@@ -1479,7 +1484,7 @@ public partial class MapTrackerPage : UserControl
         }
         catch (Exception ex)
         {
-            TxtStatus.Text = $"Error loading objectives: {ex.Message}";
+            TxtStatus.Text = $"Error loading markers: {ex.Message}";
         }
     }
 
@@ -1544,7 +1549,6 @@ public partial class MapTrackerPage : UserControl
     private void RefreshQuestMarkers()
     {
         if (string.IsNullOrEmpty(_currentMapKey)) return;
-        if (!_objectiveService.IsLoaded) return;
 
         // 기존 마커 제거
         ClearQuestMarkers();
@@ -1555,56 +1559,19 @@ public partial class MapTrackerPage : UserControl
         var config = _trackerService?.GetMapConfig(_currentMapKey);
         if (config == null) return;
 
-        // 현재 맵의 활성 퀘스트 목표 가져오기 (별칭 포함하여 검색)
-        var mapNamesToSearch = new List<string> { _currentMapKey };
-        if (config.Aliases != null)
+        // tarkov-market 마커 사용
+        if (_tmMarkerService.IsLoaded)
         {
-            mapNamesToSearch.AddRange(config.Aliases);
-        }
-        // 표시 이름도 추가
-        if (!string.IsNullOrEmpty(config.DisplayName))
-        {
-            mapNamesToSearch.Add(config.DisplayName);
-        }
+            _currentMapTmQuestMarkers = _tmMarkerService.GetQuestMarkersForMap(_currentMapKey);
+            TxtStatus.Text = $"Found {_currentMapTmQuestMarkers.Count} quest markers for {_currentMapKey}";
 
-        _currentMapObjectives = new List<TaskObjectiveWithLocation>();
-        foreach (var mapName in mapNamesToSearch)
-        {
-            var objectives = _objectiveService.GetActiveObjectivesForMap(mapName, _progressService);
-            foreach (var obj in objectives)
+            foreach (var tmMarker in _currentMapTmQuestMarkers)
             {
-                if (!_currentMapObjectives.Any(o => o.ObjectiveId == obj.ObjectiveId))
+                // TM 좌표를 화면 좌표로 변환
+                var screenCoords = _tmMarkerService.GetMarkerScreenCoords(tmMarker, config);
+                if (screenCoords.HasValue)
                 {
-                    _currentMapObjectives.Add(obj);
-                }
-            }
-        }
-
-        TxtStatus.Text = $"Found {_currentMapObjectives.Count} active objectives for {_currentMapKey}";
-
-        foreach (var objective in _currentMapObjectives)
-        {
-            // ObjectiveId 기반으로 완료 상태 확인 (동일 설명 목표 개별 추적)
-            var isCompleted = _progressService.IsObjectiveCompletedById(objective.ObjectiveId);
-            objective.IsCompleted = isCompleted;
-
-            // 완료된 목표 숨기기 설정이 활성화되어 있으면 스킵
-            if (_hideCompletedObjectives && isCompleted)
-                continue;
-
-            // 현재 맵에 해당하는 위치만 필터링
-            var locationsOnCurrentMap = objective.Locations
-                .Where(loc => IsLocationOnCurrentMap(loc, config))
-                .ToList();
-
-            foreach (var location in locationsOnCurrentMap)
-            {
-                // tarkov.dev API 좌표를 화면 좌표로 변환 (Transform 배열 사용)
-                // API position: x, y(높이), z → tarkov.dev 방식: [z, x]
-                if (_trackerService != null &&
-                    _trackerService.TransformApiCoordinate(_currentMapKey, location.X, location.Y, location.Z) is ScreenPosition screenPos)
-                {
-                    var marker = CreateQuestMarker(objective, location, screenPos);
+                    var marker = CreateTarkovMarketQuestMarker(tmMarker, screenCoords.Value.ScreenX, screenCoords.Value.ScreenY);
                     _questMarkerElements.Add(marker);
                     QuestMarkersContainer.Children.Add(marker);
                 }
@@ -1616,7 +1583,6 @@ public partial class MapTrackerPage : UserControl
                        _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
         if (showName)
         {
-            // 레이아웃 완료 후 그룹화 수행 (Measure가 정확한 크기를 반환하도록)
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, DetectAndGroupOverlappingMarkers);
         }
     }
@@ -1797,6 +1763,199 @@ public partial class MapTrackerPage : UserControl
         canvas.ToolTip = $"{tooltipName}\n{tooltipDesc}";
 
         return canvas;
+    }
+
+    /// <summary>
+    /// tarkov-market 데이터로 퀘스트 마커를 생성합니다.
+    /// </summary>
+    private FrameworkElement CreateTarkovMarketQuestMarker(TarkovMarketMarker tmMarker, double screenX, double screenY)
+    {
+        // 퀘스트 색상 (노란색 계열)
+        var markerColor = (Color)ColorConverter.ConvertFromString("#FFC107");
+        var markerBrush = new SolidColorBrush(markerColor);
+        var glowBrush = new SolidColorBrush(Color.FromArgb(64, markerColor.R, markerColor.G, markerColor.B));
+
+        // 초록색 원 스타일용 색상
+        var greenColor = (Color)ColorConverter.ConvertFromString("#4CAF50");
+        var greenBrush = new SolidColorBrush(greenColor);
+
+        // 설정에서 마커 크기 가져오기
+        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
+
+        // 맵별 마커 스케일 적용
+        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
+        var mapScale = mapConfig?.MarkerScale ?? 1.0;
+
+        var markerSize = baseMarkerSize * mapScale;
+        var glowSize = markerSize * 1.75;
+        var centerSize = markerSize * 0.875;
+
+        var canvas = new Canvas
+        {
+            Width = 0,
+            Height = 0,
+            Tag = tmMarker
+        };
+
+        // 스타일에 따라 다르게 렌더링
+        var useGreenCircle = _questMarkerStyle == QuestMarkerStyle.GreenCircle ||
+                             _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
+        var showName = _questMarkerStyle == QuestMarkerStyle.DefaultWithName ||
+                       _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
+
+        if (useGreenCircle)
+        {
+            // 초록색 원 (테두리만)
+            var circleOuter = new Ellipse
+            {
+                Width = markerSize,
+                Height = markerSize,
+                Stroke = greenBrush,
+                StrokeThickness = 3,
+                Fill = Brushes.Transparent
+            };
+            Canvas.SetLeft(circleOuter, -markerSize / 2);
+            Canvas.SetTop(circleOuter, -markerSize / 2);
+            canvas.Children.Add(circleOuter);
+        }
+        else
+        {
+            // 기본 스타일: 외곽 글로우 + 중심 원
+            var glow = new Ellipse
+            {
+                Width = glowSize,
+                Height = glowSize,
+                Fill = glowBrush
+            };
+            Canvas.SetLeft(glow, -glowSize / 2);
+            Canvas.SetTop(glow, -glowSize / 2);
+            canvas.Children.Add(glow);
+
+            var center = new Ellipse
+            {
+                Width = centerSize,
+                Height = centerSize,
+                Fill = markerBrush,
+                Stroke = Brushes.White,
+                StrokeThickness = 2
+            };
+            Canvas.SetLeft(center, -centerSize / 2);
+            Canvas.SetTop(center, -centerSize / 2);
+            canvas.Children.Add(center);
+        }
+
+        // 퀘스트명 표시
+        if (showName)
+        {
+            // 퀘스트 이름 가져오기 (한국어 우선)
+            var questName = tmMarker.Name;
+            if (_loc.CurrentLanguage == AppLanguage.KO && tmMarker.NameL10n != null)
+            {
+                if (tmMarker.NameL10n.TryGetValue("ko", out var koName) && !string.IsNullOrEmpty(koName))
+                {
+                    questName = koName;
+                }
+            }
+
+            var nameText = new TextBlock
+            {
+                Text = questName,
+                FontSize = _questNameTextSize,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = Brushes.White,
+                TextAlignment = TextAlignment.Center
+            };
+
+            var nameBorder = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb(200, 0, 0, 0)),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(6, 3, 6, 3),
+                Child = nameText
+            };
+
+            // 텍스트 크기를 측정하여 중앙 정렬
+            nameBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var textWidth = nameBorder.DesiredSize.Width;
+
+            // 텍스트를 마커 중앙 아래에 위치
+            Canvas.SetLeft(nameBorder, -textWidth / 2);
+            Canvas.SetTop(nameBorder, markerSize / 2 + 4);
+
+            // 텍스트 클릭 이벤트 추가
+            nameBorder.Tag = tmMarker;
+            nameBorder.MouseLeftButtonDown += TarkovMarketQuestMarkerText_Click;
+            nameBorder.Cursor = Cursors.Hand;
+
+            canvas.Children.Add(nameBorder);
+        }
+
+        // 위치 설정
+        Canvas.SetLeft(canvas, screenX);
+        Canvas.SetTop(canvas, screenY);
+
+        // 줌에 상관없이 고정 크기 유지를 위한 역스케일 적용
+        var inverseScale = 1.0 / _zoomLevel;
+        canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
+        canvas.RenderTransformOrigin = new Point(0, 0);
+
+        // 클릭 이벤트
+        canvas.MouseLeftButtonDown += TarkovMarketQuestMarker_Click;
+        canvas.Cursor = Cursors.Hand;
+
+        // 툴팁
+        var tooltipName = tmMarker.Name;
+        var tooltipDesc = tmMarker.Desc ?? tmMarker.SubCategory;
+        if (_loc.CurrentLanguage == AppLanguage.KO && tmMarker.NameL10n != null)
+        {
+            if (tmMarker.NameL10n.TryGetValue("ko", out var koName) && !string.IsNullOrEmpty(koName))
+            {
+                tooltipName = koName;
+            }
+        }
+        if (_loc.CurrentLanguage == AppLanguage.KO && tmMarker.DescL10n != null)
+        {
+            if (tmMarker.DescL10n.TryGetValue("ko", out var koDesc) && !string.IsNullOrEmpty(koDesc))
+            {
+                tooltipDesc = koDesc;
+            }
+        }
+        canvas.ToolTip = $"{tooltipName}\n{tooltipDesc}";
+
+        return canvas;
+    }
+
+    /// <summary>
+    /// tarkov-market 퀘스트 마커 클릭 이벤트
+    /// </summary>
+    private void TarkovMarketQuestMarker_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Canvas canvas && canvas.Tag is TarkovMarketMarker marker)
+        {
+            // TODO: 퀘스트 상세 정보 표시 또는 drawer 열기
+            var name = marker.Name;
+            if (_loc.CurrentLanguage == AppLanguage.KO && marker.NameL10n?.TryGetValue("ko", out var koName) == true)
+            {
+                name = koName;
+            }
+            TxtStatus.Text = $"Selected: {name}";
+        }
+    }
+
+    /// <summary>
+    /// tarkov-market 퀘스트 마커 텍스트 클릭 이벤트
+    /// </summary>
+    private void TarkovMarketQuestMarkerText_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is Border border && border.Tag is TarkovMarketMarker marker)
+        {
+            var name = marker.Name;
+            if (_loc.CurrentLanguage == AppLanguage.KO && marker.NameL10n?.TryGetValue("ko", out var koName) == true)
+            {
+                name = koName;
+            }
+            TxtStatus.Text = $"Selected: {name}";
+        }
     }
 
     /// <summary>
@@ -2574,7 +2733,6 @@ public partial class MapTrackerPage : UserControl
     private void RefreshExtractMarkers()
     {
         if (string.IsNullOrEmpty(_currentMapKey)) return;
-        if (!_extractService.IsLoaded) return;
 
         // 기존 마커 제거
         ClearExtractMarkers();
@@ -2585,27 +2743,62 @@ public partial class MapTrackerPage : UserControl
         var config = _trackerService?.GetMapConfig(_currentMapKey);
         if (config == null) return;
 
-        // 현재 맵의 탈출구 가져오기 (MapConfig의 Aliases 사용)
-        var extracts = _extractService.GetExtractsForMap(_currentMapKey, config);
-
-        // 같은 위치의 탈출구 그룹화 (PMC+Scav 공용 탈출구 처리)
-        var extractGroups = GroupExtractsByPosition(extracts);
-
-        foreach (var group in extractGroups)
+        // tarkov-market 마커 사용 (우선)
+        if (_tmMarkerService.IsLoaded)
         {
-            // 그룹의 대표 탈출구와 진영 타입 결정
-            var (representativeExtract, combinedFaction) = DetermineExtractDisplay(group);
+            // 모든 탈출구 마커 가져오기
+            var tmExtracts = _tmMarkerService.GetExtractMarkersForMap(_currentMapKey);
+            _currentMapTmExtractMarkers = tmExtracts;
 
-            // 진영 필터 적용
-            if (!ShouldShowExtract(combinedFaction)) continue;
-
-            // 좌표 변환
-            if (_trackerService != null &&
-                _trackerService.TransformApiCoordinate(_currentMapKey, representativeExtract.X, representativeExtract.Y, representativeExtract.Z) is ScreenPosition screenPos)
+            foreach (var tmMarker in tmExtracts)
             {
-                var marker = CreateExtractMarker(representativeExtract, screenPos, combinedFaction);
-                _extractMarkerElements.Add(marker);
-                ExtractMarkersContainer.Children.Add(marker);
+                // SubCategory에서 진영 결정
+                var faction = tmMarker.SubCategory switch
+                {
+                    "PMC Extraction" => ExtractFaction.Pmc,
+                    "Scav Extraction" => ExtractFaction.Scav,
+                    "Co-op Extraction" => ExtractFaction.Shared,
+                    _ => ExtractFaction.Pmc
+                };
+
+                // 진영 필터 적용
+                if (!ShouldShowExtract(faction)) continue;
+
+                // TM 좌표를 화면 좌표로 변환
+                var screenCoords = _tmMarkerService.GetMarkerScreenCoords(tmMarker, config);
+                if (screenCoords.HasValue)
+                {
+                    var marker = CreateTarkovMarketExtractMarker(tmMarker, screenCoords.Value.ScreenX, screenCoords.Value.ScreenY, faction);
+                    _extractMarkerElements.Add(marker);
+                    ExtractMarkersContainer.Children.Add(marker);
+                }
+            }
+        }
+        // Fallback: 기존 tarkov.dev 데이터 사용
+        else if (_extractService.IsLoaded)
+        {
+            // 현재 맵의 탈출구 가져오기 (MapConfig의 Aliases 사용)
+            var extracts = _extractService.GetExtractsForMap(_currentMapKey, config);
+
+            // 같은 위치의 탈출구 그룹화 (PMC+Scav 공용 탈출구 처리)
+            var extractGroups = GroupExtractsByPosition(extracts);
+
+            foreach (var group in extractGroups)
+            {
+                // 그룹의 대표 탈출구와 진영 타입 결정
+                var (representativeExtract, combinedFaction) = DetermineExtractDisplay(group);
+
+                // 진영 필터 적용
+                if (!ShouldShowExtract(combinedFaction)) continue;
+
+                // 좌표 변환
+                if (_trackerService != null &&
+                    _trackerService.TransformApiCoordinate(_currentMapKey, representativeExtract.X, representativeExtract.Y, representativeExtract.Z) is ScreenPosition screenPos)
+                {
+                    var marker = CreateExtractMarker(representativeExtract, screenPos, combinedFaction);
+                    _extractMarkerElements.Add(marker);
+                    ExtractMarkersContainer.Children.Add(marker);
+                }
             }
         }
     }
@@ -2788,6 +2981,117 @@ public partial class MapTrackerPage : UserControl
 
         // 보정 모드용 드래그 이벤트 설정
         SetupExtractMarkerForCalibration(canvas, extract);
+
+        return canvas;
+    }
+
+    /// <summary>
+    /// tarkov-market 데이터로 탈출구 마커를 생성합니다.
+    /// </summary>
+    private FrameworkElement CreateTarkovMarketExtractMarker(TarkovMarketMarker tmMarker, double screenX, double screenY, ExtractFaction faction)
+    {
+        // 맵별 마커 스케일 적용
+        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
+        var mapScale = mapConfig?.MarkerScale ?? 1.0;
+
+        var baseSize = 20.0;
+        var markerSize = baseSize * mapScale;
+
+        // 진영별 색상 설정
+        var (fillColor, strokeColor) = GetExtractStyle(faction);
+
+        var canvas = new Canvas
+        {
+            Width = 0,
+            Height = 0,
+            Tag = tmMarker
+        };
+
+        // 탈출구 이름 (한국어 우선)
+        var displayName = tmMarker.Name;
+        if (_loc.CurrentLanguage == AppLanguage.KO && tmMarker.NameL10n != null)
+        {
+            if (tmMarker.NameL10n.TryGetValue("ko", out var koName) && !string.IsNullOrEmpty(koName))
+            {
+                displayName = koName;
+            }
+        }
+
+        var textSize = _extractNameTextSize * mapScale;
+        var nameLabel = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(200, 30, 30, 30)),
+            CornerRadius = new CornerRadius(3 * mapScale),
+            Padding = new Thickness(4 * mapScale, 2 * mapScale, 4 * mapScale, 2 * mapScale),
+            Child = new TextBlock
+            {
+                Text = displayName,
+                FontSize = textSize,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(fillColor),
+                TextAlignment = TextAlignment.Center
+            }
+        };
+
+        // 이름 라벨 위치 측정 및 설정
+        nameLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var labelWidth = nameLabel.DesiredSize.Width;
+        var labelHeight = nameLabel.DesiredSize.Height;
+        Canvas.SetLeft(nameLabel, -labelWidth / 2);
+        Canvas.SetTop(nameLabel, -markerSize - labelHeight - 4 * mapScale);
+        canvas.Children.Add(nameLabel);
+
+        // 배경 원 (글로우 효과)
+        var glowSize = markerSize * 1.5;
+        var glow = new Ellipse
+        {
+            Width = glowSize,
+            Height = glowSize,
+            Fill = new SolidColorBrush(Color.FromArgb(80, fillColor.R, fillColor.G, fillColor.B))
+        };
+        Canvas.SetLeft(glow, -glowSize / 2);
+        Canvas.SetTop(glow, -glowSize / 2);
+        canvas.Children.Add(glow);
+
+        // 메인 원
+        var mainCircle = new Ellipse
+        {
+            Width = markerSize,
+            Height = markerSize,
+            Fill = new SolidColorBrush(fillColor),
+            Stroke = new SolidColorBrush(strokeColor),
+            StrokeThickness = 2 * mapScale
+        };
+        Canvas.SetLeft(mainCircle, -markerSize / 2);
+        Canvas.SetTop(mainCircle, -markerSize / 2);
+        canvas.Children.Add(mainCircle);
+
+        // 탈출구 아이콘 (비상대피 아이콘)
+        var iconSize = markerSize * 0.7;
+        var iconPath = CreateExtractIcon(iconSize, strokeColor);
+        Canvas.SetLeft(iconPath, -iconSize / 2);
+        Canvas.SetTop(iconPath, -iconSize / 2);
+        canvas.Children.Add(iconPath);
+
+        // 위치 설정
+        Canvas.SetLeft(canvas, screenX);
+        Canvas.SetTop(canvas, screenY);
+
+        // 줌에 상관없이 고정 크기 유지를 위한 역스케일 적용
+        var inverseScale = 1.0 / _zoomLevel;
+        canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
+        canvas.RenderTransformOrigin = new Point(0, 0);
+
+        // 툴팁
+        var factionText = faction switch
+        {
+            ExtractFaction.Pmc => "PMC",
+            ExtractFaction.Scav => "Scav",
+            ExtractFaction.Shared => "Co-op",
+            _ => "Extract"
+        };
+        canvas.ToolTip = $"[{factionText}] {displayName}";
+        canvas.Cursor = Cursors.Hand;
 
         return canvas;
     }
@@ -3153,66 +3457,10 @@ public partial class MapTrackerPage : UserControl
         // UI 요소가 아직 초기화되지 않았으면 스킵
         if (QuestObjectivesList == null) return;
 
-        // 현재 맵의 목표들과 다른 맵의 목표들을 구분하여 표시
+        // Tarkov Market 마커 기반 드로어 표시
+        // TODO: TarkovMarketMarker를 QuestObjectiveViewModel로 변환하는 로직 필요
+        // 현재는 빈 목록으로 표시
         var viewModels = new List<QuestObjectiveViewModel>();
-
-        // 현재 맵의 활성 퀘스트들에 대해 모든 위치 정보 수집 (다른 맵 목표 포함)
-        var processedTaskNames = new HashSet<string>();
-        var allObjectivesForDrawer = new List<TaskObjectiveWithLocation>();
-
-        foreach (var obj in _currentMapObjectives)
-        {
-            // 이 퀘스트의 다른 맵 목표도 가져오기
-            if (!processedTaskNames.Contains(obj.TaskNormalizedName))
-            {
-                processedTaskNames.Add(obj.TaskNormalizedName);
-
-                // 이 퀘스트의 모든 목표 가져오기
-                var allTaskObjectives = _objectiveService.GetObjectivesForTask(obj.TaskNormalizedName);
-                foreach (var taskObj in allTaskObjectives)
-                {
-                    // 퀘스트 상태 확인
-                    var task = _progressService.GetTask(taskObj.TaskNormalizedName);
-                    if (task != null)
-                    {
-                        var status = _progressService.GetStatus(task);
-                        if (status == QuestStatus.Active)
-                        {
-                            // 목표 인덱스 및 완료 상태 설정
-                            taskObj.ObjectiveIndex = GetObjectiveIndex(task, taskObj.Description);
-                            taskObj.IsCompleted = _progressService.IsObjectiveCompletedById(taskObj.ObjectiveId);
-                            allObjectivesForDrawer.Add(taskObj);
-                        }
-                    }
-                }
-            }
-        }
-
-        // 중복 제거 후 정렬 (현재 맵 목표 먼저, 그다음 다른 맵 목표)
-        var uniqueObjectives = allObjectivesForDrawer
-            .GroupBy(o => o.ObjectiveId)
-            .Select(g => g.First())
-            .ToList();
-
-        // 현재 맵에 있는 목표 먼저, 그 다음 다른 맵 목표 (퀘스트명으로 정렬)
-        var sortedObjectives = uniqueObjectives
-            .OrderBy(obj =>
-            {
-                var isOnCurrentMap = obj.Locations.Any(loc =>
-                    loc.MapNormalizedName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true ||
-                    loc.MapName?.Equals(_currentMapKey, StringComparison.OrdinalIgnoreCase) == true);
-                return isOnCurrentMap ? 0 : 1;
-            })
-            .ThenBy(obj => obj.TaskName)
-            .ToList();
-
-        foreach (var obj in sortedObjectives)
-        {
-            viewModels.Add(new QuestObjectiveViewModel(
-                obj, _loc, _progressService,
-                obj.ObjectiveId == _selectedObjective?.ObjectiveId,
-                _currentMapKey));
-        }
 
         // 맵별 진행률 업데이트 (필터 적용 전 전체 목표 기준)
         UpdateMapProgress(viewModels);

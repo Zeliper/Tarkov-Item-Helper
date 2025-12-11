@@ -18,6 +18,7 @@ namespace TarkovHelper.Services
 
         private Dictionary<string, QuestStatus> _questProgress = new();
         private Dictionary<string, TarkovTask> _tasksByNormalizedName = new();
+        private Dictionary<string, TarkovTask> _tasksByBsgId = new();
         private List<TarkovTask> _allTasks = new();
 
         // Objective progress: key = "questNormalizedName:objectiveIndex", value = completed
@@ -35,11 +36,25 @@ namespace TarkovHelper.Services
 
             // Build dictionary, handling duplicates by keeping the first occurrence
             _tasksByNormalizedName = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+            _tasksByBsgId = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var task in tasks.Where(t => !string.IsNullOrEmpty(t.NormalizedName)))
             {
                 if (!_tasksByNormalizedName.ContainsKey(task.NormalizedName!))
                 {
                     _tasksByNormalizedName[task.NormalizedName!] = task;
+                }
+
+                // Build BsgId lookup (task.Ids contains BSG IDs)
+                if (task.Ids != null)
+                {
+                    foreach (var bsgId in task.Ids)
+                    {
+                        if (!string.IsNullOrEmpty(bsgId) && !_tasksByBsgId.ContainsKey(bsgId))
+                        {
+                            _tasksByBsgId[bsgId] = task;
+                        }
+                    }
                 }
             }
 
@@ -58,6 +73,14 @@ namespace TarkovHelper.Services
         public TarkovTask? GetTask(string normalizedName)
         {
             return _tasksByNormalizedName.TryGetValue(normalizedName, out var task) ? task : null;
+        }
+
+        /// <summary>
+        /// Get task by BSG ID (used for tarkov-market marker matching)
+        /// </summary>
+        public TarkovTask? GetTaskByBsgId(string bsgId)
+        {
+            return _tasksByBsgId.TryGetValue(bsgId, out var task) ? task : null;
         }
 
         // Thread-local visited set for GetStatus to prevent circular reference during status check
