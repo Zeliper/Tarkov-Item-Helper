@@ -23,6 +23,7 @@ namespace TarkovDBEditor.Services
         private readonly string _cacheDir;
         private readonly string _itemsCachePath;
         private readonly string _questsCachePath;
+        private readonly string _hideoutCachePath;
 
         public TarkovDevDataService(string? basePath = null)
         {
@@ -34,6 +35,7 @@ namespace TarkovDBEditor.Services
             _cacheDir = Path.Combine(basePath, "cache");
             _itemsCachePath = Path.Combine(_cacheDir, "tarkov_dev_items.json");
             _questsCachePath = Path.Combine(_cacheDir, "tarkov_dev_quests.json");
+            _hideoutCachePath = Path.Combine(_cacheDir, "tarkov_dev_hideout.json");
 
             Directory.CreateDirectory(_cacheDir);
         }
@@ -57,7 +59,15 @@ namespace TarkovDBEditor.Services
         }
 
         /// <summary>
-        /// 캐시 정보 가져오기 (캐시 날짜, 아이템 수, 퀘스트 수)
+        /// 캐시된 Hideout 데이터가 있는지 확인
+        /// </summary>
+        public bool HasCachedHideout()
+        {
+            return File.Exists(_hideoutCachePath);
+        }
+
+        /// <summary>
+        /// 캐시 정보 가져오기 (캐시 날짜, 아이템 수, 퀘스트 수, Hideout 수)
         /// </summary>
         public TarkovDevCacheInfo GetCacheInfo()
         {
@@ -87,6 +97,20 @@ namespace TarkovDBEditor.Services
                     var json = File.ReadAllText(_questsCachePath);
                     var cache = JsonSerializer.Deserialize<TarkovDevQuestsCache>(json);
                     info.QuestsCount = cache?.Quests?.Count ?? 0;
+                }
+                catch { }
+            }
+
+            if (File.Exists(_hideoutCachePath))
+            {
+                try
+                {
+                    var fileInfo = new FileInfo(_hideoutCachePath);
+                    info.HideoutCachedAt = fileInfo.LastWriteTime;
+
+                    var json = File.ReadAllText(_hideoutCachePath);
+                    var cache = JsonSerializer.Deserialize<TarkovDevHideoutCache>(json);
+                    info.HideoutCount = cache?.Stations?.Count ?? 0;
                 }
                 catch { }
             }
@@ -137,6 +161,27 @@ namespace TarkovDBEditor.Services
         }
 
         /// <summary>
+        /// 캐시된 Hideout 데이터 로드
+        /// </summary>
+        public async Task<List<TarkovDevHideoutStation>?> LoadCachedHideoutAsync(
+            CancellationToken cancellationToken = default)
+        {
+            if (!File.Exists(_hideoutCachePath))
+                return null;
+
+            try
+            {
+                var json = await File.ReadAllTextAsync(_hideoutCachePath, cancellationToken);
+                var cache = JsonSerializer.Deserialize<TarkovDevHideoutCache>(json);
+                return cache?.Stations;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         /// 아이템 데이터 캐시에 저장
         /// </summary>
         public async Task SaveItemsCacheAsync(
@@ -170,6 +215,24 @@ namespace TarkovDBEditor.Services
             var options = new JsonSerializerOptions { WriteIndented = true };
             var json = JsonSerializer.Serialize(cache, options);
             await File.WriteAllTextAsync(_questsCachePath, json, cancellationToken);
+        }
+
+        /// <summary>
+        /// Hideout 데이터 캐시에 저장
+        /// </summary>
+        public async Task SaveHideoutCacheAsync(
+            List<TarkovDevHideoutStation> stations,
+            CancellationToken cancellationToken = default)
+        {
+            var cache = new TarkovDevHideoutCache
+            {
+                CachedAt = DateTime.UtcNow,
+                Stations = stations
+            };
+
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            var json = JsonSerializer.Serialize(cache, options);
+            await File.WriteAllTextAsync(_hideoutCachePath, json, cancellationToken);
         }
 
         /// <summary>
@@ -211,6 +274,22 @@ namespace TarkovDBEditor.Services
             {
                 result.QuestsError = ex.Message;
                 progress?.Invoke($"Failed to cache quests: {ex.Message}");
+            }
+
+            try
+            {
+                // Hideout 데이터 다운로드 및 캐시
+                progress?.Invoke("Downloading hideout stations from tarkov.dev...");
+                var hideout = await FetchAllHideoutAsync(progress, cancellationToken);
+                await SaveHideoutCacheAsync(hideout, cancellationToken);
+                result.HideoutCount = hideout.Count;
+                result.HideoutSuccess = true;
+                progress?.Invoke($"Cached {hideout.Count} hideout stations from tarkov.dev");
+            }
+            catch (Exception ex)
+            {
+                result.HideoutError = ex.Message;
+                progress?.Invoke($"Failed to cache hideout: {ex.Message}");
             }
 
             result.CachedAt = DateTime.Now;
@@ -316,6 +395,404 @@ namespace TarkovDBEditor.Services
             }
 
             progress?.Invoke($"Fetched {result.Count} quests from tarkov.dev");
+            return result;
+        }
+
+        /// <summary>
+        /// tarkov.dev에서 Hideout 다국어 데이터 가져오기
+        /// </summary>
+        public async Task<List<TarkovDevHideoutStation>> FetchAllHideoutAsync(
+            Action<string>? progress = null,
+            CancellationToken cancellationToken = default)
+        {
+            progress?.Invoke("Fetching hideout stations from tarkov.dev API...");
+
+            // 영어 데이터 가져오기
+            var stationsEn = await FetchHideoutStationsAsync("en", cancellationToken);
+            progress?.Invoke($"Fetched {stationsEn.Count} stations (EN)");
+
+            // 한국어 데이터 가져오기
+            var stationsKo = await FetchHideoutStationsAsync("ko", cancellationToken);
+            progress?.Invoke($"Fetched {stationsKo.Count} stations (KO)");
+
+            // 일본어 데이터 가져오기
+            var stationsJa = await FetchHideoutStationsAsync("ja", cancellationToken);
+            progress?.Invoke($"Fetched {stationsJa.Count} stations (JA)");
+
+            // ID 기반 룩업 생성
+            var koById = stationsKo.ToDictionary(s => s.Id);
+            var jaById = stationsJa.ToDictionary(s => s.Id);
+
+            var result = new List<TarkovDevHideoutStation>();
+
+            foreach (var stationEn in stationsEn)
+            {
+                var stationKo = koById.TryGetValue(stationEn.Id, out var ko) ? ko : null;
+                var stationJa = jaById.TryGetValue(stationEn.Id, out var ja) ? ja : null;
+
+                var nameKo = stationKo?.Name;
+                var nameJa = stationJa?.Name;
+
+                // 번역이 영어와 같으면 null
+                if (nameKo == stationEn.Name) nameKo = null;
+                if (nameJa == stationEn.Name) nameJa = null;
+
+                var station = new TarkovDevHideoutStation
+                {
+                    Id = stationEn.Id,
+                    Name = stationEn.Name,
+                    NameKo = nameKo,
+                    NameJa = nameJa,
+                    NormalizedName = stationEn.NormalizedName,
+                    ImageLink = stationEn.ImageLink,
+                    Levels = new List<TarkovDevHideoutLevel>()
+                };
+
+                // 레벨 처리
+                if (stationEn.Levels != null)
+                {
+                    foreach (var levelEn in stationEn.Levels)
+                    {
+                        var levelKo = stationKo?.Levels?.FirstOrDefault(l => l.Level == levelEn.Level);
+                        var levelJa = stationJa?.Levels?.FirstOrDefault(l => l.Level == levelEn.Level);
+
+                        var hideoutLevel = new TarkovDevHideoutLevel
+                        {
+                            Level = levelEn.Level,
+                            ConstructionTime = levelEn.ConstructionTime,
+                            ItemRequirements = new List<TarkovDevHideoutItemReq>(),
+                            StationLevelRequirements = new List<TarkovDevHideoutStationReq>(),
+                            TraderRequirements = new List<TarkovDevHideoutTraderReq>(),
+                            SkillRequirements = new List<TarkovDevHideoutSkillReq>()
+                        };
+
+                        // 아이템 요구사항
+                        if (levelEn.ItemRequirements != null)
+                        {
+                            foreach (var itemReqEn in levelEn.ItemRequirements)
+                            {
+                                if (itemReqEn.Item == null) continue;
+
+                                var itemReqKo = levelKo?.ItemRequirements?.FirstOrDefault(i => i.Item?.Id == itemReqEn.Item.Id);
+                                var itemReqJa = levelJa?.ItemRequirements?.FirstOrDefault(i => i.Item?.Id == itemReqEn.Item.Id);
+
+                                var itemNameKo = itemReqKo?.Item?.Name;
+                                var itemNameJa = itemReqJa?.Item?.Name;
+                                if (itemNameKo == itemReqEn.Item.Name) itemNameKo = null;
+                                if (itemNameJa == itemReqEn.Item.Name) itemNameJa = null;
+
+                                // FIR 속성 파싱
+                                var foundInRaid = false;
+                                if (itemReqEn.Attributes != null)
+                                {
+                                    var firAttr = itemReqEn.Attributes.FirstOrDefault(a => a.Type == "foundInRaid");
+                                    if (firAttr != null && firAttr.Value?.Equals("true", StringComparison.OrdinalIgnoreCase) == true)
+                                    {
+                                        foundInRaid = true;
+                                    }
+                                }
+
+                                hideoutLevel.ItemRequirements.Add(new TarkovDevHideoutItemReq
+                                {
+                                    ItemId = itemReqEn.Item.Id,
+                                    ItemName = itemReqEn.Item.Name,
+                                    ItemNameKo = itemNameKo,
+                                    ItemNameJa = itemNameJa,
+                                    ItemNormalizedName = itemReqEn.Item.NormalizedName,
+                                    IconLink = itemReqEn.Item.IconLink,
+                                    Count = itemReqEn.Count,
+                                    FoundInRaid = foundInRaid
+                                });
+                            }
+                        }
+
+                        // 스테이션 요구사항
+                        if (levelEn.StationLevelRequirements != null)
+                        {
+                            foreach (var stationReqEn in levelEn.StationLevelRequirements)
+                            {
+                                if (stationReqEn.Station == null) continue;
+
+                                var stationReqKo = levelKo?.StationLevelRequirements?.FirstOrDefault(s => s.Station?.Id == stationReqEn.Station.Id);
+                                var stationReqJa = levelJa?.StationLevelRequirements?.FirstOrDefault(s => s.Station?.Id == stationReqEn.Station.Id);
+
+                                var stationNameKo = stationReqKo?.Station?.Name;
+                                var stationNameJa = stationReqJa?.Station?.Name;
+                                if (stationNameKo == stationReqEn.Station.Name) stationNameKo = null;
+                                if (stationNameJa == stationReqEn.Station.Name) stationNameJa = null;
+
+                                hideoutLevel.StationLevelRequirements.Add(new TarkovDevHideoutStationReq
+                                {
+                                    StationId = stationReqEn.Station.Id,
+                                    StationName = stationReqEn.Station.Name,
+                                    StationNameKo = stationNameKo,
+                                    StationNameJa = stationNameJa,
+                                    Level = stationReqEn.Level
+                                });
+                            }
+                        }
+
+                        // 트레이더 요구사항
+                        if (levelEn.TraderRequirements != null)
+                        {
+                            foreach (var traderReqEn in levelEn.TraderRequirements)
+                            {
+                                if (traderReqEn.Trader == null) continue;
+
+                                var traderReqKo = levelKo?.TraderRequirements?.FirstOrDefault(t => t.Trader?.Id == traderReqEn.Trader.Id);
+                                var traderReqJa = levelJa?.TraderRequirements?.FirstOrDefault(t => t.Trader?.Id == traderReqEn.Trader.Id);
+
+                                var traderNameKo = traderReqKo?.Trader?.Name;
+                                var traderNameJa = traderReqJa?.Trader?.Name;
+                                if (traderNameKo == traderReqEn.Trader.Name) traderNameKo = null;
+                                if (traderNameJa == traderReqEn.Trader.Name) traderNameJa = null;
+
+                                hideoutLevel.TraderRequirements.Add(new TarkovDevHideoutTraderReq
+                                {
+                                    TraderId = traderReqEn.Trader.Id,
+                                    TraderName = traderReqEn.Trader.Name,
+                                    TraderNameKo = traderNameKo,
+                                    TraderNameJa = traderNameJa,
+                                    Level = traderReqEn.Level
+                                });
+                            }
+                        }
+
+                        // 스킬 요구사항
+                        if (levelEn.SkillRequirements != null)
+                        {
+                            foreach (var skillReqEn in levelEn.SkillRequirements)
+                            {
+                                var skillReqKo = levelKo?.SkillRequirements?.FirstOrDefault(s => s.Name == skillReqEn.Name);
+                                var skillReqJa = levelJa?.SkillRequirements?.FirstOrDefault(s => s.Name == skillReqEn.Name);
+
+                                var skillNameKo = skillReqKo?.Name;
+                                var skillNameJa = skillReqJa?.Name;
+                                if (skillNameKo == skillReqEn.Name) skillNameKo = null;
+                                if (skillNameJa == skillReqEn.Name) skillNameJa = null;
+
+                                hideoutLevel.SkillRequirements.Add(new TarkovDevHideoutSkillReq
+                                {
+                                    Name = skillReqEn.Name,
+                                    NameKo = skillNameKo,
+                                    NameJa = skillNameJa,
+                                    Level = skillReqEn.Level
+                                });
+                            }
+                        }
+
+                        station.Levels.Add(hideoutLevel);
+                    }
+                }
+
+                result.Add(station);
+            }
+
+            progress?.Invoke($"Merged {result.Count} hideout stations with translations");
+            return result;
+        }
+
+        /// <summary>
+        /// tarkov.dev API에서 특정 언어의 Hideout 데이터 가져오기
+        /// </summary>
+        private async Task<List<ApiHideoutStation>> FetchHideoutStationsAsync(
+            string lang,
+            CancellationToken cancellationToken = default)
+        {
+            var query = $@"{{
+                hideoutStations(lang: {lang}) {{
+                    id
+                    name
+                    normalizedName
+                    imageLink
+                    levels {{
+                        level
+                        constructionTime
+                        itemRequirements {{
+                            item {{
+                                id
+                                name
+                                normalizedName
+                                iconLink
+                            }}
+                            count
+                            attributes {{
+                                type
+                                name
+                                value
+                            }}
+                        }}
+                        stationLevelRequirements {{
+                            station {{
+                                id
+                                name
+                                normalizedName
+                            }}
+                            level
+                        }}
+                        traderRequirements {{
+                            trader {{
+                                id
+                                name
+                            }}
+                            level
+                        }}
+                        skillRequirements {{
+                            name
+                            level
+                        }}
+                    }}
+                }}
+            }}";
+
+            var requestBody = JsonSerializer.Serialize(new { query });
+            var content = new StringContent(requestBody, Encoding.UTF8, "application/json");
+
+            var response = await _httpClient.PostAsync(GraphQLEndpoint, content, cancellationToken);
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync(cancellationToken);
+            using var doc = JsonDocument.Parse(json);
+
+            var result = new List<ApiHideoutStation>();
+
+            if (!doc.RootElement.TryGetProperty("data", out var data))
+                return result;
+
+            if (!data.TryGetProperty("hideoutStations", out var stations))
+                return result;
+
+            foreach (var station in stations.EnumerateArray())
+            {
+                var apiStation = new ApiHideoutStation
+                {
+                    Id = station.GetProperty("id").GetString() ?? "",
+                    Name = station.GetProperty("name").GetString() ?? "",
+                    NormalizedName = station.TryGetProperty("normalizedName", out var nn) ? nn.GetString() : null,
+                    ImageLink = station.TryGetProperty("imageLink", out var il) ? il.GetString() : null,
+                    Levels = new List<ApiHideoutLevel>()
+                };
+
+                if (station.TryGetProperty("levels", out var levels))
+                {
+                    foreach (var level in levels.EnumerateArray())
+                    {
+                        var apiLevel = new ApiHideoutLevel
+                        {
+                            Level = level.GetProperty("level").GetInt32(),
+                            ConstructionTime = level.TryGetProperty("constructionTime", out var ct) ? ct.GetInt32() : 0,
+                            ItemRequirements = new List<ApiHideoutItemReq>(),
+                            StationLevelRequirements = new List<ApiHideoutStationReq>(),
+                            TraderRequirements = new List<ApiHideoutTraderReq>(),
+                            SkillRequirements = new List<ApiHideoutSkillReq>()
+                        };
+
+                        // 아이템 요구사항 파싱
+                        if (level.TryGetProperty("itemRequirements", out var itemReqs))
+                        {
+                            foreach (var itemReq in itemReqs.EnumerateArray())
+                            {
+                                var apiItemReq = new ApiHideoutItemReq
+                                {
+                                    Count = itemReq.TryGetProperty("count", out var cnt) ? cnt.GetInt32() : 1,
+                                    Attributes = new List<ApiHideoutAttribute>()
+                                };
+
+                                if (itemReq.TryGetProperty("item", out var item))
+                                {
+                                    apiItemReq.Item = new ApiHideoutItem
+                                    {
+                                        Id = item.GetProperty("id").GetString() ?? "",
+                                        Name = item.GetProperty("name").GetString() ?? "",
+                                        NormalizedName = item.TryGetProperty("normalizedName", out var itemNn) ? itemNn.GetString() : null,
+                                        IconLink = item.TryGetProperty("iconLink", out var itemIcon) ? itemIcon.GetString() : null
+                                    };
+                                }
+
+                                if (itemReq.TryGetProperty("attributes", out var attrs))
+                                {
+                                    foreach (var attr in attrs.EnumerateArray())
+                                    {
+                                        apiItemReq.Attributes.Add(new ApiHideoutAttribute
+                                        {
+                                            Type = attr.TryGetProperty("type", out var attrType) ? attrType.GetString() : null,
+                                            Name = attr.TryGetProperty("name", out var attrName) ? attrName.GetString() : null,
+                                            Value = attr.TryGetProperty("value", out var attrValue) ? attrValue.GetString() : null
+                                        });
+                                    }
+                                }
+
+                                apiLevel.ItemRequirements.Add(apiItemReq);
+                            }
+                        }
+
+                        // 스테이션 요구사항 파싱
+                        if (level.TryGetProperty("stationLevelRequirements", out var stationReqs))
+                        {
+                            foreach (var stationReq in stationReqs.EnumerateArray())
+                            {
+                                var apiStationReq = new ApiHideoutStationReq
+                                {
+                                    Level = stationReq.TryGetProperty("level", out var lvl) ? lvl.GetInt32() : 1
+                                };
+
+                                if (stationReq.TryGetProperty("station", out var reqStation))
+                                {
+                                    apiStationReq.Station = new ApiHideoutStationRef
+                                    {
+                                        Id = reqStation.GetProperty("id").GetString() ?? "",
+                                        Name = reqStation.GetProperty("name").GetString() ?? "",
+                                        NormalizedName = reqStation.TryGetProperty("normalizedName", out var sNn) ? sNn.GetString() : null
+                                    };
+                                }
+
+                                apiLevel.StationLevelRequirements.Add(apiStationReq);
+                            }
+                        }
+
+                        // 트레이더 요구사항 파싱
+                        if (level.TryGetProperty("traderRequirements", out var traderReqs))
+                        {
+                            foreach (var traderReq in traderReqs.EnumerateArray())
+                            {
+                                var apiTraderReq = new ApiHideoutTraderReq
+                                {
+                                    Level = traderReq.TryGetProperty("level", out var lvl) ? lvl.GetInt32() : 1
+                                };
+
+                                if (traderReq.TryGetProperty("trader", out var trader))
+                                {
+                                    apiTraderReq.Trader = new ApiHideoutTrader
+                                    {
+                                        Id = trader.GetProperty("id").GetString() ?? "",
+                                        Name = trader.GetProperty("name").GetString() ?? ""
+                                    };
+                                }
+
+                                apiLevel.TraderRequirements.Add(apiTraderReq);
+                            }
+                        }
+
+                        // 스킬 요구사항 파싱
+                        if (level.TryGetProperty("skillRequirements", out var skillReqs))
+                        {
+                            foreach (var skillReq in skillReqs.EnumerateArray())
+                            {
+                                apiLevel.SkillRequirements.Add(new ApiHideoutSkillReq
+                                {
+                                    Name = skillReq.GetProperty("name").GetString() ?? "",
+                                    Level = skillReq.TryGetProperty("level", out var lvl) ? lvl.GetInt32() : 1
+                                });
+                            }
+                        }
+
+                        apiStation.Levels.Add(apiLevel);
+                    }
+                }
+
+                result.Add(apiStation);
+            }
+
             return result;
         }
 
@@ -834,9 +1311,12 @@ namespace TarkovDBEditor.Services
         public int ItemsCount { get; set; }
         public DateTime? QuestsCachedAt { get; set; }
         public int QuestsCount { get; set; }
+        public DateTime? HideoutCachedAt { get; set; }
+        public int HideoutCount { get; set; }
 
         public bool HasItemsCache => ItemsCachedAt.HasValue;
         public bool HasQuestsCache => QuestsCachedAt.HasValue;
+        public bool HasHideoutCache => HideoutCachedAt.HasValue;
     }
 
     /// <summary>
@@ -851,6 +1331,9 @@ namespace TarkovDBEditor.Services
         public bool QuestsSuccess { get; set; }
         public int QuestsCount { get; set; }
         public string? QuestsError { get; set; }
+        public bool HideoutSuccess { get; set; }
+        public int HideoutCount { get; set; }
+        public string? HideoutError { get; set; }
     }
 
     /// <summary>
@@ -905,6 +1388,242 @@ namespace TarkovDBEditor.Services
 
         [JsonPropertyName("wikiLink")]
         public string? WikiLink { get; set; }
+    }
+
+    /// <summary>
+    /// tarkov.dev Hideout 캐시 파일
+    /// </summary>
+    public class TarkovDevHideoutCache
+    {
+        [JsonPropertyName("cachedAt")]
+        public DateTime CachedAt { get; set; }
+
+        [JsonPropertyName("stations")]
+        public List<TarkovDevHideoutStation> Stations { get; set; } = new();
+    }
+
+    #endregion
+
+    #region Hideout Models
+
+    /// <summary>
+    /// Hideout 스테이션 (다국어 통합)
+    /// </summary>
+    public class TarkovDevHideoutStation
+    {
+        [JsonPropertyName("id")]
+        public string Id { get; set; } = "";
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("nameKo")]
+        public string? NameKo { get; set; }
+
+        [JsonPropertyName("nameJa")]
+        public string? NameJa { get; set; }
+
+        [JsonPropertyName("normalizedName")]
+        public string? NormalizedName { get; set; }
+
+        [JsonPropertyName("imageLink")]
+        public string? ImageLink { get; set; }
+
+        [JsonPropertyName("levels")]
+        public List<TarkovDevHideoutLevel> Levels { get; set; } = new();
+
+        [JsonIgnore]
+        public int MaxLevel => Levels?.Count ?? 0;
+    }
+
+    /// <summary>
+    /// Hideout 레벨
+    /// </summary>
+    public class TarkovDevHideoutLevel
+    {
+        [JsonPropertyName("level")]
+        public int Level { get; set; }
+
+        [JsonPropertyName("constructionTime")]
+        public int ConstructionTime { get; set; }
+
+        [JsonPropertyName("itemRequirements")]
+        public List<TarkovDevHideoutItemReq> ItemRequirements { get; set; } = new();
+
+        [JsonPropertyName("stationLevelRequirements")]
+        public List<TarkovDevHideoutStationReq> StationLevelRequirements { get; set; } = new();
+
+        [JsonPropertyName("traderRequirements")]
+        public List<TarkovDevHideoutTraderReq> TraderRequirements { get; set; } = new();
+
+        [JsonPropertyName("skillRequirements")]
+        public List<TarkovDevHideoutSkillReq> SkillRequirements { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Hideout 아이템 요구사항
+    /// </summary>
+    public class TarkovDevHideoutItemReq
+    {
+        [JsonPropertyName("itemId")]
+        public string ItemId { get; set; } = "";
+
+        [JsonPropertyName("itemName")]
+        public string ItemName { get; set; } = "";
+
+        [JsonPropertyName("itemNameKo")]
+        public string? ItemNameKo { get; set; }
+
+        [JsonPropertyName("itemNameJa")]
+        public string? ItemNameJa { get; set; }
+
+        [JsonPropertyName("itemNormalizedName")]
+        public string? ItemNormalizedName { get; set; }
+
+        [JsonPropertyName("iconLink")]
+        public string? IconLink { get; set; }
+
+        [JsonPropertyName("count")]
+        public int Count { get; set; }
+
+        [JsonPropertyName("foundInRaid")]
+        public bool FoundInRaid { get; set; }
+    }
+
+    /// <summary>
+    /// Hideout 스테이션 요구사항
+    /// </summary>
+    public class TarkovDevHideoutStationReq
+    {
+        [JsonPropertyName("stationId")]
+        public string StationId { get; set; } = "";
+
+        [JsonPropertyName("stationName")]
+        public string StationName { get; set; } = "";
+
+        [JsonPropertyName("stationNameKo")]
+        public string? StationNameKo { get; set; }
+
+        [JsonPropertyName("stationNameJa")]
+        public string? StationNameJa { get; set; }
+
+        [JsonPropertyName("level")]
+        public int Level { get; set; }
+    }
+
+    /// <summary>
+    /// Hideout 트레이더 요구사항
+    /// </summary>
+    public class TarkovDevHideoutTraderReq
+    {
+        [JsonPropertyName("traderId")]
+        public string TraderId { get; set; } = "";
+
+        [JsonPropertyName("traderName")]
+        public string TraderName { get; set; } = "";
+
+        [JsonPropertyName("traderNameKo")]
+        public string? TraderNameKo { get; set; }
+
+        [JsonPropertyName("traderNameJa")]
+        public string? TraderNameJa { get; set; }
+
+        [JsonPropertyName("level")]
+        public int Level { get; set; }
+    }
+
+    /// <summary>
+    /// Hideout 스킬 요구사항
+    /// </summary>
+    public class TarkovDevHideoutSkillReq
+    {
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = "";
+
+        [JsonPropertyName("nameKo")]
+        public string? NameKo { get; set; }
+
+        [JsonPropertyName("nameJa")]
+        public string? NameJa { get; set; }
+
+        [JsonPropertyName("level")]
+        public int Level { get; set; }
+    }
+
+    #endregion
+
+    #region Hideout API Models (Internal)
+
+    internal class ApiHideoutStation
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? NormalizedName { get; set; }
+        public string? ImageLink { get; set; }
+        public List<ApiHideoutLevel>? Levels { get; set; }
+    }
+
+    internal class ApiHideoutLevel
+    {
+        public int Level { get; set; }
+        public int ConstructionTime { get; set; }
+        public List<ApiHideoutItemReq>? ItemRequirements { get; set; }
+        public List<ApiHideoutStationReq>? StationLevelRequirements { get; set; }
+        public List<ApiHideoutTraderReq>? TraderRequirements { get; set; }
+        public List<ApiHideoutSkillReq>? SkillRequirements { get; set; }
+    }
+
+    internal class ApiHideoutItemReq
+    {
+        public ApiHideoutItem? Item { get; set; }
+        public int Count { get; set; }
+        public List<ApiHideoutAttribute>? Attributes { get; set; }
+    }
+
+    internal class ApiHideoutItem
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? NormalizedName { get; set; }
+        public string? IconLink { get; set; }
+    }
+
+    internal class ApiHideoutAttribute
+    {
+        public string? Type { get; set; }
+        public string? Name { get; set; }
+        public string? Value { get; set; }
+    }
+
+    internal class ApiHideoutStationReq
+    {
+        public ApiHideoutStationRef? Station { get; set; }
+        public int Level { get; set; }
+    }
+
+    internal class ApiHideoutStationRef
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string? NormalizedName { get; set; }
+    }
+
+    internal class ApiHideoutTraderReq
+    {
+        public ApiHideoutTrader? Trader { get; set; }
+        public int Level { get; set; }
+    }
+
+    internal class ApiHideoutTrader
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
+    }
+
+    internal class ApiHideoutSkillReq
+    {
+        public string Name { get; set; } = "";
+        public int Level { get; set; }
     }
 
     #endregion

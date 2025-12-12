@@ -49,6 +49,8 @@
                 <MenuItem Header="Fetch Wiki Data..." Click="FetchWikiData_Click" ToolTip="Fetch fresh data from Wiki (slow, requires internet)"/>
                 <MenuItem Header="Refresh Data (from Cache)" Click="RefreshDataFromCache_Click" ToolTip="Update DB using cached Wiki data (fast, no internet required)"/>
                 <Separator/>
+                <MenuItem Header="Refresh Hideout Data..." Click="RefreshHideoutData_Click" ToolTip="Fetch hideout data from tarkov.dev and save to DB"/>
+                <Separator/>
                 <MenuItem Header="Map Editor..." Click="TestMap_Click"/>
             </MenuItem>
             <MenuItem Header="Tools">

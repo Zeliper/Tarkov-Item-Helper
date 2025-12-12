@@ -482,6 +482,84 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void RefreshHideoutData_Click(object sender, RoutedEventArgs e)
+    {
+        // 데이터베이스가 연결되어 있는지 확인
+        if (!DatabaseService.Instance.IsConnected)
+        {
+            MessageBox.Show(
+                "Please open or create a database first.",
+                "No Database",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        ViewModel.StatusMessage = "Refreshing hideout data from tarkov.dev...";
+        IsEnabled = false;
+
+        try
+        {
+            using var hideoutService = new HideoutDataService();
+            var result = await hideoutService.RefreshHideoutDataAsync(
+                DatabaseService.Instance.DatabasePath,
+                downloadIcons: true,
+                progress => Dispatcher.Invoke(() => ViewModel.StatusMessage = progress));
+
+            if (result.Success)
+            {
+                // 테이블 목록 새로고침
+                ViewModel.LoadTables();
+
+                var message = new System.Text.StringBuilder();
+                message.AppendLine("Hideout data refresh completed successfully!");
+                message.AppendLine();
+                message.AppendLine($"Duration: {(result.CompletedAt - result.StartedAt).TotalSeconds:F1} seconds");
+                message.AppendLine();
+                message.AppendLine($"Stations: {result.StationsCount}");
+                message.AppendLine($"Levels: {result.LevelsCount}");
+                message.AppendLine($"Item Requirements: {result.ItemRequirementsCount}");
+                message.AppendLine($"Station Requirements: {result.StationRequirementsCount}");
+                message.AppendLine($"Trader Requirements: {result.TraderRequirementsCount}");
+                message.AppendLine($"Skill Requirements: {result.SkillRequirementsCount}");
+                message.AppendLine();
+                message.AppendLine($"Icons: {result.IconsDownloaded} downloaded, {result.IconsFailed} failed, {result.IconsCached} cached");
+                message.AppendLine();
+                message.AppendLine($"Log saved to: {result.LogPath}");
+
+                ViewModel.StatusMessage = $"Hideout refresh complete: {result.StationsCount} stations, {result.LevelsCount} levels";
+
+                MessageBox.Show(
+                    message.ToString(),
+                    "Refresh Hideout Data Complete",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            else
+            {
+                ViewModel.StatusMessage = $"Hideout refresh failed: {result.ErrorMessage}";
+                MessageBox.Show(
+                    $"Hideout refresh failed:\n{result.ErrorMessage}\n\nLog saved to: {result.LogPath}",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusMessage = $"Hideout refresh failed: {ex.Message}";
+            MessageBox.Show(
+                $"Hideout refresh failed:\n{ex.Message}",
+                "Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsEnabled = true;
+        }
+    }
+
     private async void ExportWikiQuests_Click(object sender, RoutedEventArgs e)
     {
         var outputDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wiki_data");

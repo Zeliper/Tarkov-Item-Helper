@@ -298,11 +298,6 @@ public partial class QuestRequirementsView : Window
         }
     }
 
-    private void ObjectivesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdatePointsPanel();
-    }
-
     private async void ObjectivesList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (ObjectivesList.SelectedItem is not QuestObjectiveItem selectedObj)
@@ -326,81 +321,11 @@ public partial class QuestRequirementsView : Window
             var json = selectedObj.LocationPointsJson;
             await _viewModel.UpdateObjectiveLocationPointsAsync(selectedObj.Id, json);
 
-            UpdatePointsPanel();
-
             var desc = selectedObj.Description.Length > 50
                 ? selectedObj.Description.Substring(0, 50) + "..."
                 : selectedObj.Description;
             StatusText.Text = $"Location points saved ({selectedObj.LocationPoints.Count} points) for: {desc}";
         }
-    }
-
-    private void UpdatePointsPanel()
-    {
-        if (ObjectivesList.SelectedItem is QuestObjectiveItem selectedObj)
-        {
-            PointsItemsControl.ItemsSource = selectedObj.LocationPoints;
-            UpdatePolygonLabels(selectedObj.LocationPoints.Count);
-        }
-        else
-        {
-            PointsItemsControl.ItemsSource = null;
-            UpdatePolygonLabels(0);
-        }
-    }
-
-    private void UpdatePolygonLabels(int count)
-    {
-        var type = count switch
-        {
-            0 => "",
-            1 => "(Point)",
-            2 => "(Line)",
-            3 => "(Triangle)",
-            4 => "(Quad)",
-            _ => $"(Polygon - {count} vertices)"
-        };
-        PolygonTypeLabel.Text = type;
-        PointsCountLabel.Text = count > 0 ? $"{count} point(s)" : "No points";
-    }
-
-    private void AddPoint_Click(object sender, RoutedEventArgs e)
-    {
-        if (ObjectivesList.SelectedItem is not QuestObjectiveItem selectedObj)
-        {
-            MessageBox.Show("Please select an objective first.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        selectedObj.LocationPoints.Add(new LocationPoint(0, 0, 0));
-        UpdatePolygonLabels(selectedObj.LocationPoints.Count);
-    }
-
-    private void RemovePoint_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not System.Windows.Controls.Button btn) return;
-        if (btn.Tag is not LocationPoint point) return;
-        if (ObjectivesList.SelectedItem is not QuestObjectiveItem selectedObj) return;
-
-        selectedObj.LocationPoints.Remove(point);
-        UpdatePolygonLabels(selectedObj.LocationPoints.Count);
-    }
-
-    private async void SaveLocationPoints_Click(object sender, RoutedEventArgs e)
-    {
-        if (ObjectivesList.SelectedItem is not QuestObjectiveItem selectedObj)
-        {
-            MessageBox.Show("Please select an objective first.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var json = selectedObj.LocationPointsJson;
-        await _viewModel.UpdateObjectiveLocationPointsAsync(selectedObj.Id, json);
-
-        var desc = selectedObj.Description.Length > 50
-            ? selectedObj.Description.Substring(0, 50) + "..."
-            : selectedObj.Description;
-        StatusText.Text = $"Location points saved ({selectedObj.LocationPoints.Count} points) for: {desc}";
     }
 
     private async void OptionalQuestApprovalCheckbox_Changed(object sender, RoutedEventArgs e)

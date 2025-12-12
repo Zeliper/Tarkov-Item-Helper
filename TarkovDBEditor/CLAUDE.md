@@ -68,11 +68,12 @@ DatabaseService.cs        - Singleton SQLite service with schema metadata
 **Services/** (Singleton pattern)
 - `DatabaseService.cs` - SQLite operations with dynamic schema management. Uses `_schema_meta` table for column metadata as JSON.
 - `MapMarkerService.cs` - CRUD operations for map markers (spawns, extractions, etc.)
-- `TarkovDevDataService.cs` - Fetches item data from tarkov.dev GraphQL API
+- `TarkovDevDataService.cs` - Fetches item/quest/hideout data from tarkov.dev GraphQL API
 - `TarkovWikiDataService.cs` - Parses Fandom wiki for item categories
 - `WikiQuestService.cs` - Quest data parsing and caching
 - `WikiCacheService.cs` - Page content caching with revision checking
 - `RefreshDataService.cs` - Syncs wiki/API data to local DB
+- `HideoutDataService.cs` - Fetches hideout data from tarkov.dev and saves to DB with icon download (Base64 encoded ID filenames)
 - `SvgStylePreprocessor.cs` - SVG floor layer filtering for multi-floor maps
 
 **ViewModels/**
@@ -232,6 +233,99 @@ CREATE TABLE QuestRequiredItems (
 -- Indexes: idx_questreqitem_questid, idx_questreqitem_itemid
 ```
 
+#### Hideout Tables (created by HideoutDataService)
+
+```sql
+-- Hideout stations/modules from tarkov.dev API
+CREATE TABLE HideoutStations (
+    Id TEXT PRIMARY KEY,       -- tarkov.dev ID
+    Name TEXT NOT NULL,        -- English name
+    NameKO TEXT,               -- Korean name
+    NameJA TEXT,               -- Japanese name
+    NormalizedName TEXT,       -- URL-friendly name
+    ImageLink TEXT,            -- Icon URL from tarkov.dev
+    MaxLevel INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT
+)
+
+-- Hideout levels for each station
+CREATE TABLE HideoutLevels (
+    Id TEXT PRIMARY KEY,       -- Generated: "{StationId}_{Level}"
+    StationId TEXT NOT NULL,
+    Level INTEGER NOT NULL,
+    ConstructionTime INTEGER NOT NULL DEFAULT 0,  -- Seconds
+    UpdatedAt TEXT,
+    FOREIGN KEY (StationId) REFERENCES HideoutStations(Id) ON DELETE CASCADE
+)
+-- Index: idx_hideoutlevels_stationid
+
+-- Item requirements for hideout levels
+CREATE TABLE HideoutItemRequirements (
+    Id TEXT PRIMARY KEY,       -- Generated: "{StationId}_{Level}_{ItemId}"
+    StationId TEXT NOT NULL,
+    Level INTEGER NOT NULL,
+    ItemId TEXT NOT NULL,      -- tarkov.dev item ID
+    ItemName TEXT NOT NULL,
+    ItemNameKO TEXT,
+    ItemNameJA TEXT,
+    IconLink TEXT,
+    Count INTEGER NOT NULL DEFAULT 1,
+    FoundInRaid INTEGER NOT NULL DEFAULT 0,
+    SortOrder INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT,
+    FOREIGN KEY (StationId) REFERENCES HideoutStations(Id) ON DELETE CASCADE
+)
+-- Index: idx_hideoutitemreq_stationid
+
+-- Station requirements (prerequisite hideout modules)
+CREATE TABLE HideoutStationRequirements (
+    Id TEXT PRIMARY KEY,       -- Generated: "{StationId}_{Level}_{RequiredStationId}"
+    StationId TEXT NOT NULL,
+    Level INTEGER NOT NULL,
+    RequiredStationId TEXT NOT NULL,
+    RequiredStationName TEXT NOT NULL,
+    RequiredStationNameKO TEXT,
+    RequiredStationNameJA TEXT,
+    RequiredLevel INTEGER NOT NULL,
+    SortOrder INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT,
+    FOREIGN KEY (StationId) REFERENCES HideoutStations(Id) ON DELETE CASCADE,
+    FOREIGN KEY (RequiredStationId) REFERENCES HideoutStations(Id) ON DELETE CASCADE
+)
+-- Index: idx_hideoutstationreq_stationid
+
+-- Trader loyalty requirements
+CREATE TABLE HideoutTraderRequirements (
+    Id TEXT PRIMARY KEY,       -- Generated: "{StationId}_{Level}_{TraderId}"
+    StationId TEXT NOT NULL,
+    Level INTEGER NOT NULL,
+    TraderId TEXT NOT NULL,
+    TraderName TEXT NOT NULL,
+    TraderNameKO TEXT,
+    TraderNameJA TEXT,
+    RequiredLevel INTEGER NOT NULL,
+    SortOrder INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT,
+    FOREIGN KEY (StationId) REFERENCES HideoutStations(Id) ON DELETE CASCADE
+)
+-- Index: idx_hideouttraderreq_stationid
+
+-- Skill requirements
+CREATE TABLE HideoutSkillRequirements (
+    Id TEXT PRIMARY KEY,       -- Generated: "{StationId}_{Level}_{SkillName}"
+    StationId TEXT NOT NULL,
+    Level INTEGER NOT NULL,
+    SkillName TEXT NOT NULL,
+    SkillNameKO TEXT,
+    SkillNameJA TEXT,
+    RequiredLevel INTEGER NOT NULL,
+    SortOrder INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT,
+    FOREIGN KEY (StationId) REFERENCES HideoutStations(Id) ON DELETE CASCADE
+)
+-- Index: idx_hideoutskillreq_stationid
+```
+
 #### Map Tables (created by MapMarkerService)
 
 ```sql
@@ -298,6 +392,7 @@ enum ColumnType { Text, Integer, Real, Boolean, DateTime, Json }
    - `DatabaseService.Instance` - General DB operations
    - `MapMarkerService.Instance` - Map marker CRUD
    - `RefreshDataService` - Wiki/API data sync
+   - `HideoutDataService` - Hideout data from tarkov.dev
 
 2. **Connection String**: `Data Source={DatabaseService.Instance.DatabasePath}`
 
