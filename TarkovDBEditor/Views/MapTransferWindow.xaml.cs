@@ -55,6 +55,10 @@ public partial class MapTransferWindow : Window
     private double[]? _currentTransform;
     private double _currentError;
 
+    // TPS Transform (비선형 보간)
+    private ThinPlateSplineTransform? _currentTps;
+    private bool _useTps = true; // TPS 사용 여부 (Fallback 제어)
+
     // Services
     private readonly TarkovMarketService _marketService;
 
@@ -162,6 +166,7 @@ public partial class MapTransferWindow : Window
             _matchResults.Clear();
             _selectedApiMarkers.Clear();
             _currentTransform = null;
+            _currentTps = null;
             _currentError = 0;
 
             UpdateCounts();
@@ -442,12 +447,13 @@ public partial class MapTransferWindow : Window
 
     /// <summary>
     /// 매칭된 참조점으로 Transform 계산 및 모든 API 마커에 적용
-    /// (수정된 DB 마커 위치가 있으면 그 값을 사용)
+    /// TPS (Thin Plate Spline) 비선형 보간 사용, 실패 시 Delaunay/Affine 폴백
     /// </summary>
     private void CalculateAndApplyTransform()
     {
         if (_currentMapConfig == null) return;
 
+        // 참조점 수집 (SVG 좌표 → DB 좌표 매핑)
         var referencePoints = _matchResults
             .Where(m => m.IsReferencePoint && m.ApiMarker.Geometry != null)
             .Select(m =>
@@ -468,23 +474,114 @@ public partial class MapTransferWindow : Window
 
         if (referencePoints.Count < 3) return;
 
-        _currentTransform = CoordinateTransformService.CalculateAffineTransform(referencePoints);
+        // === TPS (Thin Plate Spline) 변환 시도 ===
+        _currentTps = null;
+        bool usedTps = false;
 
-        if (_currentTransform == null) return;
+        if (_useTps)
+        {
+            _currentTps = TpsTransformFactory.Create(referencePoints, lambda: 0.0);
 
-        _currentError = CoordinateTransformService.CalculateError(referencePoints, _currentTransform);
+            if (_currentTps != null)
+            {
+                usedTps = true;
+                _currentError = _currentTps.MeanError;
+                System.Diagnostics.Debug.WriteLine($"[TPS] Successfully computed: {referencePoints.Count} points, mean error={_currentError:F4}, max error={_currentTps.MaxError:F4}");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[TPS] Computation failed, falling back to Affine + Delaunay");
+            }
+        }
 
-        // 매칭된 마커들의 오차 계산 (수정된 위치 기준)
+        // === Fallback: Affine Transform + Delaunay 삼각분할 ===
+        List<CoordinateTransformService.Triangle>? triangles = null;
+        List<(double svgX, double svgY, double dbX, double dbZ)>? interpolationPoints = null;
+
+        if (!usedTps)
+        {
+            // Affine Transform 계산
+            _currentTransform = CoordinateTransformService.CalculateAffineTransform(referencePoints);
+
+            if (_currentTransform == null) return;
+
+            _currentError = CoordinateTransformService.CalculateError(referencePoints, _currentTransform);
+
+            // Delaunay 삼각분할용 포인트 리스트 생성
+            interpolationPoints = referencePoints
+                .Select(p => (svgX: p.svgX, svgY: p.svgY, dbX: p.dbX, dbZ: p.dbZ))
+                .ToList();
+
+            // Delaunay 삼각분할 생성
+            triangles = CoordinateTransformService.CreateDelaunayTriangulation(interpolationPoints);
+
+            System.Diagnostics.Debug.WriteLine($"[Affine+Delaunay] Created {triangles.Count} triangles from {interpolationPoints.Count} reference points, mean error={_currentError:F4}");
+        }
+
+        // === 모든 API 마커에 변환 적용 ===
+        foreach (var marker in _apiMarkers)
+        {
+            if (marker.Geometry == null) continue;
+
+            var svgX = marker.Geometry.X;
+            var svgY = marker.Geometry.Y;
+
+            // 매칭된 마커인지 확인
+            var match = _matchResults.FirstOrDefault(m => m.ApiMarker.Uid == marker.Uid);
+
+            if (match != null)
+            {
+                // 매칭된 마커: DB 좌표로 정확히 스냅 (오차 = 0)
+                if (_modifiedDbPositions.TryGetValue(match.DbMarker.Id, out var modPos))
+                {
+                    marker.GameX = modPos.X;
+                    marker.GameZ = modPos.Z;
+                }
+                else
+                {
+                    marker.GameX = match.DbMarker.X;
+                    marker.GameZ = match.DbMarker.Z;
+                }
+                marker.FloorId = match.DbMarker.FloorId;
+                match.DistanceError = 0;
+            }
+            else
+            {
+                // 비매칭 마커: 변환 적용
+                if (usedTps && _currentTps != null)
+                {
+                    // TPS 변환 사용
+                    var (gameX, gameZ) = _currentTps.Transform(svgX, svgY);
+                    marker.GameX = gameX;
+                    marker.GameZ = gameZ;
+                }
+                else if (triangles != null && triangles.Count > 0 && interpolationPoints != null)
+                {
+                    // Delaunay + Barycentric 보간 사용
+                    var (gameX, gameZ) = CoordinateTransformService.InterpolatePoint(
+                        svgX, svgY, triangles, interpolationPoints);
+                    marker.GameX = gameX;
+                    marker.GameZ = gameZ;
+                }
+                else if (_currentTransform != null)
+                {
+                    // Affine Transform 폴백
+                    var (gameX, gameZ) = CoordinateTransformService.TransformSvgToGame(
+                        svgX, svgY, _currentTransform);
+                    marker.GameX = gameX;
+                    marker.GameZ = gameZ;
+                }
+
+                marker.FloorId = MarkerMatchingService.MapLevelToFloorId(
+                    marker.Level, _currentMapConfig.Key, _currentMapConfig.Floors);
+            }
+        }
+
+        // 매칭된 마커들의 오차 계산 (정보 표시용)
         foreach (var match in _matchResults)
         {
             if (match.ApiMarker.Geometry == null) continue;
 
-            var (calcX, calcZ) = CoordinateTransformService.TransformSvgToGame(
-                match.ApiMarker.Geometry.X,
-                match.ApiMarker.Geometry.Y,
-                _currentTransform);
-
-            // 수정된 위치가 있으면 사용
             double targetX = match.DbMarker.X;
             double targetZ = match.DbMarker.Z;
             if (_modifiedDbPositions.TryGetValue(match.DbMarker.Id, out var modPos))
@@ -493,23 +590,27 @@ public partial class MapTransferWindow : Window
                 targetZ = modPos.Z;
             }
 
+            // 변환 방식에 따른 오차 계산 (디버그용)
+            double calcX, calcZ;
+            if (usedTps && _currentTps != null)
+            {
+                (calcX, calcZ) = _currentTps.Transform(match.ApiMarker.Geometry.X, match.ApiMarker.Geometry.Y);
+            }
+            else if (_currentTransform != null)
+            {
+                (calcX, calcZ) = CoordinateTransformService.TransformSvgToGame(
+                    match.ApiMarker.Geometry.X, match.ApiMarker.Geometry.Y, _currentTransform);
+            }
+            else
+            {
+                continue;
+            }
+
             var dx = calcX - targetX;
             var dz = calcZ - targetZ;
-            match.DistanceError = Math.Sqrt(dx * dx + dz * dz);
-        }
+            var transformError = Math.Sqrt(dx * dx + dz * dz);
 
-        // 모든 API 마커에 변환 적용
-        foreach (var marker in _apiMarkers)
-        {
-            if (marker.Geometry == null) continue;
-
-            var (gameX, gameZ) = CoordinateTransformService.TransformSvgToGame(
-                marker.Geometry.X, marker.Geometry.Y, _currentTransform);
-
-            marker.GameX = gameX;
-            marker.GameZ = gameZ;
-            marker.FloorId = MarkerMatchingService.MapLevelToFloorId(
-                marker.Level, _currentMapConfig.Key, _currentMapConfig.Floors);
+            System.Diagnostics.Debug.WriteLine($"[Transform] {match.DbMarker.Name}: {(usedTps ? "TPS" : "Affine")} error={transformError:F2}, Applied error=0 (snapped)");
         }
     }
 
@@ -778,9 +879,11 @@ public partial class MapTransferWindow : Window
     {
         BtnAutoMatch.IsEnabled = _apiMarkers.Count > 0;
         BtnCalcTransform.IsEnabled = _matchResults.Count(m => m.IsReferencePoint) >= 3;
-        BtnApplyTransform.IsEnabled = _currentTransform != null;
+        BtnApplyTransform.IsEnabled = _currentTransform != null || _currentTps != null;
         BtnSelectAll.IsEnabled = _apiMarkers.Count > 0;
-        BtnImportSelected.IsEnabled = _selectedApiMarkers.Count > 0 && _currentTransform != null;
+
+        // Import 버튼: 선택된 마커가 있으면 활성화 (Transform 여부와 무관)
+        BtnImportSelected.IsEnabled = _selectedApiMarkers.Count > 0;
 
         // 수정된 DB 마커가 있으면 초기화 버튼 활성화
         var hasModifiedDbMarkers = _currentMapConfig != null &&
@@ -794,9 +897,16 @@ public partial class MapTransferWindow : Window
         var refCount = _matchResults.Count(m => m.IsReferencePoint);
         RefPointCountText.Text = refCount.ToString();
 
-        if (_currentTransform != null)
+        // TPS 정보 표시 (우선)
+        if (_currentTps != null && _currentTps.IsComputed)
         {
-            TransformInfoText.Text = $"[{_currentTransform[0]:F4}, {_currentTransform[1]:F4}, {_currentTransform[2]:F4}, {_currentTransform[3]:F4}, {_currentTransform[4]:F2}, {_currentTransform[5]:F2}]";
+            TransformInfoText.Text = $"TPS ({_currentTps.ReferencePointCount} pts, λ={_currentTps.Lambda:E1})";
+            ErrorText.Text = $"Mean: {_currentTps.MeanError:F2}, Max: {_currentTps.MaxError:F2}";
+        }
+        else if (_currentTransform != null)
+        {
+            // Affine 폴백 정보
+            TransformInfoText.Text = $"Affine [{_currentTransform[0]:F4}, {_currentTransform[1]:F4}, {_currentTransform[2]:F4}, {_currentTransform[3]:F4}]";
             ErrorText.Text = $"{_currentError:F2} units";
         }
         else
