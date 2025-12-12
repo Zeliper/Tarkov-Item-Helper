@@ -887,7 +887,7 @@ namespace TarkovDBEditor.Services
             {
                 obj.Type = ObjectiveType.Mark;
                 obj.LocationName = CleanWikiMarkup(markMatch.Groups[1].Value);
-                obj.ItemName = markMatch.Groups[2].Value.Trim(); // 마커 아이템
+                obj.ItemName = NormalizeItemName(markMatch.Groups[2].Value); // 마커 아이템 (정규화됨)
                 return obj;
             }
 
@@ -899,7 +899,7 @@ namespace TarkovDBEditor.Services
                 // 마커 아이템 추출 시도 (with 없이 [[MS2000 Marker]] 형식)
                 var markerMatch = Regex.Match(line, @"\[\[(MS2000[^\]]*|Marker[^\]]*|Signal[^\]]*)\]\]", RegexOptions.IgnoreCase);
                 if (markerMatch.Success)
-                    obj.ItemName = markerMatch.Groups[1].Value.Trim();
+                    obj.ItemName = NormalizeItemName(markerMatch.Groups[1].Value); // 정규화됨
                 return obj;
             }
 
@@ -959,6 +959,32 @@ namespace TarkovDBEditor.Services
                 obj.TargetCount = objCount;
 
             return obj;
+        }
+
+        // 아이템 이름 별칭 (Wiki에서 사용하는 짧은 이름 -> 실제 아이템 테이블 이름)
+        private static readonly Dictionary<string, string> ItemNameAliases = new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "MS2000", "MS2000 Marker" },
+            { "MS2000 marker", "MS2000 Marker" },
+            { "Marker", "MS2000 Marker" },
+            { "Signal Jammer", "Signal Jammer" },
+            { "Wi-Fi Camera", "Wi-Fi Camera" },
+            { "Wifi Camera", "Wi-Fi Camera" },
+        };
+
+        /// <summary>
+        /// 아이템 이름 정규화 (Wiki 별칭 → 실제 아이템 테이블 이름)
+        /// </summary>
+        private static string NormalizeItemName(string? itemName)
+        {
+            if (string.IsNullOrEmpty(itemName))
+                return itemName ?? string.Empty;
+
+            // 별칭 매핑 확인
+            if (ItemNameAliases.TryGetValue(itemName.Trim(), out var normalizedName))
+                return normalizedName;
+
+            return itemName.Trim();
         }
 
         /// <summary>

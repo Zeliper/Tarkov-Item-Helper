@@ -1077,13 +1077,23 @@ public partial class MapEditorWindow : Window
     {
         MarkersCanvas.Children.Clear();
 
-        if (_currentMapConfig == null || !_isMarkerMode) return;
+        if (_currentMapConfig == null) return;
+
+        // In objective mode, still show markers but smaller and more transparent (reference only)
+        var isReferenceMode = !_isMarkerMode;
 
         var inverseScale = 1.0 / _zoomLevel;
         var hasFloors = _sortedFloors != null && _sortedFloors.Count > 0;
 
         // Filter markers for current map
         var markersForMap = _mapMarkers.Where(m => m.MapKey == _currentMapConfig.Key).ToList();
+
+        // In objective mode, need to load markers if not already loaded
+        if (isReferenceMode && markersForMap.Count == 0)
+        {
+            LoadMarkersForReferenceMode();
+            markersForMap = _mapMarkers.Where(m => m.MapKey == _currentMapConfig.Key).ToList();
+        }
 
         foreach (var marker in markersForMap)
         {
@@ -1097,15 +1107,21 @@ public partial class MapEditorWindow : Window
                 opacity = string.Equals(marker.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.3;
             }
 
+            // In reference mode: smaller and more transparent (10% opacity)
+            if (isReferenceMode)
+            {
+                opacity *= 0.10;
+            }
+
             var (r, g, b) = MapMarker.GetMarkerColor(marker.MarkerType);
             var markerColor = Color.FromArgb((byte)(opacity * 255), r, g, b);
 
-            // Create marker visual
-            var markerSize = 48 * inverseScale;
+            // Create marker visual - smaller in reference mode (50% size)
+            var markerSize = (isReferenceMode ? 24 : 48) * inverseScale;
             var iconImage = GetMarkerIcon(marker.MarkerType);
 
-            // Draw selection highlight
-            if (isSelected)
+            // Draw selection highlight (not in reference mode)
+            if (isSelected && !isReferenceMode)
             {
                 var selectionSize = markerSize + 16 * inverseScale;
                 var selectionRing = new Ellipse
@@ -1174,7 +1190,7 @@ public partial class MapEditorWindow : Window
                 {
                     Text = iconText,
                     Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 255, 255, 255)),
-                    FontSize = 24 * inverseScale,
+                    FontSize = (isReferenceMode ? 12 : 24) * inverseScale,
                     FontWeight = FontWeights.Bold,
                     TextAlignment = TextAlignment.Center
                 };
@@ -1184,6 +1200,9 @@ public partial class MapEditorWindow : Window
                 Canvas.SetTop(icon, sy - icon.DesiredSize.Height / 2);
                 MarkersCanvas.Children.Add(icon);
             }
+
+            // Skip labels in reference mode (keep it minimal)
+            if (isReferenceMode) continue;
 
             // Name label
             var nameLabel = new TextBlock
@@ -1217,6 +1236,24 @@ public partial class MapEditorWindow : Window
                 Canvas.SetTop(floorLabel, sy + 16 * inverseScale);
                 MarkersCanvas.Children.Add(floorLabel);
             }
+        }
+    }
+
+    private void LoadMarkersForReferenceMode()
+    {
+        // Synchronously load markers for reference display in objective mode
+        try
+        {
+            var markers = _markerService.LoadAllMarkersAsync().GetAwaiter().GetResult();
+            _mapMarkers.Clear();
+            foreach (var marker in markers)
+            {
+                _mapMarkers.Add(marker);
+            }
+        }
+        catch
+        {
+            // Ignore errors in reference mode
         }
     }
 

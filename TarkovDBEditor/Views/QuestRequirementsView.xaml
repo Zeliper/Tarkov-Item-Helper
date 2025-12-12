@@ -460,17 +460,11 @@
                         <!-- Objectives Tab -->
                         <TabItem Header="Objectives">
                             <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-
-                                <ListBox Grid.Row="0" x:Name="ObjectivesList"
+                                <ListBox x:Name="ObjectivesList"
                                          ItemsSource="{Binding SelectedQuestObjectives}"
                                          BorderThickness="0"
                                          Background="Transparent"
                                          Margin="0,8,0,0"
-                                         SelectionChanged="ObjectivesList_SelectionChanged"
                                          MouseDoubleClick="ObjectivesList_MouseDoubleClick">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
@@ -607,80 +601,10 @@
                                 </ListBox>
 
                                 <!-- Empty State -->
-                                <TextBlock Grid.Row="0" Text="No objectives found for this quest"
+                                <TextBlock Text="No objectives found for this quest"
                                            Foreground="{StaticResource TextDimBrush}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Visibility="{Binding HasNoObjectives, Converter={StaticResource BoolToVisibility}}"/>
-
-                                <!-- Location Points Edit Panel -->
-                                <Border Grid.Row="1" Background="{StaticResource PrimaryBrush}" Padding="10" Margin="0,8,0,0"
-                                        CornerRadius="4">
-                                    <Grid>
-                                        <Grid.RowDefinitions>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                            <RowDefinition Height="Auto"/>
-                                        </Grid.RowDefinitions>
-
-                                        <!-- Header -->
-                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                                            <TextBlock Text="Location Points" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                                            <TextBlock x:Name="PolygonTypeLabel" Text="" Margin="8,0,0,0"
-                                                       Foreground="{StaticResource AccentBrush}" FontSize="11" VerticalAlignment="Center"/>
-                                        </StackPanel>
-
-                                        <!-- Points List -->
-                                        <ItemsControl Grid.Row="1" x:Name="PointsItemsControl" Margin="0,0,0,8">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="{StaticResource SecondaryBrush}" CornerRadius="3" Padding="8,4" Margin="0,2">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="60"/>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="60"/>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                                <ColumnDefinition Width="60"/>
-                                                                <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                            </Grid.ColumnDefinitions>
-
-                                                            <TextBlock Grid.Column="0" Text="X:" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource TextDimBrush}"/>
-                                                            <TextBox Grid.Column="2" Text="{Binding X, UpdateSourceTrigger=PropertyChanged}"
-                                                                     Width="55" Margin="0,0,8,0"/>
-
-                                                            <TextBlock Grid.Column="3" Text="Y:" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource TextDimBrush}"/>
-                                                            <TextBox Grid.Column="4" Text="{Binding Y, UpdateSourceTrigger=PropertyChanged}"
-                                                                     Width="55" Margin="0,0,8,0"/>
-
-                                                            <TextBlock Grid.Column="5" Text="Z:" VerticalAlignment="Center" Margin="0,0,4,0" Foreground="{StaticResource TextDimBrush}"/>
-                                                            <TextBox Grid.Column="6" Text="{Binding Z, UpdateSourceTrigger=PropertyChanged}"
-                                                                     Width="55"/>
-
-                                                            <Button Grid.Column="8" Content="✕" Click="RemovePoint_Click"
-                                                                    Tag="{Binding}"
-                                                                    Width="24" Height="24" Padding="0"
-                                                                    Background="#C62828" Foreground="White"
-                                                                    BorderThickness="0" FontWeight="Bold"/>
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-
-                                        <!-- Add Point / Save Buttons -->
-                                        <StackPanel Grid.Row="2" Orientation="Horizontal">
-                                            <Button Content="+ Add Point" Click="AddPoint_Click"
-                                                    Style="{StaticResource SecondaryButton}" Padding="12,4" Margin="0,0,8,0"/>
-                                            <Button Content="Save Points" Click="SaveLocationPoints_Click"
-                                                    Style="{StaticResource PrimaryButton}" Padding="12,4"/>
-                                            <TextBlock x:Name="PointsCountLabel" Text="" Margin="12,0,0,0"
-                                                       VerticalAlignment="Center" Foreground="{StaticResource TextDimBrush}" FontSize="11"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
                             </Grid>
                         </TabItem>
 
