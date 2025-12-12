@@ -177,6 +177,96 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void MergeMapMarkers_Click(object sender, RoutedEventArgs e)
+    {
+        // 데이터베이스가 연결되어 있는지 확인
+        if (!DatabaseService.Instance.IsConnected)
+        {
+            MessageBox.Show(
+                "Please open or create a database first.",
+                "No Database",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        // 외부 DB 파일 선택
+        var dialog = new OpenFileDialog
+        {
+            Filter = "SQLite Database|*.db|All files|*.*",
+            DefaultExt = ".db",
+            Title = "Select external database to merge markers from"
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        // 동일한 파일인지 확인
+        if (string.Equals(Path.GetFullPath(dialog.FileName),
+            Path.GetFullPath(DatabaseService.Instance.DatabasePath),
+            StringComparison.OrdinalIgnoreCase))
+        {
+            MessageBox.Show(
+                "Cannot merge from the same database that is currently open.",
+                "Same Database",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        ViewModel.StatusMessage = "Merging map markers...";
+        IsEnabled = false;
+
+        try
+        {
+            var result = await MapMarkerService.Instance.MergeMarkersFromExternalDbAsync(dialog.FileName);
+
+            if (result.Success)
+            {
+                // 테이블 목록 새로고침
+                ViewModel.LoadTables();
+
+                var message = new System.Text.StringBuilder();
+                message.AppendLine("Map markers merged successfully!");
+                message.AppendLine();
+                message.AppendLine($"Source: {Path.GetFileName(dialog.FileName)}");
+                message.AppendLine($"Total markers in source: {result.TotalInExternal}");
+                message.AppendLine();
+                message.AppendLine($"Added (new): {result.Added}");
+                message.AppendLine($"Updated (existing): {result.Updated}");
+
+                ViewModel.StatusMessage = $"Merge complete: {result.Added} added, {result.Updated} updated";
+
+                MessageBox.Show(
+                    message.ToString(),
+                    "Merge Complete",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+            else
+            {
+                ViewModel.StatusMessage = $"Merge failed: {result.ErrorMessage}";
+                MessageBox.Show(
+                    $"Merge failed:\n{result.ErrorMessage}",
+                    "Error",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            ViewModel.StatusMessage = $"Merge failed: {ex.Message}";
+            MessageBox.Show(
+                $"Merge failed:\n{ex.Message}",
+                "Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            IsEnabled = true;
+        }
+    }
+
     private async void ExportWikiItemCategories_Click(object sender, RoutedEventArgs e)
     {
         var outputDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wiki_data");

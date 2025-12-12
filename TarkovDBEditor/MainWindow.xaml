@@ -40,6 +40,8 @@
                 <MenuItem Header="Delete Row" Command="{Binding DeleteRowCommand}"/>
                 <Separator/>
                 <MenuItem Header="Refresh" Command="{Binding RefreshCommand}"/>
+                <Separator/>
+                <MenuItem Header="Merge Map Markers..." Click="MergeMapMarkers_Click" ToolTip="외부 DB 파일에서 맵 마커를 병합합니다"/>
             </MenuItem>
             <MenuItem Header="Debug">
                 <MenuItem Header="Export Wiki Item Categories..." Click="ExportWikiItemCategories_Click"/>
