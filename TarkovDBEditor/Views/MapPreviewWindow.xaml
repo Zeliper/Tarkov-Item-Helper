@@ -38,6 +38,9 @@
                           IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0"
                           Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed"/>
                 <CheckBox x:Name="ChkShowObjectives" Content="Quest Objectives" Foreground="#FFC107"
+                          IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0"
+                          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed"/>
+                <CheckBox x:Name="ChkShowApiMarkers" Content="API Reference" Foreground="#E65100"
                           IsChecked="True" VerticalAlignment="Center"
                           Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed"/>
 
@@ -83,6 +86,9 @@
 
                 <!-- Objectives Layer -->
                 <Canvas x:Name="ObjectivesCanvas"/>
+
+                <!-- API Reference Markers Layer -->
+                <Canvas x:Name="ApiMarkersCanvas"/>
             </Canvas>
         </Grid>
 
@@ -103,6 +109,8 @@
                     <TextBlock x:Name="MarkerCountText" Text="0" Foreground="#4CAF50" FontWeight="Bold"/>
                     <TextBlock Text="  |  Objectives: " Foreground="#FFC107" Margin="10,0,0,0"/>
                     <TextBlock x:Name="ObjectiveCountText" Text="0" Foreground="#FFC107" FontWeight="Bold"/>
+                    <TextBlock Text="  |  API: " Foreground="#E65100" Margin="10,0,0,0"/>
+                    <TextBlock x:Name="ApiMarkerCountText" Text="0" Foreground="#E65100" FontWeight="Bold"/>
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">

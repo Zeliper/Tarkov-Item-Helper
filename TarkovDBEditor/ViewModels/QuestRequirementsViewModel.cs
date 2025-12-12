@@ -27,6 +27,7 @@ public enum QuestApprovalStatus
 public class QuestRequirementsViewModel : INotifyPropertyChanged
 {
     private readonly DatabaseService _db = DatabaseService.Instance;
+    private readonly ApiMarkerService _apiMarkerService = ApiMarkerService.Instance;
 
     private ObservableCollection<QuestItem> _allQuests = new();
     private ObservableCollection<QuestItem> _filteredQuests = new();
@@ -34,6 +35,7 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
     private ObservableCollection<QuestObjectiveItem> _selectedQuestObjectives = new();
     private ObservableCollection<OptionalQuestItem> _selectedOptionalQuests = new();
     private ObservableCollection<QuestRequiredItemViewModel> _selectedRequiredItems = new();
+    private ObservableCollection<ApiReferenceMarkerItem> _selectedApiMarkers = new();
     private QuestItem? _selectedQuest;
     private string _searchText = "";
     private QuestFilterMode _filterMode = QuestFilterMode.All;
@@ -73,6 +75,12 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         set { _selectedRequiredItems = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasNoRequiredItems)); }
     }
 
+    public ObservableCollection<ApiReferenceMarkerItem> SelectedApiMarkers
+    {
+        get => _selectedApiMarkers;
+        set { _selectedApiMarkers = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasNoApiMarkers)); }
+    }
+
     public QuestItem? SelectedQuest
     {
         get => _selectedQuest;
@@ -84,6 +92,7 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
             LoadQuestObjectives();
             LoadOptionalQuests();
             LoadRequiredItems();
+            LoadApiMarkers();
         }
     }
 
@@ -134,6 +143,8 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
     public bool HasNoOptionalQuests => SelectedQuest != null && SelectedOptionalQuests.Count == 0;
 
     public bool HasNoRequiredItems => SelectedQuest != null && SelectedRequiredItems.Count == 0;
+
+    public bool HasNoApiMarkers => SelectedQuest != null && SelectedApiMarkers.Count == 0;
 
     public async Task LoadDataAsync()
     {
@@ -588,6 +599,95 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         }
 
         OnPropertyChanged(nameof(HasNoRequiredItems));
+    }
+
+    private async void LoadApiMarkers()
+    {
+        SelectedApiMarkers.Clear();
+
+        if (_selectedQuest == null || !_db.IsConnected) return;
+
+        try
+        {
+            // BSG ID로 먼저 매칭 시도
+            var markers = new List<ApiMarker>();
+
+            if (!string.IsNullOrEmpty(_selectedQuest.BsgId))
+            {
+                markers = await _apiMarkerService.GetByQuestBsgIdAsync(_selectedQuest.BsgId);
+            }
+
+            // BSG ID로 찾지 못하면 EN 퀘스트명으로 fallback 매칭
+            if (markers.Count == 0 && !string.IsNullOrEmpty(_selectedQuest.NameEN))
+            {
+                markers = await _apiMarkerService.GetByQuestNameAsync(_selectedQuest.NameEN);
+            }
+
+            // 마커를 ViewModel 아이템으로 변환
+            foreach (var marker in markers)
+            {
+                var item = new ApiReferenceMarkerItem
+                {
+                    Id = marker.Id,
+                    TarkovMarketUid = marker.TarkovMarketUid,
+                    Name = marker.Name,
+                    NameKo = marker.NameKo,
+                    Category = marker.Category,
+                    SubCategory = marker.SubCategory,
+                    MapKey = marker.MapKey,
+                    X = marker.X,
+                    Y = marker.Y,
+                    Z = marker.Z,
+                    FloorId = marker.FloorId,
+                    QuestBsgId = marker.QuestBsgId,
+                    QuestNameEn = marker.QuestNameEn,
+                    ObjectiveDescription = marker.ObjectiveDescription,
+                    ImportedAt = marker.ImportedAt
+                };
+                SelectedApiMarkers.Add(item);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LoadApiMarkers] Error: {ex.Message}");
+        }
+
+        OnPropertyChanged(nameof(HasNoApiMarkers));
+    }
+
+    /// <summary>
+    /// API 마커의 위치를 특정 Objective에 적용
+    /// </summary>
+    public async Task ApplyApiMarkerLocationToObjectiveAsync(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
+    {
+        if (apiMarker == null || objective == null) return;
+
+        // LocationPoints에 API 마커 좌표 추가 (기존 포인트에 추가)
+        var newPoint = new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
+        objective.LocationPoints.Add(newPoint);
+
+        // DB에 저장
+        await UpdateObjectiveLocationPointsAsync(objective.Id, objective.LocationPointsJson);
+
+        System.Diagnostics.Debug.WriteLine($"[ApplyApiMarkerLocationToObjectiveAsync] Applied ({apiMarker.X}, {apiMarker.Z}) to Objective {objective.Id}");
+    }
+
+    /// <summary>
+    /// API 마커의 위치로 Objective의 위치를 교체 (기존 포인트 삭제 후 새로 설정)
+    /// </summary>
+    public async Task ReplaceObjectiveLocationWithApiMarkerAsync(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
+    {
+        if (apiMarker == null || objective == null) return;
+
+        // 기존 포인트 삭제 후 API 마커 좌표로 설정
+        objective.LocationPoints.Clear();
+        var newPoint = new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
+        objective.LocationPoints.Add(newPoint);
+
+        // DB에 저장
+        await UpdateObjectiveLocationPointsAsync(objective.Id, objective.LocationPointsJson);
+
+        System.Diagnostics.Debug.WriteLine($"[ReplaceObjectiveLocationWithApiMarkerAsync] Replaced Objective {objective.Id} location with ({apiMarker.X}, {apiMarker.Z})");
     }
 
     public async Task UpdateRequiredItemApprovalAsync(string requiredItemId, bool isApproved)
@@ -1300,6 +1400,61 @@ public class QuestRequiredItemViewModel : INotifyPropertyChanged
             return _itemIcon;
         }
     }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    protected void OnPropertyChanged([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}
+
+/// <summary>
+/// API 참조 마커 아이템 (Tarkov Market API에서 가져온 참조용 마커)
+/// </summary>
+public class ApiReferenceMarkerItem : INotifyPropertyChanged
+{
+    public string Id { get; set; } = "";
+    public string TarkovMarketUid { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? NameKo { get; set; }
+    public string Category { get; set; } = "";
+    public string? SubCategory { get; set; }
+    public string MapKey { get; set; } = "";
+    public double X { get; set; }
+    public double? Y { get; set; }
+    public double Z { get; set; }
+    public string? FloorId { get; set; }
+    public string? QuestBsgId { get; set; }
+    public string? QuestNameEn { get; set; }
+    public string? ObjectiveDescription { get; set; }
+    public DateTime ImportedAt { get; set; }
+
+    /// <summary>
+    /// 표시할 이름 (NameKo가 있으면 우선, 없으면 Name)
+    /// </summary>
+    public string DisplayName => !string.IsNullOrEmpty(NameKo) ? NameKo : Name;
+
+    /// <summary>
+    /// 카테고리 표시 (Category + SubCategory)
+    /// </summary>
+    public string CategoryDisplay => !string.IsNullOrEmpty(SubCategory)
+        ? $"{Category} > {SubCategory}"
+        : Category;
+
+    /// <summary>
+    /// 좌표 표시
+    /// </summary>
+    public string CoordinatesDisplay => FloorId != null
+        ? $"({X:F1}, {Y:F1}, {Z:F1}) [{FloorId}]"
+        : $"({X:F1}, {Y:F1}, {Z:F1})";
+
+    /// <summary>
+    /// Import 시점 표시
+    /// </summary>
+    public string ImportedAtDisplay => $"Imported: {ImportedAt.ToLocalTime():yyyy-MM-dd HH:mm}";
+
+    /// <summary>
+    /// API 소스 여부 (항상 true - Tarkov Market에서 온 마커)
+    /// </summary>
+    public bool IsApiSource => true;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     protected void OnPropertyChanged([CallerMemberName] string? name = null)

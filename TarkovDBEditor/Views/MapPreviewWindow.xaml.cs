@@ -48,6 +48,7 @@ public partial class MapPreviewWindow : Window
     // Data
     private readonly List<MapMarker> _mapMarkers = new();
     private readonly List<QuestObjectiveItem> _questObjectives = new();
+    private readonly List<ApiMarker> _apiMarkers = new();
 
     // Icon cache
     private static readonly Dictionary<MapMarkerType, BitmapImage?> _iconCache = new();
@@ -109,6 +110,9 @@ public partial class MapPreviewWindow : Window
 
         // Load quest objectives
         await LoadQuestObjectivesAsync();
+
+        // Load API reference markers
+        await LoadApiMarkersAsync();
     }
 
     private async Task LoadMarkersAsync()
@@ -196,6 +200,36 @@ public partial class MapPreviewWindow : Window
         catch (Exception ex)
         {
             StatusText.Text = $"Error loading objectives: {ex.Message}";
+        }
+    }
+
+    private async Task LoadApiMarkersAsync()
+    {
+        _apiMarkers.Clear();
+
+        if (!DatabaseService.Instance.IsConnected) return;
+
+        try
+        {
+            // Ensure the ApiMarkers table exists
+            await ApiMarkerService.Instance.EnsureTableExistsAsync();
+
+            // Get all map keys from configs
+            if (_mapConfigs != null)
+            {
+                foreach (var map in _mapConfigs.Maps)
+                {
+                    var markers = await ApiMarkerService.Instance.GetByMapKeyAsync(map.Key);
+                    foreach (var marker in markers)
+                    {
+                        _apiMarkers.Add(marker);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LoadApiMarkersAsync] Error: {ex.Message}");
         }
     }
 
@@ -401,14 +435,17 @@ public partial class MapPreviewWindow : Window
         {
             MarkerCountText.Text = "0";
             ObjectiveCountText.Text = "0";
+            ApiMarkerCountText.Text = "0";
             return;
         }
 
         var markerCount = _mapMarkers.Count(m => m.MapKey == _currentMapConfig.Key);
         var objectiveCount = _questObjectives.Count(o => _currentMapConfig.MatchesMapName(o.EffectiveMapName));
+        var apiMarkerCount = _apiMarkers.Count(m => string.Equals(m.MapKey, _currentMapConfig.Key, StringComparison.OrdinalIgnoreCase));
 
         MarkerCountText.Text = markerCount.ToString();
         ObjectiveCountText.Text = objectiveCount.ToString();
+        ApiMarkerCountText.Text = apiMarkerCount.ToString();
     }
 
     private void RedrawAll()
@@ -432,6 +469,15 @@ public partial class MapPreviewWindow : Window
         else
         {
             ObjectivesCanvas?.Children.Clear();
+        }
+
+        if (ChkShowApiMarkers?.IsChecked == true)
+        {
+            RedrawApiMarkers();
+        }
+        else
+        {
+            ApiMarkersCanvas?.Children.Clear();
         }
     }
 
@@ -945,6 +991,161 @@ public partial class MapPreviewWindow : Window
         Canvas.SetLeft(border, x);
         Canvas.SetTop(border, y - 12 * inverseScale);
         ObjectivesCanvas.Children.Add(border);
+    }
+
+    #endregion
+
+    #region Draw API Reference Markers
+
+    private void RedrawApiMarkers()
+    {
+        if (ApiMarkersCanvas == null) return;
+        ApiMarkersCanvas.Children.Clear();
+
+        if (_currentMapConfig == null) return;
+
+        var inverseScale = 1.0 / _zoomLevel;
+        var hasFloors = _sortedFloors != null && _sortedFloors.Count > 0;
+
+        // API 마커 색상 (주황색)
+        var apiMarkerColor = Color.FromRgb(230, 81, 0); // #E65100
+
+        var apiMarkersForMap = _apiMarkers
+            .Where(m => string.Equals(m.MapKey, _currentMapConfig.Key, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var marker in apiMarkersForMap)
+        {
+            var (sx, sy) = _currentMapConfig.GameToScreen(marker.X, marker.Z);
+
+            // Determine opacity based on floor
+            double opacity = 1.0;
+            if (hasFloors && _currentFloorId != null && marker.FloorId != null)
+            {
+                opacity = string.Equals(marker.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.3;
+            }
+
+            var markerSize = 36 * inverseScale;
+
+            // Pentagon shape for API markers (to distinguish from other markers)
+            var pentagon = new Polygon
+            {
+                Fill = new SolidColorBrush(Color.FromArgb((byte)(opacity * 200), apiMarkerColor.R, apiMarkerColor.G, apiMarkerColor.B)),
+                Stroke = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 255, 255, 255)),
+                StrokeThickness = 2 * inverseScale
+            };
+
+            // Create pentagon points
+            var radius = markerSize / 2;
+            for (int i = 0; i < 5; i++)
+            {
+                var angle = Math.PI / 2 + (2 * Math.PI * i / 5); // Start from top
+                var px = sx + radius * Math.Cos(angle);
+                var py = sy - radius * Math.Sin(angle);
+                pentagon.Points.Add(new Point(px, py));
+            }
+
+            ApiMarkersCanvas.Children.Add(pentagon);
+
+            // "API" text inside marker
+            var apiLabel = new TextBlock
+            {
+                Text = "A",
+                Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 255, 255, 255)),
+                FontSize = 16 * inverseScale,
+                FontWeight = FontWeights.Bold,
+                TextAlignment = TextAlignment.Center
+            };
+
+            apiLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            Canvas.SetLeft(apiLabel, sx - apiLabel.DesiredSize.Width / 2);
+            Canvas.SetTop(apiLabel, sy - apiLabel.DesiredSize.Height / 2);
+            ApiMarkersCanvas.Children.Add(apiLabel);
+
+            // Name label
+            var displayName = !string.IsNullOrEmpty(marker.NameKo) ? marker.NameKo : marker.Name;
+            if (displayName.Length > 30)
+                displayName = displayName.Substring(0, 27) + "...";
+
+            var nameLabel = new Border
+            {
+                Background = new SolidColorBrush(Color.FromArgb((byte)(opacity * 180), 30, 30, 30)),
+                CornerRadius = new CornerRadius(3 * inverseScale),
+                Padding = new Thickness(4 * inverseScale, 2 * inverseScale, 4 * inverseScale, 2 * inverseScale),
+                Child = new StackPanel
+                {
+                    Orientation = System.Windows.Controls.Orientation.Horizontal,
+                    Children =
+                    {
+                        new Border
+                        {
+                            Background = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), apiMarkerColor.R, apiMarkerColor.G, apiMarkerColor.B)),
+                            CornerRadius = new CornerRadius(2 * inverseScale),
+                            Padding = new Thickness(3 * inverseScale, 1 * inverseScale, 3 * inverseScale, 1 * inverseScale),
+                            Margin = new Thickness(0, 0, 4 * inverseScale, 0),
+                            Child = new TextBlock
+                            {
+                                Text = "API",
+                                Foreground = Brushes.White,
+                                FontSize = 10 * inverseScale,
+                                FontWeight = FontWeights.Bold
+                            }
+                        },
+                        new TextBlock
+                        {
+                            Text = displayName,
+                            Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), apiMarkerColor.R, apiMarkerColor.G, apiMarkerColor.B)),
+                            FontSize = 20 * inverseScale,
+                            FontWeight = FontWeights.Medium
+                        }
+                    }
+                }
+            };
+
+            Canvas.SetLeft(nameLabel, sx + markerSize / 2 + 8 * inverseScale);
+            Canvas.SetTop(nameLabel, sy - 12 * inverseScale);
+            ApiMarkersCanvas.Children.Add(nameLabel);
+
+            // Category label (below name)
+            var categoryDisplay = !string.IsNullOrEmpty(marker.SubCategory)
+                ? $"{marker.Category} > {marker.SubCategory}"
+                : marker.Category;
+
+            if (categoryDisplay.Length > 40)
+                categoryDisplay = categoryDisplay.Substring(0, 37) + "...";
+
+            var categoryLabel = new TextBlock
+            {
+                Text = categoryDisplay,
+                Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 180), 200, 200, 200)),
+                FontSize = 16 * inverseScale,
+                FontStyle = FontStyles.Italic
+            };
+
+            Canvas.SetLeft(categoryLabel, sx + markerSize / 2 + 8 * inverseScale);
+            Canvas.SetTop(categoryLabel, sy + 14 * inverseScale);
+            ApiMarkersCanvas.Children.Add(categoryLabel);
+
+            // Floor label (if different floor)
+            if (hasFloors && marker.FloorId != null && opacity < 1.0)
+            {
+                var floorDisplayName = _sortedFloors?
+                    .FirstOrDefault(f => string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase))
+                    ?.DisplayName ?? marker.FloorId;
+
+                var floorLabel = new TextBlock
+                {
+                    Text = $"[{floorDisplayName}]",
+                    Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 200), 154, 136, 102)),
+                    FontSize = 18 * inverseScale,
+                    FontStyle = FontStyles.Italic
+                };
+
+                Canvas.SetLeft(floorLabel, sx + markerSize / 2 + 8 * inverseScale);
+                Canvas.SetTop(floorLabel, sy + 32 * inverseScale);
+                ApiMarkersCanvas.Children.Add(floorLabel);
+            }
+        }
     }
 
     #endregion

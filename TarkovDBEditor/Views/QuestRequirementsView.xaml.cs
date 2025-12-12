@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -400,5 +401,64 @@ public partial class QuestRequirementsView : Window
                 ? $"Approved required item: {item.ItemName}"
                 : $"Unapproved required item: {item.ItemName}";
         }
+    }
+
+    private async void ApplyApiMarkerLocation_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        if (btn.DataContext is not ApiReferenceMarkerItem apiMarker) return;
+
+        // Get the objectives for this quest
+        var objectives = _viewModel.SelectedQuestObjectives.ToList();
+
+        if (objectives.Count == 0)
+        {
+            MessageBox.Show("No objectives found for this quest.", "No Objectives", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // If only one objective, apply directly
+        if (objectives.Count == 1)
+        {
+            var objective = objectives[0];
+            await ApplyMarkerToObjective(apiMarker, objective);
+            return;
+        }
+
+        // Show selection dialog for multiple objectives
+        var dialog = new SelectObjectiveDialog(objectives, apiMarker.DisplayName);
+        if (dialog.ShowDialog() == true && dialog.SelectedObjective != null)
+        {
+            await ApplyMarkerToObjective(apiMarker, dialog.SelectedObjective);
+        }
+    }
+
+    private async Task ApplyMarkerToObjective(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
+    {
+        // Check if the objective's map matches the marker's map
+        if (!string.IsNullOrEmpty(objective.EffectiveMapName) &&
+            !string.Equals(objective.EffectiveMapName, apiMarker.MapKey, StringComparison.OrdinalIgnoreCase))
+        {
+            var result = MessageBox.Show(
+                $"The objective's map ({objective.EffectiveMapName}) differs from the marker's map ({apiMarker.MapKey}).\n\nDo you want to apply anyway?",
+                "Map Mismatch",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+                return;
+        }
+
+        // Apply the location
+        await _viewModel.ApplyApiMarkerLocationToObjectiveAsync(apiMarker, objective);
+
+        // Refresh the UI
+        ObjectivesList.Items.Refresh();
+
+        var desc = objective.Description.Length > 40
+            ? objective.Description.Substring(0, 40) + "..."
+            : objective.Description;
+
+        StatusText.Text = $"Applied API marker location ({apiMarker.X:F1}, {apiMarker.Z:F1}) to: {desc}";
     }
 }
