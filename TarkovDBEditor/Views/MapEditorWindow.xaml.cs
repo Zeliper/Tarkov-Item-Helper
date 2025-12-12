@@ -362,7 +362,7 @@ public partial class MapEditorWindow : Window
                 allFloors = config.Floors.Select(f => f.LayerId);
                 visibleFloors = new[] { _currentFloorId };
 
-                // Set default floor as background when viewing other floors
+                // Set default floor (main) as dimmed background when viewing other floors
                 var defaultFloor = config.Floors.FirstOrDefault(f => f.IsDefault);
                 var currentFloor = config.Floors.FirstOrDefault(f =>
                     string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
@@ -379,7 +379,7 @@ public partial class MapEditorWindow : Window
                 }
             }
 
-            // Load SVG with floor filtering
+            // Load SVG with floor filtering - only main floor shown as dimmed background
             if (visibleFloors != null)
             {
                 var preprocessor = new Services.SvgStylePreprocessor();

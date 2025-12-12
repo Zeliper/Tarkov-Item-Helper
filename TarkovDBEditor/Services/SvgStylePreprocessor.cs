@@ -27,13 +27,14 @@ public partial class SvgStylePreprocessor
     /// <param name="svgFilePath">SVG 파일 경로</param>
     /// <param name="visibleFloorIds">표시할 층의 ID 목록. null이면 모든 층 표시.</param>
     /// <param name="allFloorIds">맵에 정의된 모든 층 ID 목록. 이 목록에 있는 층만 숨기기/보이기 처리됨.</param>
-    /// <param name="backgroundFloorId">배경으로 반투명하게 표시할 층의 ID (예: "main"). null이면 배경 층 없음.</param>
+    /// <param name="backgroundFloorId">배경으로 반투명하게 표시할 층의 ID (예: "main"). null이면 배경 층 없음. dimAllOtherFloors가 true이면 무시됨.</param>
     /// <param name="backgroundOpacity">배경 층의 투명도 (0.0 ~ 1.0). 기본값 0.3</param>
+    /// <param name="dimAllOtherFloors">true이면 선택된 층 외의 모든 층을 반투명하게 표시. 기본값 false.</param>
     /// <returns>변환된 SVG 문자열</returns>
-    public string ProcessSvgFile(string svgFilePath, IEnumerable<string>? visibleFloorIds, IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null, double backgroundOpacity = 0.3)
+    public string ProcessSvgFile(string svgFilePath, IEnumerable<string>? visibleFloorIds, IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null, double backgroundOpacity = 0.3, bool dimAllOtherFloors = false)
     {
         var svgContent = File.ReadAllText(svgFilePath);
-        return ProcessSvgContent(svgContent, visibleFloorIds, allFloorIds, backgroundFloorId, backgroundOpacity);
+        return ProcessSvgContent(svgContent, visibleFloorIds, allFloorIds, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
     }
 
     /// <summary>
@@ -48,13 +49,13 @@ public partial class SvgStylePreprocessor
     /// SVG 콘텐츠의 CSS 클래스를 인라인 스타일로 변환하고,
     /// 특정 층(레이어)만 표시하도록 필터링합니다.
     /// </summary>
-    public string ProcessSvgContent(string svgContent, IEnumerable<string>? visibleFloorIds, IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null, double backgroundOpacity = 0.3)
+    public string ProcessSvgContent(string svgContent, IEnumerable<string>? visibleFloorIds, IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null, double backgroundOpacity = 0.3, bool dimAllOtherFloors = false)
     {
         // 1. CSS 스타일 블록 추출 및 파싱
         var styleRules = ExtractAndParseCssStyles(svgContent);
 
         // 2. XML 파싱 및 클래스→스타일 변환 + 층 필터링
-        var processedSvg = ConvertClassesToInlineStyles(svgContent, styleRules, visibleFloorIds, allFloorIds, backgroundFloorId, backgroundOpacity);
+        var processedSvg = ConvertClassesToInlineStyles(svgContent, styleRules, visibleFloorIds, allFloorIds, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
 
         return processedSvg;
     }
@@ -120,7 +121,8 @@ public partial class SvgStylePreprocessor
         IEnumerable<string>? visibleFloorIds = null,
         IEnumerable<string>? allFloorIds = null,
         string? backgroundFloorId = null,
-        double backgroundOpacity = 0.3)
+        double backgroundOpacity = 0.3,
+        bool dimAllOtherFloors = false)
     {
         var doc = new XmlDocument();
         doc.PreserveWhitespace = true;
@@ -139,7 +141,7 @@ public partial class SvgStylePreprocessor
         HashSet<string>? allFloors = allFloorIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // class 속성이 있는 모든 요소 처리 + 층 필터링
-        ProcessElementsWithClass(doc.DocumentElement!, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
+        ProcessElementsWithClass(doc.DocumentElement!, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
 
         // <style> 태그 제거
         RemoveStyleTags(doc);
@@ -165,7 +167,8 @@ public partial class SvgStylePreprocessor
         HashSet<string>? visibleFloors = null,
         HashSet<string>? allFloors = null,
         string? backgroundFloorId = null,
-        double backgroundOpacity = 0.3)
+        double backgroundOpacity = 0.3,
+        bool dimAllOtherFloors = false)
     {
         // 층 필터링: <g id="..."> 요소에 대해 display/opacity 스타일 적용
         if (visibleFloors != null && allFloors != null && element.Name == "g")
@@ -175,9 +178,12 @@ public partial class SvgStylePreprocessor
             {
                 // 이 요소가 층 레이어인 경우
                 var isVisible = visibleFloors.Contains(elementId);
-                var isBackgroundLayer = !string.IsNullOrEmpty(backgroundFloorId) &&
-                                        string.Equals(elementId, backgroundFloorId, StringComparison.OrdinalIgnoreCase) &&
-                                        !visibleFloors.Contains(elementId);
+
+                // dimAllOtherFloors가 true이면 모든 비가시 층을 배경으로 표시
+                // 그렇지 않으면 지정된 backgroundFloorId만 배경으로 표시
+                var isBackgroundLayer = !isVisible && (dimAllOtherFloors ||
+                    (!string.IsNullOrEmpty(backgroundFloorId) &&
+                     string.Equals(elementId, backgroundFloorId, StringComparison.OrdinalIgnoreCase)));
 
                 var existingStyle = element.GetAttribute("style");
 
@@ -233,7 +239,7 @@ public partial class SvgStylePreprocessor
         {
             if (child is XmlElement childElement)
             {
-                ProcessElementsWithClass(childElement, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
+                ProcessElementsWithClass(childElement, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
             }
         }
     }

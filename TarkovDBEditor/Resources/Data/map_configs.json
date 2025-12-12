@@ -109,7 +109,13 @@
       "imageWidth": 2800,
       "imageHeight": 3100,
       "aliases": ["groundzero", "GROUNDZERO", "Sandbox", "sandbox", "ground-zero", "ground-zero-21", "Ground Zero 21+"],
-      "calibratedTransform": [-6.95950558606309, 0.1838843128357617, 1.7246964250980257, 5.988803108076605, 2088.258569967093, 789.6971540291354]
+      "calibratedTransform": [-6.95950558606309, 0.1838843128357617, 1.7246964250980257, 5.988803108076605, 2088.258569967093, 789.6971540291354],
+      "floors": [
+        {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
+        {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
+        {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false},
+        {"layerId": "level3", "displayName": "Level 3", "order": 2, "isDefault": false}
+      ]
     },
     {
       "key": "Labs",
