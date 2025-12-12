@@ -57,6 +57,26 @@ public partial class QuestRequirementsView : Window
         };
     }
 
+    private void MapFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_viewModel == null) return;
+
+        _viewModel.SelectedMapFilter = MapFilterCombo.SelectedItem as string;
+        UpdateProgressText();
+
+        if (_viewModel.SelectedMapFilter != null)
+        {
+            StatusText.Text = $"Filtering by map: {_viewModel.SelectedMapFilter}";
+        }
+    }
+
+    private void ClearMapFilter_Click(object sender, RoutedEventArgs e)
+    {
+        MapFilterCombo.SelectedItem = null;
+        _viewModel.SelectedMapFilter = null;
+        StatusText.Text = "Map filter cleared";
+    }
+
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         // Handled by binding

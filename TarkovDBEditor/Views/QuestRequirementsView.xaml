@@ -37,6 +37,7 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
@@ -53,7 +54,35 @@
                     </ComboBox>
                 </StackPanel>
 
-                <TextBox Grid.Column="1" x:Name="SearchBox" Margin="16,0"
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="16,0,0,0">
+                    <TextBlock Text="Map:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}"/>
+                    <ComboBox x:Name="MapFilterCombo" Width="150" SelectionChanged="MapFilterCombo_SelectionChanged"
+                              ItemsSource="{Binding AvailableMaps}">
+                        <ComboBox.Style>
+                            <Style TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
+                                <Style.Triggers>
+                                    <Trigger Property="SelectedItem" Value="{x:Null}">
+                                        <Setter Property="Background">
+                                            <Setter.Value>
+                                                <VisualBrush AlignmentX="Left" AlignmentY="Center" Stretch="None">
+                                                    <VisualBrush.Visual>
+                                                        <TextBlock Text="  All Maps" Foreground="Gray" Margin="5,0,0,0"/>
+                                                    </VisualBrush.Visual>
+                                                </VisualBrush>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.Style>
+                    </ComboBox>
+                    <Button x:Name="ClearMapFilterBtn" Content="✕" Width="24" Height="24" Margin="4,0,0,0"
+                            Click="ClearMapFilter_Click" ToolTip="Clear map filter"
+                            Background="#555" Foreground="White" BorderThickness="0" Padding="0"
+                            Visibility="{Binding SelectedMapFilter, Converter={StaticResource BoolToVisibility}}"/>
+                </StackPanel>
+
+                <TextBox Grid.Column="2" x:Name="SearchBox" Margin="16,0"
                          Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                          VerticalContentAlignment="Center">
                     <TextBox.Style>
@@ -75,12 +104,12 @@
                     </TextBox.Style>
                 </TextBox>
 
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,16,0">
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="0,0,16,0">
                     <TextBlock Text="Progress:" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{StaticResource TextBrush}"/>
                     <TextBlock x:Name="ProgressText" VerticalAlignment="Center" FontWeight="Bold" Foreground="{StaticResource AccentBrush}"/>
                 </StackPanel>
 
-                <Button Grid.Column="3" Content="Refresh" Click="Refresh_Click" Style="{StaticResource SecondaryButton}" Padding="12,4"/>
+                <Button Grid.Column="4" Content="Refresh" Click="Refresh_Click" Style="{StaticResource SecondaryButton}" Padding="12,4"/>
             </Grid>
         </Border>
 

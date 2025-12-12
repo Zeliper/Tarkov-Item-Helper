@@ -37,6 +37,11 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
     private QuestItem? _selectedQuest;
     private string _searchText = "";
     private QuestFilterMode _filterMode = QuestFilterMode.All;
+    private string? _selectedMapFilter;
+    private ObservableCollection<string> _availableMaps = new();
+
+    // Quest별 Objective 맵 정보 캐시 (QuestId -> MapName 목록)
+    private Dictionary<string, HashSet<string>> _questObjectiveMaps = new();
 
     public ObservableCollection<QuestItem> FilteredQuests
     {
@@ -105,6 +110,23 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         }
     }
 
+    public ObservableCollection<string> AvailableMaps
+    {
+        get => _availableMaps;
+        set { _availableMaps = value; OnPropertyChanged(); }
+    }
+
+    public string? SelectedMapFilter
+    {
+        get => _selectedMapFilter;
+        set
+        {
+            _selectedMapFilter = value;
+            OnPropertyChanged();
+            ApplyFilter();
+        }
+    }
+
     public bool HasNoRequirements => SelectedQuest != null && SelectedQuestRequirements.Count == 0;
 
     public bool HasNoObjectives => SelectedQuest != null && SelectedQuestObjectives.Count == 0;
@@ -118,6 +140,8 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         if (!_db.IsConnected) return;
 
         _allQuests.Clear();
+        _questObjectiveMaps.Clear();
+        var mapSet = new HashSet<string>();
 
         var connectionString = $"Data Source={_db.DatabasePath}";
         await using var connection = new SqliteConnection(connectionString);
@@ -237,6 +261,33 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
             // QuestRequiredItems 테이블이 없으면 무시
         }
 
+        // Load objectives' map names per quest for filtering
+        try
+        {
+            var objMapSql = @"
+                SELECT QuestId, MapName
+                FROM QuestObjectives
+                WHERE MapName IS NOT NULL AND MapName != ''";
+            await using var objMapCmd = new SqliteCommand(objMapSql, connection);
+            await using var objMapReader = await objMapCmd.ExecuteReaderAsync();
+
+            while (await objMapReader.ReadAsync())
+            {
+                var questId = objMapReader.GetString(0);
+                var mapName = objMapReader.GetString(1);
+
+                if (!_questObjectiveMaps.ContainsKey(questId))
+                    _questObjectiveMaps[questId] = new HashSet<string>();
+
+                _questObjectiveMaps[questId].Add(mapName);
+                mapSet.Add(mapName);
+            }
+        }
+        catch (SqliteException)
+        {
+            // QuestObjectives 테이블이 없으면 무시
+        }
+
         // Update quest items with counts
         foreach (var quest in quests)
         {
@@ -283,8 +334,18 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
                 quest.RequiredItemTotalCount = 0;
                 quest.RequiredItemApprovedCount = 0;
             }
+
+            // Add quest's Location to map set
+            if (!string.IsNullOrEmpty(quest.Location))
+            {
+                mapSet.Add(quest.Location);
+            }
+
             _allQuests.Add(quest);
         }
+
+        // Update available maps (sorted)
+        AvailableMaps = new ObservableCollection<string>(mapSet.OrderBy(m => m));
 
         ApplyFilter();
     }
@@ -313,6 +374,17 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
             QuestFilterMode.NoRequirements => filtered.Where(q => q.TotalRequirements == 0),
             _ => filtered
         };
+
+        // Apply map filter (Quest.Location OR Objectives.MapName)
+        if (!string.IsNullOrEmpty(_selectedMapFilter))
+        {
+            filtered = filtered.Where(q =>
+                // Quest's Location matches
+                (q.Location != null && q.Location.Equals(_selectedMapFilter, StringComparison.OrdinalIgnoreCase)) ||
+                // Or any Objective's MapName matches
+                (_questObjectiveMaps.TryGetValue(q.Id, out var objMaps) &&
+                 objMaps.Contains(_selectedMapFilter, StringComparer.OrdinalIgnoreCase)));
+        }
 
         FilteredQuests = new ObservableCollection<QuestItem>(filtered);
         OnPropertyChanged(nameof(FilteredQuests));
