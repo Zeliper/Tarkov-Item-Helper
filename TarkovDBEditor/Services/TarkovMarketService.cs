@@ -519,6 +519,7 @@ public static class MarkerMatchingService
 {
     /// <summary>
     /// DB 마커와 API 마커 자동 매칭
+    /// 같은 이름/타입의 마커가 여러 개 있을 때 거리 기반으로 매칭
     /// </summary>
     public static List<MarkerMatchResult> AutoMatch(
         List<MapMarker> dbMarkers,
@@ -526,44 +527,214 @@ public static class MarkerMatchingService
     {
         var results = new List<MarkerMatchResult>();
         var usedApiMarkers = new HashSet<string>();
+        var usedDbMarkers = new HashSet<string>();
 
-        foreach (var dbMarker in dbMarkers)
+        // 1단계: 고유하게 매칭되는 마커들 먼저 처리 (1:1 매칭)
+        var uniqueMatches = FindUniqueMatches(dbMarkers, apiMarkers);
+        foreach (var match in uniqueMatches)
         {
-            // 같은 타입의 API 마커 찾기 (Geometry가 있는 것만)
-            var candidates = apiMarkers
-                .Where(api => !usedApiMarkers.Contains(api.Uid) &&
-                             api.Geometry != null &&
-                             api.MappedMarkerType == dbMarker.MarkerType)
+            results.Add(match);
+            usedApiMarkers.Add(match.ApiMarker.Uid);
+            usedDbMarkers.Add(match.DbMarker.Id);
+        }
+
+        // 고유 매칭이 3개 이상이면 임시 Transform 계산
+        double[]? tempTransform = null;
+        if (uniqueMatches.Count >= 3)
+        {
+            var refPoints = uniqueMatches
+                .Where(m => m.ApiMarker.Geometry != null)
+                .Select(m => (m.DbMarker.X, m.DbMarker.Z, m.ApiMarker.Geometry!.X, m.ApiMarker.Geometry!.Y))
                 .ToList();
 
-            if (candidates.Count == 0)
+            if (refPoints.Count >= 3)
+            {
+                tempTransform = CoordinateTransformService.CalculateAffineTransform(refPoints);
+            }
+        }
+
+        // 2단계: 중복 마커 처리 (같은 타입+유사한 이름의 마커가 여러 개인 경우)
+        var remainingDbMarkers = dbMarkers.Where(m => !usedDbMarkers.Contains(m.Id)).ToList();
+        var remainingApiMarkers = apiMarkers.Where(m => !usedApiMarkers.Contains(m.Uid) && m.Geometry != null).ToList();
+
+        // 타입별로 그룹화
+        var dbByType = remainingDbMarkers.GroupBy(m => m.MarkerType).ToDictionary(g => g.Key, g => g.ToList());
+        var apiByType = remainingApiMarkers.GroupBy(m => m.MappedMarkerType).Where(g => g.Key.HasValue).ToDictionary(g => g.Key!.Value, g => g.ToList());
+
+        foreach (var (markerType, dbGroup) in dbByType)
+        {
+            if (!apiByType.TryGetValue(markerType, out var apiGroup))
             {
                 continue;
             }
 
-            // 이름 유사도로 최적 매칭 찾기
-            var bestMatch = candidates
-                .Select(api => new
-                {
-                    ApiMarker = api,
-                    Similarity = CalculateNameSimilarity(dbMarker.Name, api.Name)
-                })
-                .OrderByDescending(x => x.Similarity)
-                .FirstOrDefault();
-
-            if (bestMatch != null && bestMatch.Similarity > 0.3) // 30% 이상 유사도
+            // 이름 유사도가 높은 쌍들을 찾기
+            var potentialPairs = new List<(MapMarker db, TarkovMarketMarker api, double similarity)>();
+            foreach (var db in dbGroup)
             {
-                results.Add(new MarkerMatchResult
+                foreach (var api in apiGroup)
                 {
-                    DbMarker = dbMarker,
-                    ApiMarker = bestMatch.ApiMarker,
-                    NameSimilarity = bestMatch.Similarity,
-                    IsReferencePoint = false,
-                    IsManualMatch = false
-                });
+                    if (usedApiMarkers.Contains(api.Uid)) continue;
 
-                usedApiMarkers.Add(bestMatch.ApiMarker.Uid);
+                    var similarity = CalculateNameSimilarity(db.Name, api.Name);
+                    if (similarity > 0.3)
+                    {
+                        potentialPairs.Add((db, api, similarity));
+                    }
+                }
             }
+
+            if (potentialPairs.Count == 0) continue;
+
+            // Transform이 있으면 거리 기반 매칭 사용
+            if (tempTransform != null)
+            {
+                // 거리 기반 최적 매칭 (그리디 알고리즘)
+                var distanceMatches = MatchByDistance(potentialPairs, tempTransform, usedApiMarkers, usedDbMarkers);
+                foreach (var match in distanceMatches)
+                {
+                    results.Add(match);
+                    usedApiMarkers.Add(match.ApiMarker.Uid);
+                    usedDbMarkers.Add(match.DbMarker.Id);
+                }
+            }
+            else
+            {
+                // Transform이 없으면 이름 유사도 기반 (기존 로직)
+                var orderedPairs = potentialPairs.OrderByDescending(p => p.similarity).ToList();
+                foreach (var (db, api, similarity) in orderedPairs)
+                {
+                    if (usedApiMarkers.Contains(api.Uid) || usedDbMarkers.Contains(db.Id)) continue;
+
+                    results.Add(new MarkerMatchResult
+                    {
+                        DbMarker = db,
+                        ApiMarker = api,
+                        NameSimilarity = similarity,
+                        IsReferencePoint = false,
+                        IsManualMatch = false
+                    });
+                    usedApiMarkers.Add(api.Uid);
+                    usedDbMarkers.Add(db.Id);
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// 고유하게 매칭되는 마커 찾기 (같은 타입에서 이름이 유일하게 매칭되는 경우)
+    /// </summary>
+    private static List<MarkerMatchResult> FindUniqueMatches(
+        List<MapMarker> dbMarkers,
+        List<TarkovMarketMarker> apiMarkers)
+    {
+        var results = new List<MarkerMatchResult>();
+        var usedApiMarkers = new HashSet<string>();
+
+        // 타입별로 그룹화
+        var dbByType = dbMarkers.GroupBy(m => m.MarkerType).ToDictionary(g => g.Key, g => g.ToList());
+        var apiByType = apiMarkers.Where(m => m.Geometry != null && m.MappedMarkerType.HasValue)
+            .GroupBy(m => m.MappedMarkerType!.Value).ToDictionary(g => g.Key, g => g.ToList());
+
+        foreach (var (markerType, dbGroup) in dbByType)
+        {
+            if (!apiByType.TryGetValue(markerType, out var apiGroup))
+            {
+                continue;
+            }
+
+            foreach (var dbMarker in dbGroup)
+            {
+                // 이 DB 마커와 유사한 API 마커들
+                var similarApiMarkers = apiGroup
+                    .Where(api => !usedApiMarkers.Contains(api.Uid))
+                    .Select(api => new { Api = api, Similarity = CalculateNameSimilarity(dbMarker.Name, api.Name) })
+                    .Where(x => x.Similarity > 0.5) // 50% 이상 유사도
+                    .OrderByDescending(x => x.Similarity)
+                    .ToList();
+
+                // 유일하게 매칭되는 경우만 (1개의 후보만 있거나, 최고 유사도가 확연히 높은 경우)
+                if (similarApiMarkers.Count == 1)
+                {
+                    results.Add(new MarkerMatchResult
+                    {
+                        DbMarker = dbMarker,
+                        ApiMarker = similarApiMarkers[0].Api,
+                        NameSimilarity = similarApiMarkers[0].Similarity,
+                        IsReferencePoint = false,
+                        IsManualMatch = false
+                    });
+                    usedApiMarkers.Add(similarApiMarkers[0].Api.Uid);
+                }
+                else if (similarApiMarkers.Count > 1 &&
+                         similarApiMarkers[0].Similarity > 0.9 &&
+                         similarApiMarkers[0].Similarity - similarApiMarkers[1].Similarity > 0.2)
+                {
+                    // 첫 번째가 90% 이상이고 두 번째보다 20% 이상 높으면 고유 매칭으로 처리
+                    results.Add(new MarkerMatchResult
+                    {
+                        DbMarker = dbMarker,
+                        ApiMarker = similarApiMarkers[0].Api,
+                        NameSimilarity = similarApiMarkers[0].Similarity,
+                        IsReferencePoint = false,
+                        IsManualMatch = false
+                    });
+                    usedApiMarkers.Add(similarApiMarkers[0].Api.Uid);
+                }
+            }
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Transform을 사용한 거리 기반 매칭
+    /// </summary>
+    private static List<MarkerMatchResult> MatchByDistance(
+        List<(MapMarker db, TarkovMarketMarker api, double similarity)> potentialPairs,
+        double[] transform,
+        HashSet<string> usedApiMarkers,
+        HashSet<string> usedDbMarkers)
+    {
+        var results = new List<MarkerMatchResult>();
+
+        // 각 쌍에 대해 거리 계산
+        var pairsWithDistance = potentialPairs
+            .Where(p => !usedApiMarkers.Contains(p.api.Uid) && !usedDbMarkers.Contains(p.db.Id))
+            .Select(p =>
+            {
+                var (gameX, gameZ) = CoordinateTransformService.TransformSvgToGame(
+                    p.api.Geometry!.X, p.api.Geometry!.Y, transform);
+                var dx = gameX - p.db.X;
+                var dz = gameZ - p.db.Z;
+                var distance = Math.Sqrt(dx * dx + dz * dz);
+                return (p.db, p.api, p.similarity, distance);
+            })
+            .OrderBy(p => p.distance) // 거리순 정렬
+            .ToList();
+
+        // 그리디하게 가장 가까운 쌍부터 매칭
+        var localUsedApi = new HashSet<string>(usedApiMarkers);
+        var localUsedDb = new HashSet<string>(usedDbMarkers);
+
+        foreach (var (db, api, similarity, distance) in pairsWithDistance)
+        {
+            if (localUsedApi.Contains(api.Uid) || localUsedDb.Contains(db.Id)) continue;
+
+            results.Add(new MarkerMatchResult
+            {
+                DbMarker = db,
+                ApiMarker = api,
+                NameSimilarity = similarity,
+                DistanceError = distance,
+                IsReferencePoint = false,
+                IsManualMatch = false
+            });
+
+            localUsedApi.Add(api.Uid);
+            localUsedDb.Add(db.Id);
         }
 
         return results;
