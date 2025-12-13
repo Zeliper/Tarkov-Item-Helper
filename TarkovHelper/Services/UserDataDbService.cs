@@ -752,6 +752,145 @@ public sealed class UserDataDbService
 
     #endregion
 
+    #region User Settings
+
+    /// <summary>
+    /// 설정 값 조회
+    /// </summary>
+    public async Task<string?> GetSettingAsync(string key)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = "SELECT Value FROM UserSettings WHERE Key = @key";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@key", key);
+
+        var result = await cmd.ExecuteScalarAsync();
+        return result as string;
+    }
+
+    /// <summary>
+    /// 설정 값 저장
+    /// </summary>
+    public async Task SetSettingAsync(string key, string value)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"
+            INSERT INTO UserSettings (Key, Value)
+            VALUES (@key, @value)
+            ON CONFLICT(Key) DO UPDATE SET Value = @value";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@key", key);
+        cmd.Parameters.AddWithValue("@value", value);
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// 설정 값 삭제
+    /// </summary>
+    public async Task DeleteSettingAsync(string key)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = "DELETE FROM UserSettings WHERE Key = @key";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@key", key);
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// 모든 설정 조회
+    /// </summary>
+    public async Task<Dictionary<string, string>> GetAllSettingsAsync()
+    {
+        await InitializeAsync();
+
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = "SELECT Key, Value FROM UserSettings";
+        await using var cmd = new SqliteCommand(sql, connection);
+        await using var reader = await cmd.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            var key = reader.GetString(0);
+            var value = reader.GetString(1);
+            result[key] = value;
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 동기 버전: 설정 값 조회 (초기화 시 사용)
+    /// </summary>
+    public string? GetSetting(string key)
+    {
+        if (!_isInitialized)
+        {
+            InitializeAsync().GetAwaiter().GetResult();
+        }
+
+        var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        var sql = "SELECT Value FROM UserSettings WHERE Key = @key";
+        using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@key", key);
+
+        var result = cmd.ExecuteScalar();
+        return result as string;
+    }
+
+    /// <summary>
+    /// 동기 버전: 설정 값 저장 (초기화 시 사용)
+    /// </summary>
+    public void SetSetting(string key, string value)
+    {
+        if (!_isInitialized)
+        {
+            InitializeAsync().GetAwaiter().GetResult();
+        }
+
+        var connectionString = $"Data Source={_databasePath}";
+        using var connection = new SqliteConnection(connectionString);
+        connection.Open();
+
+        var sql = @"
+            INSERT INTO UserSettings (Key, Value)
+            VALUES (@key, @value)
+            ON CONFLICT(Key) DO UPDATE SET Value = @value";
+
+        using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@key", key);
+        cmd.Parameters.AddWithValue("@value", value);
+
+        cmd.ExecuteNonQuery();
+    }
+
+    #endregion
+
     #region Batch Operations
 
     /// <summary>

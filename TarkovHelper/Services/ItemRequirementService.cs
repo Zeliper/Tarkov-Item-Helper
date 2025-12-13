@@ -20,12 +20,24 @@ namespace TarkovHelper.Services
         private Dictionary<string, TarkovTask>? _taskLookup;
 
         /// <summary>
-        /// Initialize the service with task and item data
+        /// Initialize the service with task and item data from DB
         /// </summary>
         public async Task InitializeAsync()
         {
-            _tasks = await TarkovDataService.Instance.LoadTasksFromJsonAsync();
-            _items = await TarkovDevApiService.Instance.LoadItemsFromJsonAsync();
+            var questDbService = QuestDbService.Instance;
+            if (!questDbService.IsLoaded)
+            {
+                await questDbService.LoadQuestsAsync();
+            }
+            _tasks = questDbService.AllQuests.ToList();
+
+            // Load items from DB
+            var itemDbService = ItemDbService.Instance;
+            if (!itemDbService.IsLoaded)
+            {
+                await itemDbService.LoadItemsAsync();
+            }
+            _items = itemDbService.AllItems.ToList();
             BuildLookups();
         }
 

@@ -208,6 +208,13 @@ namespace TarkovHelper.Models
         public string ItemNormalizedName { get; set; } = string.Empty;
 
         /// <summary>
+        /// Display name for the item (original name from database).
+        /// Used as fallback when item lookup fails.
+        /// </summary>
+        [JsonPropertyName("itemDisplayName")]
+        public string? ItemDisplayName { get; set; }
+
+        /// <summary>
         /// Required quantity
         /// </summary>
         [JsonPropertyName("amount")]

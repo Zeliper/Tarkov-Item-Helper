@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
+using TarkovHelper.Debug;
 
 namespace TarkovHelper.Services;
 
@@ -16,24 +17,15 @@ public enum AppLanguage
 
 /// <summary>
 /// Centralized localization service for managing UI language
+/// Settings are stored in user_data.db (UserSettings table)
 /// </summary>
 public class LocalizationService : INotifyPropertyChanged
 {
     private static LocalizationService? _instance;
     public static LocalizationService Instance => _instance ??= new LocalizationService();
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
-    private static string DataDirectory => Path.Combine(
-        AppDomain.CurrentDomain.BaseDirectory,
-        "Data"
-    );
-
-    private static string SettingsPath => Path.Combine(DataDirectory, "settings.json");
+    private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
+    private const string KeyLanguage = "app.language";
 
     private AppLanguage _currentLanguage = AppLanguage.EN;
 
@@ -71,18 +63,11 @@ public class LocalizationService : INotifyPropertyChanged
     {
         try
         {
-            if (!Directory.Exists(DataDirectory))
-            {
-                Directory.CreateDirectory(DataDirectory);
-            }
-
-            var settings = new AppSettings { Language = _currentLanguage.ToString() };
-            var json = JsonSerializer.Serialize(settings, JsonOptions);
-            File.WriteAllText(SettingsPath, json);
+            _userDataDb.SetSetting(KeyLanguage, _currentLanguage.ToString());
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore save failures
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Save failed: {ex.Message}");
         }
     }
 
@@ -90,24 +75,56 @@ public class LocalizationService : INotifyPropertyChanged
     {
         try
         {
-            if (File.Exists(SettingsPath))
+            // First check if JSON migration is needed
+            MigrateFromJsonIfNeeded();
+
+            // Load from DB
+            var langStr = _userDataDb.GetSetting(KeyLanguage);
+            if (!string.IsNullOrEmpty(langStr) && Enum.TryParse<AppLanguage>(langStr, out var lang))
             {
-                var json = File.ReadAllText(SettingsPath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                if (settings != null && Enum.TryParse<AppLanguage>(settings.Language, out var lang))
-                {
-                    _currentLanguage = lang;
-                }
+                _currentLanguage = lang;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Use default (EN) on load failure
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Load failed: {ex.Message}");
             _currentLanguage = AppLanguage.EN;
         }
     }
 
-    private class AppSettings
+    /// <summary>
+    /// Migrate from legacy settings.json if it exists
+    /// </summary>
+    private void MigrateFromJsonIfNeeded()
+    {
+        // Check old Data/settings.json path
+        var dataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+        var jsonPath = Path.Combine(dataDir, "settings.json");
+
+        if (!File.Exists(jsonPath)) return;
+
+        try
+        {
+            var json = File.ReadAllText(jsonPath);
+            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            var settings = JsonSerializer.Deserialize<LegacySettings>(json, options);
+
+            if (settings != null && Enum.TryParse<AppLanguage>(settings.Language, out var lang))
+            {
+                _userDataDb.SetSetting(KeyLanguage, lang.ToString());
+            }
+
+            // Delete the JSON file after migration
+            File.Delete(jsonPath);
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Migrated and deleted: {jsonPath}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Migration failed: {ex.Message}");
+        }
+    }
+
+    private class LegacySettings
     {
         public string Language { get; set; } = "EN";
     }
@@ -236,7 +253,6 @@ public class LocalizationService : INotifyPropertyChanged
 
     #region Map Tracker Page
 
-    // 상단 컨트롤 바
     public string MapPositionTracker => CurrentLanguage switch
     {
         AppLanguage.KO => "맵 위치 트래커",
@@ -307,7 +323,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Stop Tracking"
     };
 
-    // 상태 표시 바
     public string StatusWaiting => CurrentLanguage switch
     {
         AppLanguage.KO => "대기 중",
@@ -336,7 +351,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Last update:"
     };
 
-    // 퀘스트 드로어
     public string QuestObjectives => CurrentLanguage switch
     {
         AppLanguage.KO => "퀘스트 목표",
@@ -428,7 +442,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Group"
     };
 
-    // 설정 패널
     public string ScreenshotFolder => CurrentLanguage switch
     {
         AppLanguage.KO => "스크린샷 폴더",
@@ -520,7 +533,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Name Size:"
     };
 
-    // 마커 색상 설정
     public string MarkerColors => CurrentLanguage switch
     {
         AppLanguage.KO => "마커 색상",
@@ -535,7 +547,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Reset Colors"
     };
 
-    // 맵 없음 안내
     public string NoMapImage => CurrentLanguage switch
     {
         AppLanguage.KO => "맵 이미지가 없습니다",
@@ -564,7 +575,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Reset"
     };
 
-    // 퀘스트 스타일 옵션
     public string StyleIconOnly => CurrentLanguage switch
     {
         AppLanguage.KO => "아이콘만",

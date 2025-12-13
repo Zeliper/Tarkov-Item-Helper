@@ -381,15 +381,16 @@ public sealed class QuestDbService
             if (!questLookup.TryGetValue(questId, out var quest))
                 continue;
 
-            // ItemNormalizedName 생성 (itemId 또는 itemName에서)
-            var itemNormalizedName = !string.IsNullOrEmpty(itemId)
-                ? itemId
-                : GenerateNormalizedName(itemName);
+            // ItemId가 NULL이면 Items 테이블과 매칭할 수 없으므로 스킵
+            // Items 탭에서는 QuestRequiredItems.ItemId -> Items.Id로 직접 매칭
+            if (string.IsNullOrEmpty(itemId))
+                continue;
 
             quest.RequiredItems ??= new List<QuestItem>();
             quest.RequiredItems.Add(new QuestItem
             {
-                ItemNormalizedName = itemNormalizedName,
+                ItemNormalizedName = itemId,  // tarkov.dev API ID (matches Items.Id)
+                ItemDisplayName = itemName,   // Original item name for display fallback
                 Amount = count,
                 FoundInRaid = requiresFir,
                 Requirement = requirementType,

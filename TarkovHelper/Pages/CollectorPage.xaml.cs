@@ -285,14 +285,15 @@ namespace TarkovHelper.Pages
 
             try
             {
-                var apiService = TarkovDevApiService.Instance;
-                var items = await apiService.LoadItemsFromJsonAsync();
+                // Load items lookup from DB
+                var itemDbService = ItemDbService.Instance;
+                if (!itemDbService.IsLoaded)
+                {
+                    await itemDbService.LoadItemsAsync();
+                }
                 if (_isUnloaded) return;
 
-                if (items != null)
-                {
-                    _itemLookup = TarkovDevApiService.BuildItemLookup(items);
-                }
+                _itemLookup = itemDbService.GetItemLookup();
 
                 await LoadItemsAsync();
                 if (_isUnloaded) return;
@@ -434,15 +435,17 @@ namespace TarkovHelper.Pages
 
                 foreach (var questItem in task.RequiredItems)
                 {
+                    // Direct lookup by ItemId (QuestRequiredItems.ItemId -> Items.Id)
                     TarkovItem? itemInfo = null;
-                    if (_itemLookup != null)
-                    {
-                        _itemLookup.TryGetValue(questItem.ItemNormalizedName, out itemInfo);
-                    }
+                    _itemLookup?.TryGetValue(questItem.ItemNormalizedName, out itemInfo);
 
-                    var itemName = itemInfo?.Name ?? questItem.ItemNormalizedName;
-                    var iconLink = itemInfo?.IconLink;
-                    var wikiLink = itemInfo?.WikiLink;
+                    // Skip if item not found in Items table
+                    if (itemInfo == null)
+                        continue;
+
+                    var itemName = itemInfo.Name;
+                    var iconLink = itemInfo.IconLink;
+                    var wikiLink = itemInfo.WikiLink;
 
                     var countToAdd = IsCurrency(questItem.ItemNormalizedName) ? 1 : questItem.Amount;
                     var firCountToAdd = questItem.FoundInRaid ? countToAdd : 0;

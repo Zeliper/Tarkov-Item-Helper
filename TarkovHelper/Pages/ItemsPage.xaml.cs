@@ -320,15 +320,17 @@ namespace TarkovHelper.Pages
 
             try
             {
-                // Load items lookup for quest item names
-                var apiService = TarkovDevApiService.Instance;
-                var items = await apiService.LoadItemsFromJsonAsync();
+                // Load items lookup from DB
+                var itemDbService = ItemDbService.Instance;
+                if (!itemDbService.IsLoaded)
+                {
+                    await itemDbService.LoadItemsAsync();
+                }
                 if (_isUnloaded) return; // Check if page was unloaded during async operation
 
-                if (items != null)
-                {
-                    _itemLookup = TarkovDevApiService.BuildItemLookup(items);
-                }
+                _itemLookup = new Dictionary<string, TarkovItem>(
+                    itemDbService.GetItemLookup(), StringComparer.OrdinalIgnoreCase);
+                System.Diagnostics.Debug.WriteLine($"[ItemsPage] Item lookup loaded from DB: {_itemLookup.Count} items");
 
                 await LoadItemsAsync();
                 if (_isUnloaded) return; // Check if page was unloaded during async operation
@@ -688,16 +690,17 @@ namespace TarkovHelper.Pages
 
                 foreach (var questItem in task.RequiredItems)
                 {
-                    // Look up item info from items.json
+                    // Direct lookup by ItemId (QuestRequiredItems.ItemId -> Items.Id)
                     TarkovItem? itemInfo = null;
-                    if (_itemLookup != null)
-                    {
-                        _itemLookup.TryGetValue(questItem.ItemNormalizedName, out itemInfo);
-                    }
+                    _itemLookup?.TryGetValue(questItem.ItemNormalizedName, out itemInfo);
 
-                    var itemName = itemInfo?.Name ?? questItem.ItemNormalizedName;
-                    var iconLink = itemInfo?.IconLink;
-                    var wikiLink = itemInfo?.WikiLink;
+                    // Skip if item not found in Items table
+                    if (itemInfo == null)
+                        continue;
+
+                    var itemName = itemInfo.Name;
+                    var iconLink = itemInfo.IconLink;
+                    var wikiLink = itemInfo.WikiLink;
 
                     // For currency items, count by reference (1 per quest) instead of total amount
                     var countToAdd = IsCurrency(questItem.ItemNormalizedName) ? 1 : questItem.Amount;

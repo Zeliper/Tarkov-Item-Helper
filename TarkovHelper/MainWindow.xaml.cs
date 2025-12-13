@@ -18,7 +18,6 @@ namespace TarkovHelper;
 public partial class MainWindow : Window
 {
     private readonly LocalizationService _loc = LocalizationService.Instance;
-    private readonly WikiDataService _wikiService = WikiDataService.Instance;
     private readonly HideoutProgressService _hideoutProgressService = HideoutProgressService.Instance;
     private readonly SettingsService _settingsService = SettingsService.Instance;
     private readonly LogSyncService _logSyncService = LogSyncService.Instance;
@@ -228,7 +227,6 @@ public partial class MainWindow : Window
     /// </summary>
     private async Task LoadAndShowQuestListAsync()
     {
-        var tarkovService = TarkovDataService.Instance;
         var progressService = QuestProgressService.Instance;
         var apiService = TarkovDevApiService.Instance;
         var userDataDb = UserDataDbService.Instance;
@@ -245,21 +243,11 @@ public partial class MainWindow : Window
 
         try
         {
-            // 1. DB에서 먼저 로드 시도
+            // DB에서 퀘스트 데이터 로드
             if (await progressService.InitializeFromDbAsync())
             {
                 tasks = progressService.AllTasks.ToList();
                 System.Diagnostics.Debug.WriteLine($"[MainWindow] Loaded {tasks.Count} quests from DB");
-            }
-            else
-            {
-                // 2. DB 로드 실패 시 JSON 폴백
-                tasks = await tarkovService.LoadTasksFromJsonAsync();
-                if (tasks != null && tasks.Count > 0)
-                {
-                    progressService.Initialize(tasks);
-                    System.Diagnostics.Debug.WriteLine($"[MainWindow] Loaded {tasks.Count} quests from JSON (DB fallback)");
-                }
             }
         }
         finally
@@ -271,7 +259,7 @@ public partial class MainWindow : Window
             }
         }
 
-        // Load hideout data from JSON
+        // Load hideout data from JSON (still uses JSON until migrated to DB)
         _hideoutModules = await apiService.LoadHideoutStationsFromJsonAsync();
 
         if (tasks != null && tasks.Count > 0)
