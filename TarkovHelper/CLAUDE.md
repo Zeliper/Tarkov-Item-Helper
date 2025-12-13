@@ -48,7 +48,6 @@ User Data (read-write):
 **Models/**
 - `TarkovTask.cs` - Quest model with EN/KO/JA names, prerequisites, required items/skills
 - `TarkovItem.cs` - Item model with EN/KO/JA names, wiki links, icons
-- `TarkovSkill.cs` - Skill model with EN/KO/JA names
 - `TarkovTrader.cs` - Trader model with EN/KO/JA names, images
 - `HideoutModule.cs` - Hideout station/module with levels, requirements, EN/KO/JA names
 
