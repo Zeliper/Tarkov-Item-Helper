@@ -134,11 +134,6 @@
                                 Margin="0,0,8,0" Click="BtnCoffee_Click"
                                 ToolTip="Buy me a coffee"/>
 
-                        <!-- Refresh Data -->
-                        <Button x:Name="BtnRefreshData" Content="🔄 Refresh" Padding="10,6"
-                                Margin="0,0,8,0" Click="BtnRefreshData_Click"
-                                ToolTip="Refresh data from API"/>
-
                         <!-- Reset Progress -->
                         <Button x:Name="BtnResetProgress" Content="↩ Reset" Padding="10,6"
                                 Margin="0,0,8,0" Click="BtnResetProgress_Click"

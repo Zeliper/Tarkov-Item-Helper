@@ -1,6 +1,4 @@
-using System.IO;
 using System.Windows;
-using TarkovHelper.Services;
 
 namespace TarkovHelper.Debug;
 
@@ -15,37 +13,6 @@ public static class TestMenu
     /// </summary>
     public static Window? MainWindow { get; set; }
 
-    [TestMenu("Refresh Data")]
-    public static async Task RefreshData()
-    {
-        if (MainWindow is TarkovHelper.MainWindow mainWindow)
-        {
-            await mainWindow.RefreshDataWithOverlayAsync();
-        }
-        else
-        {
-            MessageBox.Show("MainWindow not available", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-
-    [TestMenu("Test Documents Parser")]
-    public static Task TestDocumentsParser()
-    {
-        var wikiPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Cache", "QuestPages", "Documents.wiki");
-        if (!File.Exists(wikiPath))
-        {
-            MessageBox.Show($"File not found: {wikiPath}", "Error");
-            return Task.CompletedTask;
-        }
-
-        var content = File.ReadAllText(wikiPath);
-        var items = WikiQuestParser.ParseRequiredItems(content);
-
-        var result = items == null
-            ? "No items found (all quest items correctly filtered)"
-            : $"Found {items.Count} items:\n" + string.Join("\n", items.Select(i => $"- {i.ItemNormalizedName} x{i.Amount}"));
-
-        MessageBox.Show(result, "Documents Parser Test");
-        return Task.CompletedTask;
-    }
+    // All test functions removed since they were for wiki/JSON parsing
+    // which is no longer used (data now comes from DB)
 }

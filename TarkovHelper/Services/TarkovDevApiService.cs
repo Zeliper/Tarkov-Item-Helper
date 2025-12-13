@@ -604,15 +604,19 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Load traders from JSON file
+        /// Load traders from bundled Assets JSON file
         /// </summary>
         public async Task<List<TarkovTrader>?> LoadTradersFromJsonAsync(string? fileName = null)
         {
             fileName ??= "traders.json";
-            var filePath = Path.Combine(AppEnv.DataPath, fileName);
+
+            // Load from bundled Assets folder
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            var filePath = Path.Combine(appDir, "Assets", fileName);
 
             if (!File.Exists(filePath))
             {
+                System.Diagnostics.Debug.WriteLine($"[TarkovDevApiService] Traders file not found: {filePath}");
                 return null;
             }
 
@@ -998,15 +1002,19 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Load hideout stations from JSON file
+        /// Load hideout stations from bundled Assets JSON file
         /// </summary>
         public async Task<List<HideoutModule>?> LoadHideoutStationsFromJsonAsync(string? fileName = null)
         {
             fileName ??= "hideout.json";
-            var filePath = Path.Combine(AppEnv.DataPath, fileName);
+
+            // Load from bundled Assets folder
+            var appDir = AppDomain.CurrentDomain.BaseDirectory;
+            var filePath = Path.Combine(appDir, "Assets", fileName);
 
             if (!File.Exists(filePath))
             {
+                System.Diagnostics.Debug.WriteLine($"[TarkovDevApiService] Hideout file not found: {filePath}");
                 return null;
             }
 

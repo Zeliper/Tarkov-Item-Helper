@@ -22,7 +22,6 @@ public partial class MainWindow : Window
     private readonly SettingsService _settingsService = SettingsService.Instance;
     private readonly LogSyncService _logSyncService = LogSyncService.Instance;
     private bool _isLoading;
-    private bool _isRefreshing;
     private QuestListPage? _questListPage;
     private HideoutPage? _hideoutPage;
     private ItemsPage? _itemsPage;
@@ -121,57 +120,6 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Refresh data with loading overlay
-    /// </summary>
-    public async Task RefreshDataWithOverlayAsync()
-    {
-        if (_isRefreshing) return;
-        _isRefreshing = true;
-
-        ShowLoadingOverlay("Initializing...");
-
-        try
-        {
-            var tarkovService = TarkovDataService.Instance;
-            var result = await tarkovService.RefreshAllDataAsync(message =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    UpdateLoadingStatus(message);
-                });
-            });
-
-            if (result.Success)
-            {
-                await LoadAndShowQuestListAsync();
-            }
-            else
-            {
-                TxtWelcome.Text = $"Failed to load data: {result.ErrorMessage}";
-                MessageBox.Show(
-                    $"Failed to refresh data:\n{result.ErrorMessage}",
-                    "Data Refresh Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-            }
-        }
-        catch (Exception ex)
-        {
-            TxtWelcome.Text = "Failed to load data";
-            MessageBox.Show(
-                $"Error refreshing data:\n{ex.Message}",
-                "Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
-        finally
-        {
-            HideLoadingOverlay();
-            _isRefreshing = false;
-        }
-    }
-
-    /// <summary>
     /// Show loading overlay with blur effect
     /// </summary>
     public void ShowLoadingOverlay(string status = "Loading...")
@@ -219,7 +167,6 @@ public partial class MainWindow : Window
     private async Task LoadAndShowQuestListAsync()
     {
         var progressService = QuestProgressService.Instance;
-        var apiService = TarkovDevApiService.Instance;
         var userDataDb = UserDataDbService.Instance;
 
         List<TarkovTask>? tasks = null;
@@ -250,8 +197,12 @@ public partial class MainWindow : Window
             }
         }
 
-        // Load hideout data from JSON (still uses JSON until migrated to DB)
-        _hideoutModules = await apiService.LoadHideoutStationsFromJsonAsync();
+        // Load hideout data from DB
+        var hideoutDbService = HideoutDbService.Instance;
+        if (await hideoutDbService.LoadStationsAsync())
+        {
+            _hideoutModules = hideoutDbService.AllStations.ToList();
+        }
 
         if (tasks != null && tasks.Count > 0)
         {
@@ -623,14 +574,6 @@ public partial class MainWindow : Window
         {
             // Ignore errors opening browser
         }
-    }
-
-    /// <summary>
-    /// Refresh data from API
-    /// </summary>
-    private async void BtnRefreshData_Click(object sender, RoutedEventArgs e)
-    {
-        await RefreshDataWithOverlayAsync();
     }
 
     /// <summary>
@@ -1746,22 +1689,17 @@ public partial class MainWindow : Window
             // Hide settings overlay
             HideSettingsOverlay();
 
-            // Ask if user wants to refresh data now
-            var refreshResult = MessageBox.Show(
+            // Show confirmation
+            MessageBox.Show(
                 _loc.CurrentLanguage switch
                 {
-                    AppLanguage.KO => "데이터가 삭제되었습니다.\n지금 새 데이터를 다운로드하시겠습니까?",
-                    AppLanguage.JA => "データが削除されました。\n今すぐ新しいデータをダウンロードしますか？",
-                    _ => "Data cleared.\nDownload new data now?"
+                    AppLanguage.KO => "캐시가 삭제되었습니다.",
+                    AppLanguage.JA => "キャッシュが削除されました。",
+                    _ => "Cache cleared."
                 },
-                _loc.CurrentLanguage switch { AppLanguage.KO => "데이터 새로고침", AppLanguage.JA => "データ更新", _ => "Refresh Data" },
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (refreshResult == MessageBoxResult.Yes)
-            {
-                await RefreshDataWithOverlayAsync();
-            }
+                _loc.CurrentLanguage switch { AppLanguage.KO => "완료", AppLanguage.JA => "完了", _ => "Done" },
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
@@ -1830,9 +1768,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Load traders data asynchronously (cache it)
-        var apiService = TarkovDevApiService.Instance;
-        _cachedTraders = await apiService.LoadTradersFromJsonAsync();
+        // Load traders data from DB
+        var traderDbService = TraderDbService.Instance;
+        if (!traderDbService.IsLoaded)
+        {
+            await traderDbService.LoadTradersAsync();
+        }
+        _cachedTraders = traderDbService.AllTraders.ToList();
 
         // Initialize quest list
         LoadQuestSelectionList();
