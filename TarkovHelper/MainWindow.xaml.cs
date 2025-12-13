@@ -107,26 +107,17 @@ public partial class MainWindow : Window
 
         _isLoading = false;
 
-        // Check if data needs to be refreshed (tasks.json doesn't exist)
+        // Load and show quest data from DB
         await CheckAndRefreshDataAsync();
     }
 
     /// <summary>
-    /// Check if task data exists, if not run RefreshData automatically
+    /// Load and show quest data from DB
     /// </summary>
     private async Task CheckAndRefreshDataAsync()
     {
-        var tasksFilePath = Path.Combine(AppEnv.DataPath, "tasks.json");
-
-        if (!File.Exists(tasksFilePath))
-        {
-            await RefreshDataWithOverlayAsync();
-        }
-        else
-        {
-            // Data exists, load and show Quest List
-            await LoadAndShowQuestListAsync();
-        }
+        // Quest data is now bundled in tarkov_data.db, load directly
+        await LoadAndShowQuestListAsync();
     }
 
     /// <summary>
@@ -1743,19 +1734,11 @@ public partial class MainWindow : Window
                 Directory.Delete(cachePath, true);
             }
 
-            // Clear data files (except quest_progress.json, hideout_progress.json, settings.json)
+            // Clear data files (user data is now in Config/user_data.db, safe to delete all)
             var dataPath = AppEnv.DataPath;
             if (Directory.Exists(dataPath))
             {
-                var preserveFiles = new[] { "quest_progress.json", "hideout_progress.json", "settings.json" };
-                foreach (var file in Directory.GetFiles(dataPath))
-                {
-                    var fileName = Path.GetFileName(file);
-                    if (!preserveFiles.Contains(fileName, StringComparer.OrdinalIgnoreCase))
-                    {
-                        File.Delete(file);
-                    }
-                }
+                Directory.Delete(dataPath, true);
             }
 
             UpdateCacheSizeDisplay();
