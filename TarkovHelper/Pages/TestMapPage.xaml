@@ -68,6 +68,7 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
@@ -128,18 +129,36 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Tracker Controls -->
+                <Border Grid.Column="3" Style="{StaticResource ToolbarSectionStyle}" Margin="8,0,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="BtnSelectFolder" Style="{StaticResource ToolbarButtonStyle}"
+                                Content="📁" Width="28" Height="26" FontSize="14"
+                                Click="BtnSelectFolder_Click" ToolTip="스크린샷 폴더 선택"/>
+                        <Button x:Name="BtnToggleTracking" Style="{StaticResource ToolbarButtonStyle}"
+                                Content="▶" Width="28" Height="26" FontSize="12" Margin="4,0,0,0"
+                                Click="BtnToggleTracking_Click" ToolTip="트래킹 시작/중지"/>
+                        <Button x:Name="BtnClearTrail" Style="{StaticResource ToolbarButtonStyle}"
+                                Content="🗑" Width="28" Height="26" FontSize="12" Margin="4,0,0,0"
+                                Click="BtnClearTrail_Click" ToolTip="경로 초기화"/>
+                        <Border x:Name="TrackingStatusBorder" Width="10" Height="10" CornerRadius="5"
+                                Background="Gray" Margin="8,0,0,0" VerticalAlignment="Center"
+                                ToolTip="트래킹 상태"/>
+                    </StackPanel>
+                </Border>
+
                 <!-- Spacer -->
-                <TextBlock x:Name="TxtFloorLabel" Grid.Column="3" Visibility="Collapsed"/>
+                <TextBlock x:Name="TxtFloorLabel" Grid.Column="4" Visibility="Collapsed"/>
 
                 <!-- Help/Legend Button -->
-                <Border Grid.Column="4" Style="{StaticResource ToolbarSectionStyle}" Margin="0,0,8,0">
+                <Border Grid.Column="5" Style="{StaticResource ToolbarSectionStyle}" Margin="0,0,8,0">
                     <Button x:Name="BtnLegend" Style="{StaticResource ToolbarButtonStyle}"
                             Width="28" Height="26" FontSize="14" Content="?"
                             Click="BtnLegend_Click" ToolTip="맵 범례 보기"/>
                 </Border>
 
                 <!-- Zoom Controls -->
-                <Border Grid.Column="5" Style="{StaticResource ToolbarSectionStyle}">
+                <Border Grid.Column="6" Style="{StaticResource ToolbarSectionStyle}">
                     <StackPanel Orientation="Horizontal">
                         <Button x:Name="BtnZoomOut" Style="{StaticResource ToolbarButtonStyle}"
                                 Content="−" Width="28" Height="26" FontSize="16" FontWeight="Bold"
@@ -600,6 +619,12 @@
 
                     <!-- Quest Markers Layer -->
                     <Canvas x:Name="QuestMarkersCanvas"/>
+
+                    <!-- Trail Layer (player movement path) -->
+                    <Canvas x:Name="TrailCanvas"/>
+
+                    <!-- Player Position Marker -->
+                    <Canvas x:Name="PlayerMarkerCanvas"/>
                 </Canvas>
 
                 <!-- Loading Indicator -->

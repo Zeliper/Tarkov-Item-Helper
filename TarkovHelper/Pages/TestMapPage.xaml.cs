@@ -66,11 +66,30 @@ public partial class TestMapPage : UserControl
     private double _currentGameZ;
     private bool _hasValidCoordinates;
 
+    // Map Tracker related
+    private readonly MapTrackerService _trackerService;
+    private readonly LogMapWatcherService _logMapWatcher = LogMapWatcherService.Instance;
+    private Ellipse? _playerMarker;
+    private readonly List<Ellipse> _trailMarkers = new();
+    private bool _showPlayerMarker = true;
+    private bool _showTrail = true;
+
     public TestMapPage()
     {
         InitializeComponent();
         _dbService = MapMarkerDbService.Instance;
+        _trackerService = MapTrackerService.Instance;
+
+        // Connect tracker events
+        _trackerService.PositionUpdated += OnPositionUpdated;
+        _trackerService.WatchingStateChanged += OnWatchingStateChanged;
+        _trackerService.StatusMessage += OnTrackerStatusMessage;
+
+        // Connect log map watcher for auto map switch
+        _logMapWatcher.MapChanged += OnLogMapChanged;
+
         Loaded += TestMapPage_Loaded;
+        Unloaded += TestMapPage_Unloaded;
     }
 
     private async void TestMapPage_Loaded(object sender, RoutedEventArgs e)
@@ -2598,6 +2617,272 @@ public partial class TestMapPage : UserControl
             CurrentMapName.Text = "맵 선택";
             CurrentFloorName.Text = "";
         }
+    }
+
+    #endregion
+
+    #region Map Tracker
+
+    private void TestMapPage_Unloaded(object sender, RoutedEventArgs e)
+    {
+        // Disconnect events to prevent memory leaks
+        _trackerService.PositionUpdated -= OnPositionUpdated;
+        _trackerService.WatchingStateChanged -= OnWatchingStateChanged;
+        _trackerService.StatusMessage -= OnTrackerStatusMessage;
+        _logMapWatcher.MapChanged -= OnLogMapChanged;
+    }
+
+    /// <summary>
+    /// 스크린샷 폴더 선택
+    /// </summary>
+    private void BtnSelectFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = "스크린샷 폴더 선택",
+            InitialDirectory = _trackerService.Settings.ScreenshotFolderPath
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            _trackerService.Settings.ScreenshotFolderPath = dialog.FolderName;
+            _trackerService.SaveSettings();
+            StatusText.Text = $"폴더 설정: {dialog.FolderName}";
+        }
+    }
+
+    /// <summary>
+    /// 트래킹 시작/중지 토글
+    /// </summary>
+    private void BtnToggleTracking_Click(object sender, RoutedEventArgs e)
+    {
+        if (_trackerService.IsWatching)
+        {
+            _trackerService.StopTracking();
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(_trackerService.Settings.ScreenshotFolderPath))
+            {
+                StatusText.Text = "먼저 스크린샷 폴더를 선택하세요";
+                return;
+            }
+
+            // Set current map for coordinate transformation
+            if (_currentMapConfig != null)
+            {
+                _trackerService.SetCurrentMap(_currentMapConfig.Key);
+            }
+
+            _trackerService.StartTracking();
+
+            // Also start log map watcher for auto map switching
+            if (!_logMapWatcher.IsWatching)
+            {
+                _logMapWatcher.StartWatching();
+            }
+        }
+    }
+
+    /// <summary>
+    /// 경로 초기화
+    /// </summary>
+    private void BtnClearTrail_Click(object sender, RoutedEventArgs e)
+    {
+        _trackerService.ClearTrail();
+        ClearTrailMarkers();
+        ClearPlayerMarker();
+        StatusText.Text = "경로 초기화됨";
+    }
+
+    /// <summary>
+    /// 트래커 위치 업데이트 이벤트 핸들러
+    /// </summary>
+    private void OnPositionUpdated(object? sender, ScreenPosition position)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (_currentMapConfig == null) return;
+
+            // ScreenPosition.X and Y are already image pixel coordinates
+            var svgX = position.X;
+            var svgY = position.Y;
+
+            // Add trail marker for previous position
+            if (_playerMarker != null && _showTrail)
+            {
+                AddTrailMarker(Canvas.GetLeft(_playerMarker), Canvas.GetTop(_playerMarker));
+            }
+
+            // Update player marker
+            UpdatePlayerMarker(svgX, svgY);
+
+            // Show original game coordinates in status
+            if (position.OriginalPosition != null)
+            {
+                StatusText.Text = $"위치: X={position.OriginalPosition.X:F0}, Z={position.OriginalPosition.Y:F0}";
+            }
+            else
+            {
+                StatusText.Text = $"위치: Screen X={svgX:F0}, Y={svgY:F0}";
+            }
+        });
+    }
+
+    /// <summary>
+    /// 트래킹 상태 변경 이벤트 핸들러
+    /// </summary>
+    private void OnWatchingStateChanged(object? sender, bool isWatching)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            BtnToggleTracking.Content = isWatching ? "⏹" : "▶";
+            TrackingStatusBorder.Background = isWatching
+                ? new SolidColorBrush(Color.FromRgb(76, 175, 80))  // Green
+                : new SolidColorBrush(Color.FromRgb(158, 158, 158)); // Gray
+        });
+    }
+
+    /// <summary>
+    /// 트래커 상태 메시지 이벤트 핸들러
+    /// </summary>
+    private void OnTrackerStatusMessage(object? sender, string message)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            StatusText.Text = message;
+        });
+    }
+
+    /// <summary>
+    /// 로그 맵 변경 이벤트 핸들러 (자동 맵 전환)
+    /// </summary>
+    private void OnLogMapChanged(object? sender, MapChangedEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            // Find matching map in selector
+            var mapKey = e.NewMapKey.ToLowerInvariant().Replace(" ", "-");
+
+            foreach (var item in MapSelector.Items)
+            {
+                if (item is DbMapConfig config)
+                {
+                    if (config.Key.Equals(mapKey, StringComparison.OrdinalIgnoreCase) ||
+                        config.DisplayName.Equals(e.NewMapKey, StringComparison.OrdinalIgnoreCase) ||
+                        (config.Aliases?.Any(a => a.Equals(e.NewMapKey, StringComparison.OrdinalIgnoreCase)) == true))
+                    {
+                        MapSelector.SelectedItem = config;
+                        _trackerService.SetCurrentMap(config.Key);
+                        StatusText.Text = $"맵 자동 전환: {config.DisplayName}";
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    /// <summary>
+    /// 플레이어 마커 업데이트
+    /// </summary>
+    private void UpdatePlayerMarker(double svgX, double svgY)
+    {
+        if (!_showPlayerMarker) return;
+
+        if (_playerMarker == null)
+        {
+            _playerMarker = new Ellipse
+            {
+                Width = 16,
+                Height = 16,
+                Fill = new SolidColorBrush(Color.FromRgb(33, 150, 243)), // Blue
+                Stroke = Brushes.White,
+                StrokeThickness = 2
+            };
+            _playerMarker.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 4,
+                ShadowDepth = 2,
+                Opacity = 0.5
+            };
+            PlayerMarkerCanvas.Children.Add(_playerMarker);
+        }
+
+        Canvas.SetLeft(_playerMarker, svgX - 8);
+        Canvas.SetTop(_playerMarker, svgY - 8);
+    }
+
+    /// <summary>
+    /// 트레일 마커 추가
+    /// </summary>
+    private void AddTrailMarker(double svgX, double svgY)
+    {
+        var trailDot = new Ellipse
+        {
+            Width = 6,
+            Height = 6,
+            Fill = new SolidColorBrush(Color.FromArgb(180, 33, 150, 243)), // Semi-transparent blue
+            Opacity = Math.Max(0.3, 1.0 - (_trailMarkers.Count * 0.02)) // Fade out older markers
+        };
+
+        Canvas.SetLeft(trailDot, svgX - 3 + 8); // Center on player marker position
+        Canvas.SetTop(trailDot, svgY - 3 + 8);
+        TrailCanvas.Children.Add(trailDot);
+        _trailMarkers.Add(trailDot);
+
+        // Limit trail length
+        if (_trailMarkers.Count > 100)
+        {
+            var oldest = _trailMarkers[0];
+            TrailCanvas.Children.Remove(oldest);
+            _trailMarkers.RemoveAt(0);
+        }
+    }
+
+    /// <summary>
+    /// 트레일 마커 모두 제거
+    /// </summary>
+    private void ClearTrailMarkers()
+    {
+        TrailCanvas.Children.Clear();
+        _trailMarkers.Clear();
+    }
+
+    /// <summary>
+    /// 플레이어 마커 제거
+    /// </summary>
+    private void ClearPlayerMarker()
+    {
+        if (_playerMarker != null)
+        {
+            PlayerMarkerCanvas.Children.Remove(_playerMarker);
+            _playerMarker = null;
+        }
+    }
+
+    /// <summary>
+    /// EFT 게임 좌표를 SVG 좌표로 변환
+    /// </summary>
+    private Point? TransformEftToSvg(double eftX, double eftZ)
+    {
+        if (_currentMapConfig == null) return null;
+
+        // Use MapTrackerService's TestCoordinate for transformation
+        var screenPos = _trackerService.TestCoordinate(_currentMapConfig.Key, eftX, eftZ);
+        if (screenPos != null)
+        {
+            return new Point(screenPos.X, screenPos.Y);
+        }
+
+        // Fallback: use DbMapConfig's GameToScreen method
+        var result = _currentMapConfig.GameToScreen(eftX, eftZ);
+        if (result != null)
+        {
+            return new Point(result.Value.screenX, result.Value.screenY);
+        }
+
+        return null;
     }
 
     #endregion
