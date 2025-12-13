@@ -26,7 +26,6 @@ public partial class MainWindow : Window
     private HideoutPage? _hideoutPage;
     private ItemsPage? _itemsPage;
     private CollectorPage? _collectorPage;
-    private MapTrackerPage? _mapTrackerPage;
     private TestMapPage? _testMapPage;
     private List<HideoutModule>? _hideoutModules;
     private ObservableCollection<QuestChangeInfo>? _pendingSyncChanges;
@@ -232,7 +231,7 @@ public partial class MainWindow : Window
                 : null;
             _itemsPage = new ItemsPage();
             _collectorPage = new CollectorPage();
-            // MapTrackerPage is created lazily when the tab is selected
+            // TestMapPage is created lazily when the tab is selected
 
             // Show tab area with Quests selected
             TxtWelcome.Visibility = Visibility.Collapsed;
@@ -286,15 +285,9 @@ public partial class MainWindow : Window
         {
             PageContent.Content = _collectorPage;
         }
-        else if (sender == TabMapTracker)
-        {
-            // Lazy creation of MapTrackerPage
-            _mapTrackerPage ??= new MapTrackerPage();
-            PageContent.Content = _mapTrackerPage;
-        }
         else if (sender == TabTestMap)
         {
-            // Lazy creation of TestMapPage (DB Editor style map)
+            // Lazy creation of TestMapPage
             _testMapPage ??= new TestMapPage();
             PageContent.Content = _testMapPage;
         }

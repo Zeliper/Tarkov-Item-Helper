@@ -129,7 +129,6 @@ namespace TarkovHelper.Pages
         private List<QuestViewModel> _allQuestViewModels = new();
         private List<string> _traders = new();
         private List<string> _maps = new();
-        private List<TarkovMap>? _mapData;
         private Dictionary<string, TarkovItem>? _itemLookup;
         private bool _isInitializing = true;
         private bool _isDataLoaded = false;
@@ -184,7 +183,7 @@ namespace TarkovHelper.Pages
             // Skip if already loaded (prevents re-initialization on tab switching)
             if (_isDataLoaded) return;
 
-            await LoadMapsAsync();
+            await LoadItemDataAsync();
             if (_isUnloaded) return; // Check if page was unloaded during async operation
 
             LoadQuests();
@@ -205,11 +204,8 @@ namespace TarkovHelper.Pages
             }
         }
 
-        private async Task LoadMapsAsync()
+        private async Task LoadItemDataAsync()
         {
-            var apiService = new TarkovDevApiService();
-            _mapData = await apiService.LoadMapsFromJsonAsync();
-
             // Load items data from DB for localized names and icons
             var itemDbService = ItemDbService.Instance;
             if (!itemDbService.IsLoaded)
@@ -254,7 +250,7 @@ namespace TarkovHelper.Pages
         public async Task ReloadDataAsync()
         {
             // Reload map and item data
-            await LoadMapsAsync();
+            await LoadItemDataAsync();
 
             // Reload quests from the updated progress service
             LoadQuests();
@@ -510,19 +506,11 @@ namespace TarkovHelper.Pages
 
         private string GetLocalizedMapName(string normalizedName)
         {
-            if (_mapData == null) return normalizedName;
+            // Simple formatting: capitalize first letter of each word
+            if (string.IsNullOrEmpty(normalizedName)) return normalizedName;
 
-            var map = _mapData.FirstOrDefault(m =>
-                string.Equals(m.NormalizedName, normalizedName, StringComparison.OrdinalIgnoreCase));
-
-            if (map == null) return normalizedName;
-
-            return _loc.CurrentLanguage switch
-            {
-                AppLanguage.KO => map.NameKo ?? map.Name,
-                AppLanguage.JA => map.NameJa ?? map.Name,
-                _ => map.Name
-            };
+            return System.Globalization.CultureInfo.CurrentCulture.TextInfo
+                .ToTitleCase(normalizedName.Replace("-", " "));
         }
 
         private void ApplyFilters()
