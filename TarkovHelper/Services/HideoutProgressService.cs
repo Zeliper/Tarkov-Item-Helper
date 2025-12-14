@@ -1,5 +1,3 @@
-using System.IO;
-using System.Text.Json;
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
 
@@ -13,7 +11,7 @@ namespace TarkovHelper.Services
         private static HideoutProgressService? _instance;
         public static HideoutProgressService Instance => _instance ??= new HideoutProgressService();
 
-        private const string ProgressFileName = "hideout_progress.json";
+        private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
 
         // Currency items should count by reference count, not total amount
         private static readonly HashSet<string> CurrencyItems = new(StringComparer.OrdinalIgnoreCase)
@@ -102,8 +100,23 @@ namespace TarkovHelper.Services
             }
 
             _progress.LastUpdated = DateTime.UtcNow;
-            SaveProgress();
+            SaveSingleModule(module.NormalizedName, level);
             ProgressChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        private void SaveSingleModule(string normalizedName, int level)
+        {
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await _userDataDb.SaveHideoutProgressAsync(normalizedName, level);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[HideoutProgressService] Save failed: {ex.Message}");
+                }
+            }).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -277,7 +290,17 @@ namespace TarkovHelper.Services
         public void ResetAllProgress()
         {
             _progress = new HideoutProgress();
-            SaveProgress();
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await _userDataDb.ClearAllHideoutProgressAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[HideoutProgressService] Reset failed: {ex.Message}");
+                }
+            }).GetAwaiter().GetResult();
             ProgressChanged?.Invoke(this, EventArgs.Empty);
         }
 
@@ -285,45 +308,50 @@ namespace TarkovHelper.Services
 
         private void SaveProgress()
         {
+            // DB에 저장 (Task.Run으로 데드락 방지)
+            Task.Run(async () => await SaveProgressToDbAsync()).GetAwaiter().GetResult();
+        }
+
+        private async Task SaveProgressToDbAsync()
+        {
             try
             {
-                var filePath = Path.Combine(AppEnv.ConfigPath, ProgressFileName);
-                Directory.CreateDirectory(AppEnv.ConfigPath);
-
-                var options = new JsonSerializerOptions
+                foreach (var kvp in _progress.Modules)
                 {
-                    WriteIndented = true
-                };
-
-                var json = JsonSerializer.Serialize(_progress, options);
-                File.WriteAllText(filePath, json);
+                    await _userDataDb.SaveHideoutProgressAsync(kvp.Key, kvp.Value);
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore save failures
+                System.Diagnostics.Debug.WriteLine($"[HideoutProgressService] Save failed: {ex.Message}");
             }
         }
 
         private void LoadProgress()
         {
+            // Task.Run으로 데드락 방지
+            Task.Run(async () =>
+            {
+                // 마이그레이션 실행 (JSON → DB)
+                await _userDataDb.MigrateFromJsonAsync();
+                await LoadProgressFromDbAsync();
+            }).GetAwaiter().GetResult();
+        }
+
+        private async Task LoadProgressFromDbAsync()
+        {
             try
             {
-                var filePath = Path.Combine(AppEnv.ConfigPath, ProgressFileName);
-
-                if (!File.Exists(filePath))
-                    return;
-
-                var json = File.ReadAllText(filePath);
-                var progress = JsonSerializer.Deserialize<HideoutProgress>(json);
-
-                if (progress != null)
+                var modules = await _userDataDb.LoadHideoutProgressAsync();
+                _progress = new HideoutProgress
                 {
-                    _progress = progress;
-                }
+                    Modules = new Dictionary<string, int>(modules, StringComparer.OrdinalIgnoreCase),
+                    LastUpdated = DateTime.UtcNow
+                };
             }
-            catch
+            catch (Exception ex)
             {
-                // Use empty progress on load failure
+                System.Diagnostics.Debug.WriteLine($"[HideoutProgressService] Load failed: {ex.Message}");
                 _progress = new HideoutProgress();
             }
         }

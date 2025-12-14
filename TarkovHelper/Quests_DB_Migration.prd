@@ -1,0 +1,641 @@
+# Quests 탭 DB 동기화 마이그레이션 PRD
+
+## 1. 개요
+
+### 1.1 목표
+현재 `tasks.json` 파일 기반으로 동작하는 Quests 탭을 SQLite DB (`tarkov_data.db`)에서 데이터를 로드하도록 변경합니다.
+
+### 1.2 현재 상태
+
+#### 데이터 소스 (JSON 파일)
+- `Data/tasks.json` - 퀘스트 기본 정보
+- `Data/quest_progress.json` - 사용자의 퀘스트 진행 상태
+- `Data/objective_progress.json` - 퀘스트 목표 완료 상태
+- `Cache/quest_objectives.json` - tarkov.dev API에서 가져온 목표 위치 데이터
+
+#### 관련 서비스
+| 서비스 | 역할 | 데이터 소스 |
+|--------|------|-------------|
+| `QuestProgressService` | 퀘스트 진행 상태 관리 | quest_progress.json |
+| `QuestObjectiveService` | 퀘스트 목표 위치 데이터 | quest_objectives.json (API 캐시) |
+| `TarkovDevApiService` | API에서 tasks.json 로드 | tarkov.dev API |
+| `QuestGraphService` | 퀘스트 의존성 그래프 | TarkovTask 리스트 |
+| `QuestRecommendationService` | 추천 퀘스트 계산 | TarkovTask 리스트 |
+
+#### 모델
+- `TarkovTask.cs` - 퀘스트 데이터 모델
+- `TaskRequirement.cs` - 선행 퀘스트 조건
+- `SkillRequirement.cs` - 스킬 요구사항
+- `QuestItem.cs` - 필요 아이템
+
+### 1.3 목표 상태
+
+#### 데이터 소스 (SQLite DB)
+DB 테이블에서 데이터를 로드하고, 사용자 진행 상태만 별도 파일로 유지합니다.
+
+| 데이터 | 소스 변경 |
+|--------|-----------|
+| 퀘스트 기본 정보 | tasks.json → Quests 테이블 |
+| 선행 퀘스트 | tasks.json → QuestRequirements 테이블 |
+| 퀘스트 목표 | tasks.json → QuestObjectives 테이블 |
+| 필요 아이템 | tasks.json → QuestRequiredItems 테이블 |
+| 대체 퀘스트 | tasks.json → OptionalQuests 테이블 |
+| 사용자 진행 상태 | quest_progress.json (유지) |
+| 목표 완료 상태 | objective_progress.json (유지) |
+
+---
+
+## 2. DB 테이블 구조 분석
+
+### 2.1 Quests 테이블
+```sql
+CREATE TABLE Quests (
+    Id TEXT PRIMARY KEY,         -- tarkov.dev ID
+    BsgId TEXT,                  -- BSG 내부 ID
+    Name TEXT NOT NULL,          -- 영어 이름
+    NameEN TEXT,
+    NameKO TEXT,                 -- 한국어 이름
+    NameJA TEXT,                 -- 일본어 이름
+    WikiPageLink TEXT,
+    Trader TEXT,                 -- Prapor, Therapist 등
+    Location TEXT,               -- 맵 이름
+    MinLevel INTEGER,            -- 필요 레벨
+    MinLevelApproved INTEGER NOT NULL DEFAULT 0,
+    MinScavKarma INTEGER,        -- Scav 명성 요구
+    KappaRequired INTEGER NOT NULL DEFAULT 0,  -- Kappa 필수 여부
+    Faction TEXT,                -- Bear, Usec 또는 NULL
+    IsApproved INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT
+)
+```
+
+### 2.2 QuestRequirements 테이블 (선행 퀘스트)
+```sql
+CREATE TABLE QuestRequirements (
+    Id TEXT PRIMARY KEY,
+    QuestId TEXT NOT NULL,           -- 대상 퀘스트
+    RequiredQuestId TEXT NOT NULL,   -- 선행 퀘스트
+    RequirementType TEXT NOT NULL DEFAULT 'Complete',  -- Complete, Start, Active
+    GroupId INTEGER NOT NULL DEFAULT 0,  -- OR 그룹 (0=AND, 같은 ID=OR)
+    FOREIGN KEY (QuestId) REFERENCES Quests(Id),
+    FOREIGN KEY (RequiredQuestId) REFERENCES Quests(Id)
+)
+```
+
+### 2.3 QuestObjectives 테이블
+```sql
+CREATE TABLE QuestObjectives (
+    Id TEXT PRIMARY KEY,
+    QuestId TEXT NOT NULL,
+    SortOrder INTEGER NOT NULL DEFAULT 0,
+    ObjectiveType TEXT NOT NULL DEFAULT 'Custom',
+    Description TEXT NOT NULL,
+    TargetType TEXT,              -- Kill 대상 타입
+    TargetCount INTEGER,
+    ItemId TEXT,                  -- 관련 아이템 ID
+    ItemName TEXT,
+    RequiresFIR INTEGER NOT NULL DEFAULT 0,
+    MapName TEXT,
+    LocationName TEXT,
+    LocationPoints TEXT,          -- JSON: [{X, Y, Z, FloorId}]
+    OptionalPoints TEXT,          -- JSON: 대체 위치
+    Conditions TEXT,
+    FOREIGN KEY (QuestId) REFERENCES Quests(Id)
+)
+```
+
+### 2.4 QuestRequiredItems 테이블
+```sql
+CREATE TABLE QuestRequiredItems (
+    Id TEXT PRIMARY KEY,
+    QuestId TEXT NOT NULL,
+    ItemId TEXT,                  -- Items 테이블 FK
+    ItemName TEXT NOT NULL,
+    Count INTEGER NOT NULL DEFAULT 1,
+    RequiresFIR INTEGER NOT NULL DEFAULT 0,
+    RequirementType TEXT NOT NULL DEFAULT 'Required',  -- Handover, Required, Optional
+    SortOrder INTEGER NOT NULL DEFAULT 0,
+    DogtagMinLevel INTEGER,
+    FOREIGN KEY (QuestId) REFERENCES Quests(Id)
+)
+```
+
+### 2.5 OptionalQuests 테이블 (상호 배타적 퀘스트)
+```sql
+CREATE TABLE OptionalQuests (
+    Id TEXT PRIMARY KEY,
+    QuestId TEXT NOT NULL,
+    AlternativeQuestId TEXT NOT NULL,
+    FOREIGN KEY (QuestId) REFERENCES Quests(Id),
+    FOREIGN KEY (AlternativeQuestId) REFERENCES Quests(Id)
+)
+```
+
+---
+
+## 3. 데이터 매핑
+
+### 3.1 TarkovTask 모델 ↔ DB 테이블 매핑
+
+| TarkovTask 속성 | DB 테이블/컬럼 | 비고 |
+|-----------------|----------------|------|
+| `Ids` | Quests.Id, Quests.BsgId | 복수 ID는 첫 번째만 사용 |
+| `Name` | Quests.Name, Quests.NameEN | |
+| `NameKo` | Quests.NameKO | |
+| `NameJa` | Quests.NameJA | |
+| `NormalizedName` | ID에서 생성 또는 별도 컬럼 추가 필요 | |
+| `Trader` | Quests.Trader | |
+| `Maps` | Quests.Location | 단일 맵만 저장, 복수 맵은 JSON 또는 별도 테이블 필요 |
+| `ReqKappa` | Quests.KappaRequired | |
+| `RequiredLevel` | Quests.MinLevel | |
+| `RequiredScavKarma` | Quests.MinScavKarma | |
+| `Faction` | Quests.Faction | |
+| `Previous` | QuestRequirements 테이블 | RequirementType='Complete' |
+| `LeadsTo` | QuestRequirements 테이블 (역참조) | |
+| `TaskRequirements` | QuestRequirements 테이블 | Status 조건 포함 |
+| `AlternativeQuests` | OptionalQuests 테이블 | |
+| `Objectives` | QuestObjectives.Description | |
+| `RequiredItems` | QuestRequiredItems 테이블 | |
+| `GuideText` | 별도 컬럼 추가 필요 | Wiki 가이드 텍스트 |
+| `GuideImages` | 별도 테이블 또는 JSON 컬럼 필요 | |
+| `RequiredSkills` | 별도 테이블 필요 | |
+| `TarkovMarketQuestUid` | 별도 컬럼 추가 필요 | |
+
+### 3.2 누락 필드 - DB 스키마 확장 필요
+
+다음 필드들은 현재 DB 스키마에 없으므로 추가가 필요합니다:
+
+```sql
+-- Quests 테이블에 추가할 컬럼
+ALTER TABLE Quests ADD COLUMN NormalizedName TEXT;
+ALTER TABLE Quests ADD COLUMN GuideText TEXT;
+ALTER TABLE Quests ADD COLUMN GuideImagesJson TEXT;  -- JSON: [{fileName, caption}]
+ALTER TABLE Quests ADD COLUMN TarkovMarketQuestUid TEXT;
+ALTER TABLE Quests ADD COLUMN MapsJson TEXT;  -- JSON 배열로 복수 맵 지원
+
+-- 스킬 요구사항 테이블 (신규)
+CREATE TABLE QuestSkillRequirements (
+    Id TEXT PRIMARY KEY,
+    QuestId TEXT NOT NULL,
+    SkillNormalizedName TEXT NOT NULL,
+    Level INTEGER NOT NULL,
+    FOREIGN KEY (QuestId) REFERENCES Quests(Id) ON DELETE CASCADE
+);
+```
+
+---
+
+## 4. 구현 계획
+
+### Phase 1: DB 서비스 레이어 추가
+
+#### 4.1 QuestDbService 생성
+`TarkovHelper/Services/QuestDbService.cs` 신규 생성
+
+```csharp
+public sealed class QuestDbService
+{
+    private static QuestDbService? _instance;
+    public static QuestDbService Instance => _instance ??= new QuestDbService();
+
+    private readonly string _databasePath;
+
+    // 모든 퀘스트 로드
+    public async Task<List<TarkovTask>> LoadAllQuestsAsync();
+
+    // 선행 퀘스트 로드
+    private async Task LoadQuestRequirementsAsync(Dictionary<string, TarkovTask> taskLookup);
+
+    // 퀘스트 목표 로드
+    private async Task LoadQuestObjectivesAsync(Dictionary<string, TarkovTask> taskLookup);
+
+    // 필요 아이템 로드
+    private async Task LoadQuestItemsAsync(Dictionary<string, TarkovTask> taskLookup);
+
+    // 대체 퀘스트 로드
+    private async Task LoadOptionalQuestsAsync(Dictionary<string, TarkovTask> taskLookup);
+}
+```
+
+#### 4.2 ID → NormalizedName 변환 유틸리티
+DB의 ID를 기존 코드에서 사용하는 NormalizedName으로 변환하는 로직 필요
+
+```csharp
+public static class QuestIdNormalizer
+{
+    // tarkov.dev ID → normalizedName 변환
+    public static string IdToNormalizedName(string id);
+
+    // DB Quests.Name → normalizedName 생성
+    public static string NameToNormalizedName(string name);
+}
+```
+
+### Phase 2: QuestProgressService 수정
+
+#### 4.3 데이터 소스 변경
+```csharp
+public class QuestProgressService
+{
+    // 변경: JSON → DB
+    public void Initialize(List<TarkovTask> tasks)  // 기존 유지
+
+    // 추가: DB에서 직접 로드
+    public async Task InitializeFromDbAsync()
+    {
+        var dbService = QuestDbService.Instance;
+        var tasks = await dbService.LoadAllQuestsAsync();
+        Initialize(tasks);
+    }
+}
+```
+
+### Phase 3: UI 레이어 수정
+
+#### 4.4 QuestListPage 수정
+```csharp
+private async void QuestListPage_Loaded(object sender, RoutedEventArgs e)
+{
+    // 변경: DB에서 퀘스트 로드
+    await _progressService.InitializeFromDbAsync();
+
+    // 이하 기존 코드 유지
+    LoadQuests();
+    // ...
+}
+```
+
+### Phase 4: 테스트 및 폴백
+
+#### 4.5 폴백 메커니즘
+DB 로드 실패 시 기존 JSON 파일에서 로드하는 폴백 로직
+
+```csharp
+public async Task InitializeAsync()
+{
+    try
+    {
+        await InitializeFromDbAsync();
+    }
+    catch (Exception ex)
+    {
+        Debug.WriteLine($"DB load failed, falling back to JSON: {ex.Message}");
+        await InitializeFromJsonAsync();
+    }
+}
+```
+
+---
+
+## 5. 마이그레이션 체크리스트
+
+### 5.1 DB 스키마 변경
+- [ ] Quests 테이블에 NormalizedName 컬럼 추가
+- [ ] Quests 테이블에 GuideText 컬럼 추가
+- [ ] Quests 테이블에 GuideImagesJson 컬럼 추가
+- [ ] Quests 테이블에 TarkovMarketQuestUid 컬럼 추가
+- [ ] Quests 테이블에 MapsJson 컬럼 추가
+- [ ] QuestSkillRequirements 테이블 생성
+- [ ] QuestRequirements 테이블에 Status 조건 컬럼 확인
+
+### 5.2 서비스 레이어
+- [ ] QuestDbService.cs 생성
+- [ ] QuestIdNormalizer.cs 생성
+- [ ] QuestProgressService에 InitializeFromDbAsync 추가
+- [ ] 기존 서비스와의 호환성 유지
+
+### 5.3 UI 레이어
+- [ ] QuestListPage.xaml.cs 수정 (로드 로직)
+- [ ] MainWindow.xaml.cs 수정 (초기화 로직)
+
+### 5.4 테스트
+- [ ] DB에서 퀘스트 로드 테스트
+- [ ] 선행 퀘스트 체인 테스트
+- [ ] 퀘스트 진행 상태 저장/로드 테스트
+- [ ] 폴백 메커니즘 테스트
+- [ ] 성능 테스트 (대량 퀘스트 로드)
+
+---
+
+## 6. 영향 범위
+
+### 6.1 수정이 필요한 파일
+| 파일 | 변경 내용 |
+|------|----------|
+| `Services/QuestDbService.cs` | 신규 생성 |
+| `Services/QuestIdNormalizer.cs` | 신규 생성 |
+| `Services/QuestProgressService.cs` | DB 로드 메서드 추가 |
+| `Pages/QuestListPage.xaml.cs` | 초기화 로직 수정 |
+| `MainWindow.xaml.cs` | 초기화 순서 수정 (필요시) |
+
+### 6.2 유지되는 파일
+| 파일 | 이유 |
+|------|------|
+| `Models/TarkovTask.cs` | 모델 구조 유지 |
+| `Services/QuestGraphService.cs` | TarkovTask 리스트만 사용 |
+| `Services/QuestRecommendationService.cs` | TarkovTask 리스트만 사용 |
+| `Pages/QuestListPage.xaml` | UI 변경 없음 |
+
+### 6.3 호환성 유지
+- 사용자 진행 상태 파일 (`quest_progress.json`, `objective_progress.json`)은 그대로 유지
+- `NormalizedName` 기반으로 진행 상태를 추적하므로, DB에서도 동일한 키 사용 필요
+
+---
+
+## 7. 리스크 및 대응 방안
+
+### 7.1 데이터 불일치
+- **리스크**: DB 데이터와 기존 JSON 데이터 간 불일치
+- **대응**: TarkovDBEditor에서 데이터 동기화 후 마이그레이션 진행
+
+### 7.2 성능
+- **리스크**: DB 조인이 많아 로드 시간 증가
+- **대응**: 캐싱 레이어 추가 또는 한 번에 모든 데이터 로드
+
+### 7.3 하위 호환성
+- **리스크**: 기존 진행 상태 파일과의 키 불일치
+- **대응**: NormalizedName 생성 로직 일관성 유지
+
+### 7.4 DB 업데이트 시 사용자 데이터 손실
+- **리스크**: DB가 업데이트되면서 퀘스트 ID/이름 변경, 삭제 시 사용자 진행 데이터 유실
+- **대응**: 아래 섹션 8 참조
+
+---
+
+## 8. 사용자 데이터 보존 전략 (중요)
+
+### 8.1 핵심 원칙
+DB 데이터(퀘스트 정보)와 사용자 데이터(진행 상태)는 **완전히 분리**되어야 합니다.
+
+| 데이터 유형 | 저장 위치 | 업데이트 주체 | 보존 정책 |
+|-------------|-----------|---------------|-----------|
+| 퀘스트 정보 | `tarkov_data.db` | TarkovDBEditor / API 동기화 | 언제든 덮어쓰기 가능 |
+| 사용자 진행 상태 | `user_data.db` | 사용자 액션 | 영구 보존 |
+| 목표 완료 상태 | `user_data.db` | 사용자 액션 | 영구 보존 |
+| 아이템 인벤토리 | `user_data.db` | 사용자 액션 | 영구 보존 |
+| 하이드아웃 진행 | `user_data.db` | 사용자 액션 | 영구 보존 |
+
+### 8.1.1 사용자 데이터 DB 구조 (`user_data.db`)
+
+```sql
+-- 퀘스트 진행 상태
+CREATE TABLE QuestProgress (
+    Id TEXT PRIMARY KEY,           -- tarkov.dev Quest ID
+    NormalizedName TEXT,           -- 폴백용
+    Status TEXT NOT NULL,          -- Done, Failed
+    UpdatedAt TEXT NOT NULL
+);
+
+-- 퀘스트 목표 진행 상태
+CREATE TABLE ObjectiveProgress (
+    Id TEXT PRIMARY KEY,           -- QuestObjective ID 또는 "questName:index"
+    QuestId TEXT,                  -- 연결된 퀘스트 ID
+    IsCompleted INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT NOT NULL
+);
+
+-- 아이템 인벤토리 (향후 확장)
+CREATE TABLE ItemInventory (
+    ItemId TEXT PRIMARY KEY,
+    Count INTEGER NOT NULL DEFAULT 0,
+    FoundInRaid INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT NOT NULL
+);
+
+-- 하이드아웃 진행 (향후 확장)
+CREATE TABLE HideoutProgress (
+    StationId TEXT PRIMARY KEY,
+    Level INTEGER NOT NULL DEFAULT 0,
+    UpdatedAt TEXT NOT NULL
+);
+
+-- 설정
+CREATE TABLE UserSettings (
+    Key TEXT PRIMARY KEY,
+    Value TEXT NOT NULL
+);
+```
+
+### 8.1.2 JSON → DB 마이그레이션
+
+기존 JSON 파일이 존재하면 자동으로 DB로 마이그레이션 후 삭제합니다.
+
+```
+마이그레이션 대상:
+- quest_progress.json → QuestProgress 테이블
+- quest_progress_v2.json → QuestProgress 테이블
+- objective_progress.json → ObjectiveProgress 테이블
+- hideout_progress.json → HideoutProgress 테이블
+- item_inventory.json → ItemInventory 테이블 (있는 경우)
+```
+
+마이그레이션 순서:
+1. user_data.db 생성 (없으면)
+2. 테이블 생성
+3. JSON 파일 읽기
+4. DB에 데이터 삽입
+5. JSON 파일 삭제
+6. 마이그레이션 완료 로그
+
+### 8.2 식별자 전략
+
+사용자 데이터는 **안정적인 키**로 저장해야 DB 업데이트 후에도 매핑 가능합니다.
+
+```
+우선순위:
+1. tarkov.dev ID (예: "5936d90786f7742b1420ba5b") - 가장 안정적
+2. NormalizedName (예: "debut") - 대체 키
+3. BsgId - 백업 키
+```
+
+#### 현재 quest_progress.json 구조
+```json
+{
+  "completedQuests": ["debut", "introduction"],
+  "failedQuests": ["bad-rep-evidence"]
+}
+```
+
+#### 권장 변경 (이중 키 저장)
+```json
+{
+  "completedQuests": [
+    { "id": "5936d90786f7742b1420ba5b", "normalizedName": "debut" },
+    { "id": "5936da1086f7742b1420ba5c", "normalizedName": "introduction" }
+  ],
+  "failedQuests": [
+    { "id": "5c12452c86f7744b83657b36", "normalizedName": "bad-rep-evidence" }
+  ]
+}
+```
+
+### 8.3 DB 업데이트 시나리오별 대응
+
+#### 시나리오 1: 퀘스트 추가
+- **상황**: 새 퀘스트가 DB에 추가됨
+- **영향**: 없음 (사용자 진행 데이터에 해당 키 없음)
+- **대응**: 자동으로 "미완료" 상태로 표시
+
+#### 시나리오 2: 퀘스트 삭제
+- **상황**: 퀘스트가 DB에서 삭제됨 (게임에서 제거된 퀘스트)
+- **영향**: 사용자 진행 데이터에 고아 레코드 발생
+- **대응**:
+  - UI에서 표시하지 않음 (DB에 없는 퀘스트)
+  - 진행 데이터는 유지 (혹시 복원될 경우 대비)
+  - 주기적 정리 옵션 제공
+
+#### 시나리오 3: 퀘스트 ID 변경
+- **상황**: tarkov.dev에서 퀘스트 ID가 변경됨 (드물지만 가능)
+- **영향**: ID로 매핑 실패
+- **대응**:
+  - NormalizedName으로 폴백 매핑
+  - 매핑 성공 시 새 ID로 진행 데이터 자동 업데이트
+
+#### 시나리오 4: 퀘스트 이름 변경
+- **상황**: 퀘스트 이름이 변경됨 (NormalizedName 변경)
+- **영향**: NormalizedName으로 매핑 실패
+- **대응**:
+  - ID로 우선 매핑 (ID는 보통 유지됨)
+  - ID 매핑 성공 시 새 NormalizedName으로 진행 데이터 자동 업데이트
+
+### 8.4 구현: 진행 데이터 매핑 로직
+
+```csharp
+public class QuestProgressMigrator
+{
+    /// <summary>
+    /// DB 로드 후 사용자 진행 데이터를 현재 DB 퀘스트에 매핑
+    /// </summary>
+    public void ReconcileProgress(
+        List<TarkovTask> dbQuests,
+        QuestProgressData userProgress)
+    {
+        var dbLookupById = dbQuests.ToDictionary(q => q.Id);
+        var dbLookupByName = dbQuests.ToDictionary(q => q.NormalizedName);
+
+        var reconciledCompleted = new List<QuestProgressEntry>();
+
+        foreach (var entry in userProgress.CompletedQuests)
+        {
+            TarkovTask? matched = null;
+
+            // 1차: ID로 매핑
+            if (!string.IsNullOrEmpty(entry.Id) &&
+                dbLookupById.TryGetValue(entry.Id, out matched))
+            {
+                // ID 매핑 성공 - NormalizedName 업데이트
+                reconciledCompleted.Add(new QuestProgressEntry
+                {
+                    Id = entry.Id,
+                    NormalizedName = matched.NormalizedName
+                });
+            }
+            // 2차: NormalizedName으로 폴백
+            else if (!string.IsNullOrEmpty(entry.NormalizedName) &&
+                     dbLookupByName.TryGetValue(entry.NormalizedName, out matched))
+            {
+                // NormalizedName 매핑 성공 - ID 업데이트
+                reconciledCompleted.Add(new QuestProgressEntry
+                {
+                    Id = matched.Id,
+                    NormalizedName = entry.NormalizedName
+                });
+            }
+            else
+            {
+                // 매핑 실패 - 고아 레코드로 유지 (삭제하지 않음)
+                reconciledCompleted.Add(entry);
+                Debug.WriteLine($"Orphan progress entry: {entry.Id ?? entry.NormalizedName}");
+            }
+        }
+
+        userProgress.CompletedQuests = reconciledCompleted;
+    }
+}
+```
+
+### 8.5 objective_progress.json 처리
+
+퀘스트 목표 진행 상태도 동일한 원칙 적용:
+
+```json
+{
+  "objectives": {
+    "5936d90786f7742b1420ba5b": {
+      "objectiveIds": ["obj-1", "obj-2"],
+      "completed": ["obj-1"]
+    }
+  }
+}
+```
+
+- 키: 퀘스트 ID (안정적)
+- 목표 ID: QuestObjectives.Id (DB에서 관리)
+
+### 8.6 마이그레이션 체크리스트 추가
+
+- [ ] quest_progress.json 스키마를 이중 키 방식으로 마이그레이션
+- [ ] 기존 NormalizedName만 있는 레코드 → ID 추가
+- [ ] QuestProgressMigrator 클래스 구현
+- [ ] 앱 시작 시 자동 reconcile 로직 실행
+- [ ] 고아 레코드 정리 UI/CLI 옵션 제공
+
+---
+
+## 9. 타임라인 (예상)
+
+| 단계 | 작업 내용 |
+|------|----------|
+| Phase 1 | DB 스키마 확장 + QuestDbService 구현 |
+| Phase 2 | QuestProgressService 수정 + 사용자 데이터 마이그레이션 |
+| Phase 3 | QuestListPage 수정 + 테스트 |
+| Phase 4 | 폴백 메커니즘 + 최종 테스트 |
+
+---
+
+## 10. 부록: 데이터 예시
+
+### 10.1 현재 TarkovTask JSON 구조
+```json
+{
+  "ids": ["5936d90786f7742b1420ba5b"],
+  "name": "Debut",
+  "nameKo": "데뷔전",
+  "normalizedName": "debut",
+  "trader": "Prapor",
+  "maps": ["customs", "woods"],
+  "reqKappa": true,
+  "requiredLevel": 1,
+  "previous": ["introduction"],
+  "objectives": ["Kill 5 Scavs on any location"],
+  "requiredItems": [{
+    "itemNormalizedName": "morphine",
+    "amount": 2,
+    "foundInRaid": true
+  }]
+}
+```
+
+### 10.2 DB에서 로드할 데이터 조합
+```sql
+-- 퀘스트 기본 정보
+SELECT Id, Name, NameKO, NameJA, Trader, Location, MinLevel, MinScavKarma,
+       KappaRequired, Faction, NormalizedName, GuideText, MapsJson
+FROM Quests WHERE Id = ?;
+
+-- 선행 퀘스트
+SELECT RequiredQuestId, RequirementType, GroupId
+FROM QuestRequirements WHERE QuestId = ?;
+
+-- 퀘스트 목표
+SELECT Description, ObjectiveType, MapName, LocationPoints
+FROM QuestObjectives WHERE QuestId = ? ORDER BY SortOrder;
+
+-- 필요 아이템
+SELECT ItemName, Count, RequiresFIR, RequirementType, DogtagMinLevel
+FROM QuestRequiredItems WHERE QuestId = ? ORDER BY SortOrder;
+
+-- 대체 퀘스트
+SELECT AlternativeQuestId
+FROM OptionalQuests WHERE QuestId = ?;
+```

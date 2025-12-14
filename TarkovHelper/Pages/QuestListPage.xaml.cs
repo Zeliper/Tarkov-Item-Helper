@@ -129,8 +129,6 @@ namespace TarkovHelper.Pages
         private List<QuestViewModel> _allQuestViewModels = new();
         private List<string> _traders = new();
         private List<string> _maps = new();
-        private List<TarkovMap>? _mapData;
-        private List<TarkovItem>? _itemData;
         private Dictionary<string, TarkovItem>? _itemLookup;
         private bool _isInitializing = true;
         private bool _isDataLoaded = false;
@@ -185,7 +183,7 @@ namespace TarkovHelper.Pages
             // Skip if already loaded (prevents re-initialization on tab switching)
             if (_isDataLoaded) return;
 
-            await LoadMapsAsync();
+            await LoadItemDataAsync();
             if (_isUnloaded) return; // Check if page was unloaded during async operation
 
             LoadQuests();
@@ -206,17 +204,15 @@ namespace TarkovHelper.Pages
             }
         }
 
-        private async Task LoadMapsAsync()
+        private async Task LoadItemDataAsync()
         {
-            var apiService = new TarkovDevApiService();
-            _mapData = await apiService.LoadMapsFromJsonAsync();
-
-            // Also load items data for localized names and icons
-            _itemData = await apiService.LoadItemsFromJsonAsync();
-            if (_itemData != null)
+            // Load items data from DB for localized names and icons
+            var itemDbService = ItemDbService.Instance;
+            if (!itemDbService.IsLoaded)
             {
-                _itemLookup = TarkovDevApiService.BuildItemLookup(_itemData);
+                await itemDbService.LoadItemsAsync();
             }
+            _itemLookup = itemDbService.GetItemLookup();
         }
 
         private void OnLanguageChanged(object? sender, AppLanguage e)
@@ -254,7 +250,7 @@ namespace TarkovHelper.Pages
         public async Task ReloadDataAsync()
         {
             // Reload map and item data
-            await LoadMapsAsync();
+            await LoadItemDataAsync();
 
             // Reload quests from the updated progress service
             LoadQuests();
@@ -510,19 +506,11 @@ namespace TarkovHelper.Pages
 
         private string GetLocalizedMapName(string normalizedName)
         {
-            if (_mapData == null) return normalizedName;
+            // Simple formatting: capitalize first letter of each word
+            if (string.IsNullOrEmpty(normalizedName)) return normalizedName;
 
-            var map = _mapData.FirstOrDefault(m =>
-                string.Equals(m.NormalizedName, normalizedName, StringComparison.OrdinalIgnoreCase));
-
-            if (map == null) return normalizedName;
-
-            return _loc.CurrentLanguage switch
-            {
-                AppLanguage.KO => map.NameKo ?? map.Name,
-                AppLanguage.JA => map.NameJa ?? map.Name,
-                _ => map.Name
-            };
+            return System.Globalization.CultureInfo.CurrentCulture.TextInfo
+                .ToTitleCase(normalizedName.Replace("-", " "));
         }
 
         private void ApplyFilters()
@@ -1562,12 +1550,12 @@ namespace TarkovHelper.Pages
                     IsFulfilled = isFulfilled
                 };
 
-                // Get localized item name
-                var localizedName = GetLocalizedItemName(item.ItemNormalizedName);
+                // Get localized item name (with display name fallback)
+                var localizedName = GetLocalizedItemName(item.ItemNormalizedName, item.ItemDisplayName);
                 vm.DisplayText = $"{localizedName} x{item.Amount}";
 
-                // Get item icon
-                var tarkovItem = GetItemByNormalizedName(item.ItemNormalizedName);
+                // Get item icon (with display name for better matching)
+                var tarkovItem = GetItemByNormalizedName(item.ItemNormalizedName, item.ItemDisplayName);
                 if (tarkovItem?.IconLink != null)
                 {
                     var icon = await _imageCache.GetItemIconAsync(tarkovItem.IconLink);
@@ -1602,11 +1590,11 @@ namespace TarkovHelper.Pages
             }
         }
 
-        private string GetLocalizedItemName(string normalizedName)
+        private string GetLocalizedItemName(string normalizedName, string? displayNameFallback = null)
         {
-            var item = GetItemByNormalizedName(normalizedName);
+            var item = GetItemByNormalizedName(normalizedName, displayNameFallback);
             if (item == null)
-                return normalizedName;
+                return !string.IsNullOrEmpty(displayNameFallback) ? displayNameFallback : normalizedName;
 
             return _loc.CurrentLanguage switch
             {
@@ -1616,16 +1604,27 @@ namespace TarkovHelper.Pages
             };
         }
 
-        private TarkovItem? GetItemByNormalizedName(string normalizedName)
+        private TarkovItem? GetItemByNormalizedName(string normalizedName, string? displayName = null)
         {
             if (_itemLookup == null)
                 return null;
 
-            // Try direct lookup
+            // Strategy 1: Direct lookup
             if (_itemLookup.TryGetValue(normalizedName, out var item))
                 return item;
 
-            // Try with alternative names (fuzzy match)
+            // Strategy 2: Try alternatives from display name
+            if (!string.IsNullOrEmpty(displayName))
+            {
+                var displayAlternatives = NormalizedNameGenerator.GenerateAlternatives(displayName);
+                foreach (var alt in displayAlternatives)
+                {
+                    if (_itemLookup.TryGetValue(alt, out item))
+                        return item;
+                }
+            }
+
+            // Strategy 3: Try with alternative names from normalized name (fuzzy match)
             var alternatives = NormalizedNameGenerator.GenerateAlternatives(normalizedName);
             foreach (var alt in alternatives)
             {

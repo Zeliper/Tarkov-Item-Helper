@@ -1,0 +1,91 @@
+# TestMapPage Implementation PRD
+
+## Problem Statement
+마커 위치가 TarkovHelper와 TarkovDBEditor 사이에서 다르게 표시됩니다.
+
+### Root Cause Analysis
+1. **TarkovDBEditor (MapPreviewWindow)**: SvgViewbox를 `Stretch="None"`으로 사용하고 Width/Height를 config에서 직접 설정
+2. **TarkovHelper (MapTrackerPage)**: SvgViewbox를 `Stretch="Fill"`로 사용하고 SVG를 PNG로 변환할 때 `drawing.Bounds` (콘텐츠 영역)을 사용
+
+핵심 문제: `drawing.Bounds`는 SVG viewBox 크기가 아닌 실제 콘텐츠 영역을 반환합니다. SVG 콘텐츠가 viewBox 전체를 채우지 않으면 스케일 계산이 잘못됩니다.
+
+## Solution
+TarkovDBEditor의 MapPreviewWindow 구현을 그대로 가져와서 새로운 TestMapPage 탭으로 구현합니다.
+
+## Implementation Steps
+
+### Step 1: Create TestMapPage.xaml
+- TarkovDBEditor의 MapPreviewWindow.xaml 구조를 UserControl로 변환
+- SvgViewbox를 `Stretch="None"`으로 설정 (핵심!)
+- MapCanvas에 Width/Height를 config에서 설정
+- 기존 TarkovHelper 스타일 리소스 사용
+
+### Step 2: Create TestMapPage.xaml.cs
+- MapPreviewWindow.xaml.cs의 핵심 로직 포팅:
+  - LoadMapConfigs(): map_configs.json 로드
+  - LoadMap(): SVG 로드 및 크기 설정
+  - RedrawMarkers(): DB 마커 그리기 (GameToScreen 사용)
+  - Zoom/Pan 로직
+- MapMarkerDbService 사용 (기존 서비스 재사용)
+
+### Step 3: Add Navigation Tab
+- MainWindow.xaml에 "Test Map" 탭 추가
+- 기존 "Map" 탭은 유지
+
+## Key Differences to Port
+
+### XAML Structure (from MapPreviewWindow.xaml)
+```xml
+<!-- 핵심: Stretch="None" -->
+<svgc:SvgViewbox x:Name="MapSvg" Stretch="None"
+                 Canvas.Left="0" Canvas.Top="0"/>
+```
+
+### Code-behind Key Methods (from MapPreviewWindow.xaml.cs)
+
+1. **LoadMap** - SVG 크기 설정
+```csharp
+MapSvg.Width = config.ImageWidth;
+MapSvg.Height = config.ImageHeight;
+MapCanvas.Width = config.ImageWidth;
+MapCanvas.Height = config.ImageHeight;
+```
+
+2. **RedrawMarkers** - 좌표 변환
+```csharp
+var (sx, sy) = _currentMapConfig.GameToScreen(marker.X, marker.Z);
+Canvas.SetLeft(image, sx - markerSize / 2);
+Canvas.SetTop(image, sy - markerSize / 2);
+```
+
+3. **GameToScreen** - 변환 공식 (MapConfig 또는 DbMapConfig)
+```csharp
+public (double screenX, double screenY) GameToScreen(double gameX, double gameZ)
+{
+    var a = CalibratedTransform[0];
+    var b = CalibratedTransform[1];
+    var c = CalibratedTransform[2];
+    var d = CalibratedTransform[3];
+    var tx = CalibratedTransform[4];
+    var ty = CalibratedTransform[5];
+    return (a * gameX + b * gameZ + tx, c * gameX + d * gameZ + ty);
+}
+```
+
+## Files to Create/Modify
+
+### New Files
+- `TarkovHelper/Pages/TestMapPage.xaml`
+- `TarkovHelper/Pages/TestMapPage.xaml.cs`
+
+### Modified Files
+- `TarkovHelper/MainWindow.xaml` - Add "Test Map" tab
+
+## Data Sources
+- map_configs.json (Assets/DB/Data/)
+- tarkov_data.db의 MapMarkers 테이블 (MapMarkerDbService 사용)
+
+## Dependencies
+- SharpVectors.Wpf (기존 사용 중)
+- MapMarkerDbService (기존 서비스)
+- DbMapConfig (기존 모델)

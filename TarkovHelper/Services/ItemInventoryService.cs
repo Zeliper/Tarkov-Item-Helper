@@ -1,5 +1,3 @@
-using System.IO;
-using System.Text.Json;
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
 
@@ -13,14 +11,14 @@ namespace TarkovHelper.Services
         private static ItemInventoryService? _instance;
         public static ItemInventoryService Instance => _instance ??= new ItemInventoryService();
 
-        private const string InventoryFileName = "item_inventory.json";
+        private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
 
         private ItemInventoryData _inventoryData = new();
         private readonly object _lock = new();
 
         // Debounce save timer
         private System.Timers.Timer? _saveTimer;
-        private bool _isDirty;
+        private readonly HashSet<string> _pendingSaves = new(StringComparer.OrdinalIgnoreCase);
 
         public event EventHandler? InventoryChanged;
 
@@ -36,12 +34,48 @@ namespace TarkovHelper.Services
             _saveTimer.AutoReset = false;
             _saveTimer.Elapsed += (s, e) =>
             {
-                if (_isDirty)
-                {
-                    SaveInventoryImmediate();
-                    _isDirty = false;
-                }
+                SavePendingItems();
             };
+        }
+
+        private void SavePendingItems()
+        {
+            List<string> itemsToSave;
+            lock (_lock)
+            {
+                if (_pendingSaves.Count == 0) return;
+                itemsToSave = _pendingSaves.ToList();
+                _pendingSaves.Clear();
+            }
+
+            Task.Run(async () =>
+            {
+                foreach (var itemName in itemsToSave)
+                {
+                    try
+                    {
+                        int firQty, nonFirQty;
+                        lock (_lock)
+                        {
+                            if (_inventoryData.Items.TryGetValue(itemName, out var inv))
+                            {
+                                firQty = inv.FirQuantity;
+                                nonFirQty = inv.NonFirQuantity;
+                            }
+                            else
+                            {
+                                firQty = 0;
+                                nonFirQty = 0;
+                            }
+                        }
+                        await _userDataDb.SaveItemInventoryAsync(itemName, firQty, nonFirQty);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ItemInventoryService] Save failed for {itemName}: {ex.Message}");
+                    }
+                }
+            }).GetAwaiter().GetResult();
         }
 
         /// <summary>
@@ -103,7 +137,7 @@ namespace TarkovHelper.Services
                 {
                     inventory.FirQuantity = quantity;
                     CleanupEmptyInventory(itemNormalizedName);
-                    ScheduleSave();
+                    ScheduleSave(itemNormalizedName);
                     InventoryChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
@@ -128,7 +162,7 @@ namespace TarkovHelper.Services
                 {
                     inventory.NonFirQuantity = quantity;
                     CleanupEmptyInventory(itemNormalizedName);
-                    ScheduleSave();
+                    ScheduleSave(itemNormalizedName);
                     InventoryChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
@@ -215,80 +249,76 @@ namespace TarkovHelper.Services
             lock (_lock)
             {
                 _inventoryData = new ItemInventoryData();
-                SaveInventoryImmediate();
-                InventoryChanged?.Invoke(this, EventArgs.Empty);
             }
+
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await _userDataDb.ClearAllItemInventoryAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ItemInventoryService] Reset failed: {ex.Message}");
+                }
+            }).GetAwaiter().GetResult();
+
+            InventoryChanged?.Invoke(this, EventArgs.Empty);
         }
 
         #region Persistence
 
-        private void ScheduleSave()
+        private void ScheduleSave(string itemNormalizedName)
         {
-            _isDirty = true;
+            lock (_lock)
+            {
+                _pendingSaves.Add(itemNormalizedName);
+            }
             _inventoryData.LastUpdated = DateTime.UtcNow;
             _saveTimer?.Stop();
             _saveTimer?.Start();
         }
 
-        private void SaveInventoryImmediate()
-        {
-            try
-            {
-                var filePath = Path.Combine(AppEnv.ConfigPath, InventoryFileName);
-                Directory.CreateDirectory(AppEnv.ConfigPath);
-
-                var options = new JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                };
-
-                string json;
-                lock (_lock)
-                {
-                    json = JsonSerializer.Serialize(_inventoryData, options);
-                }
-
-                File.WriteAllText(filePath, json);
-            }
-            catch
-            {
-                // Ignore save failures
-            }
-        }
-
         private void LoadInventory()
         {
+            // Task.Run으로 데드락 방지
+            Task.Run(async () =>
+            {
+                // 마이그레이션 실행 (JSON → DB)
+                await _userDataDb.MigrateFromJsonAsync();
+                await LoadInventoryFromDbAsync();
+            }).GetAwaiter().GetResult();
+        }
+
+        private async Task LoadInventoryFromDbAsync()
+        {
             try
             {
-                var filePath = Path.Combine(AppEnv.ConfigPath, InventoryFileName);
-
-                if (!File.Exists(filePath))
-                    return;
-
-                var json = File.ReadAllText(filePath);
-                var options = new JsonSerializerOptions
+                var items = await _userDataDb.LoadItemInventoryAsync();
+                var newData = new ItemInventoryData
                 {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                    LastUpdated = DateTime.UtcNow,
+                    Items = new Dictionary<string, ItemInventory>(StringComparer.OrdinalIgnoreCase)
                 };
 
-                var data = JsonSerializer.Deserialize<ItemInventoryData>(json, options);
-
-                if (data != null)
+                foreach (var kvp in items)
                 {
-                    _inventoryData = data;
-                    // Rebuild dictionary with case-insensitive comparer
-                    var newDict = new Dictionary<string, ItemInventory>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var kvp in _inventoryData.Items)
+                    newData.Items[kvp.Key] = new ItemInventory
                     {
-                        newDict[kvp.Key] = kvp.Value;
-                    }
-                    _inventoryData.Items = newDict;
+                        ItemNormalizedName = kvp.Key,
+                        FirQuantity = kvp.Value.FirQuantity,
+                        NonFirQuantity = kvp.Value.NonFirQuantity
+                    };
+                }
+
+                lock (_lock)
+                {
+                    _inventoryData = newData;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Use empty inventory on load failure
+                System.Diagnostics.Debug.WriteLine($"[ItemInventoryService] Load failed: {ex.Message}");
                 _inventoryData = new ItemInventoryData();
             }
         }

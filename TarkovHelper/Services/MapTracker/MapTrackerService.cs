@@ -8,6 +8,7 @@ namespace TarkovHelper.Services.MapTracker;
 /// <summary>
 /// 맵 위치 추적 기능의 메인 서비스.
 /// 스크린샷 감시, 좌표 파싱, 좌표 변환, 설정 관리를 통합합니다.
+/// 설정은 user_data.db (UserSettings 테이블)에 저장됩니다.
 /// </summary>
 public sealed class MapTrackerService : IDisposable
 {
@@ -17,6 +18,9 @@ public sealed class MapTrackerService : IDisposable
     private readonly ScreenshotCoordinateParser _parser;
     private readonly MapCoordinateTransformer _transformer;
     private readonly ScreenshotWatcherService _watcher;
+    private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
+
+    private const string KeyMapTrackerSettings = "mapTracker.settings";
 
     private MapTrackerSettings _settings;
     private readonly List<ScreenPosition> _trailPositions = new();
@@ -30,7 +34,8 @@ public sealed class MapTrackerService : IDisposable
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    private static string SettingsPath => Path.Combine(AppEnv.DataPath, "map_tracker_settings.json");
+    // Legacy JSON path for migration
+    private static string LegacySettingsPath => Path.Combine(AppEnv.DataPath, "map_tracker_settings.json");
 
     /// <summary>
     /// 현재 화면 좌표
@@ -79,7 +84,7 @@ public sealed class MapTrackerService : IDisposable
 
     private MapTrackerService()
     {
-        _settings = LoadSettings();
+        _settings = LoadSettingsInternal();
         _parser = new ScreenshotCoordinateParser(_settings.FileNamePattern);
         _transformer = new MapCoordinateTransformer(_settings.Maps);
         _watcher = new ScreenshotWatcherService(_parser)
@@ -209,9 +214,8 @@ public sealed class MapTrackerService : IDisposable
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             var json = JsonSerializer.Serialize(_settings, JsonOptions);
-            File.WriteAllText(SettingsPath, json);
+            _userDataDb.SetSetting(KeyMapTrackerSettings, json);
         }
         catch (Exception ex)
         {
@@ -224,7 +228,7 @@ public sealed class MapTrackerService : IDisposable
     /// </summary>
     public void ReloadSettings()
     {
-        _settings = LoadSettings();
+        _settings = LoadSettingsInternal();
         _parser.UpdatePattern(_settings.FileNamePattern);
         _transformer.UpdateMaps(_settings.Maps);
         _watcher.DebounceDelayMs = _settings.DebounceDelayMs;
@@ -403,13 +407,17 @@ public sealed class MapTrackerService : IDisposable
         StatusMessage?.Invoke(this, message);
     }
 
-    private static MapTrackerSettings LoadSettings()
+    private MapTrackerSettings LoadSettingsInternal()
     {
         try
         {
-            if (File.Exists(SettingsPath))
+            // First check if JSON migration is needed
+            MigrateFromJsonIfNeeded();
+
+            // Load from DB
+            var json = _userDataDb.GetSetting(KeyMapTrackerSettings);
+            if (!string.IsNullOrEmpty(json))
             {
-                var json = File.ReadAllText(SettingsPath);
                 var settings = JsonSerializer.Deserialize<MapTrackerSettings>(json, JsonOptions);
                 if (settings != null)
                 {
@@ -419,12 +427,41 @@ public sealed class MapTrackerService : IDisposable
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // 로드 실패 시 기본 설정 사용
+            System.Diagnostics.Debug.WriteLine($"[MapTrackerService] Load settings failed: {ex.Message}");
         }
 
         return new MapTrackerSettings();
+    }
+
+    /// <summary>
+    /// Migrate from legacy map_tracker_settings.json if it exists
+    /// </summary>
+    private void MigrateFromJsonIfNeeded()
+    {
+        if (!File.Exists(LegacySettingsPath)) return;
+
+        try
+        {
+            var json = File.ReadAllText(LegacySettingsPath);
+            var settings = JsonSerializer.Deserialize<MapTrackerSettings>(json, JsonOptions);
+
+            if (settings != null)
+            {
+                // Save to DB
+                var newJson = JsonSerializer.Serialize(settings, JsonOptions);
+                _userDataDb.SetSetting(KeyMapTrackerSettings, newJson);
+            }
+
+            // Delete the JSON file after migration
+            File.Delete(LegacySettingsPath);
+            System.Diagnostics.Debug.WriteLine($"[MapTrackerService] Migrated and deleted: {LegacySettingsPath}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MapTrackerService] Migration failed: {ex.Message}");
+        }
     }
 
     /// <summary>

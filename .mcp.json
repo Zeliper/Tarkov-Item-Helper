@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "svgmaker": {
+      "command": "npx",
+      "args": ["-y", "@genwave/svgmaker-mcp"],
+      "transport": "stdio",
+      "env": {
+        "SVGMAKER_API_KEY": "svgmaker-io0c237f8d0ebd7a9e"
+      }
+    },
+    "inkscape-mcp": {
+      "command": "C:\\Users\\duct1\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\inkscape-mcp.exe",
+      "args": [],
+      "transport": "stdio",
+      "env": {
+        "INKS_WORKSPACE": "C:\\Users\\duct1\\OneDrive\\바탕 화면\\새 폴더\\Tarkov-Item-Helper",
+        "INKS_MAX_FILE": "52428800",
+        "INKS_INKSCAPE_BIN": "C:\\Program Files\\Inkscape\\bin\\inkscape.exe"
+      }
+    },
+    "server-github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "transport": "stdio",
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "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"
+      }
+    }
+  }
+}

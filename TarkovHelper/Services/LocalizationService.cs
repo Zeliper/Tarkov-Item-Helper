@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
+using TarkovHelper.Debug;
 
 namespace TarkovHelper.Services;
 
@@ -16,24 +17,15 @@ public enum AppLanguage
 
 /// <summary>
 /// Centralized localization service for managing UI language
+/// Settings are stored in user_data.db (UserSettings table)
 /// </summary>
 public class LocalizationService : INotifyPropertyChanged
 {
     private static LocalizationService? _instance;
     public static LocalizationService Instance => _instance ??= new LocalizationService();
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
-    private static string DataDirectory => Path.Combine(
-        AppDomain.CurrentDomain.BaseDirectory,
-        "Data"
-    );
-
-    private static string SettingsPath => Path.Combine(DataDirectory, "settings.json");
+    private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
+    private const string KeyLanguage = "app.language";
 
     private AppLanguage _currentLanguage = AppLanguage.EN;
 
@@ -71,18 +63,11 @@ public class LocalizationService : INotifyPropertyChanged
     {
         try
         {
-            if (!Directory.Exists(DataDirectory))
-            {
-                Directory.CreateDirectory(DataDirectory);
-            }
-
-            var settings = new AppSettings { Language = _currentLanguage.ToString() };
-            var json = JsonSerializer.Serialize(settings, JsonOptions);
-            File.WriteAllText(SettingsPath, json);
+            _userDataDb.SetSetting(KeyLanguage, _currentLanguage.ToString());
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore save failures
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Save failed: {ex.Message}");
         }
     }
 
@@ -90,24 +75,56 @@ public class LocalizationService : INotifyPropertyChanged
     {
         try
         {
-            if (File.Exists(SettingsPath))
+            // First check if JSON migration is needed
+            MigrateFromJsonIfNeeded();
+
+            // Load from DB
+            var langStr = _userDataDb.GetSetting(KeyLanguage);
+            if (!string.IsNullOrEmpty(langStr) && Enum.TryParse<AppLanguage>(langStr, out var lang))
             {
-                var json = File.ReadAllText(SettingsPath);
-                var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions);
-                if (settings != null && Enum.TryParse<AppLanguage>(settings.Language, out var lang))
-                {
-                    _currentLanguage = lang;
-                }
+                _currentLanguage = lang;
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Use default (EN) on load failure
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Load failed: {ex.Message}");
             _currentLanguage = AppLanguage.EN;
         }
     }
 
-    private class AppSettings
+    /// <summary>
+    /// Migrate from legacy settings.json if it exists
+    /// </summary>
+    private void MigrateFromJsonIfNeeded()
+    {
+        // Check old Data/settings.json path
+        var dataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+        var jsonPath = Path.Combine(dataDir, "settings.json");
+
+        if (!File.Exists(jsonPath)) return;
+
+        try
+        {
+            var json = File.ReadAllText(jsonPath);
+            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+            var settings = JsonSerializer.Deserialize<LegacySettings>(json, options);
+
+            if (settings != null && Enum.TryParse<AppLanguage>(settings.Language, out var lang))
+            {
+                _userDataDb.SetSetting(KeyLanguage, lang.ToString());
+            }
+
+            // Delete the JSON file after migration
+            File.Delete(jsonPath);
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Migrated and deleted: {jsonPath}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Migration failed: {ex.Message}");
+        }
+    }
+
+    private class LegacySettings
     {
         public string Language { get; set; } = "EN";
     }
@@ -236,7 +253,6 @@ public class LocalizationService : INotifyPropertyChanged
 
     #region Map Tracker Page
 
-    // 상단 컨트롤 바
     public string MapPositionTracker => CurrentLanguage switch
     {
         AppLanguage.KO => "맵 위치 트래커",
@@ -307,7 +323,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Stop Tracking"
     };
 
-    // 상태 표시 바
     public string StatusWaiting => CurrentLanguage switch
     {
         AppLanguage.KO => "대기 중",
@@ -336,7 +351,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Last update:"
     };
 
-    // 퀘스트 드로어
     public string QuestObjectives => CurrentLanguage switch
     {
         AppLanguage.KO => "퀘스트 목표",
@@ -428,7 +442,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Group"
     };
 
-    // 설정 패널
     public string ScreenshotFolder => CurrentLanguage switch
     {
         AppLanguage.KO => "스크린샷 폴더",
@@ -520,7 +533,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Name Size:"
     };
 
-    // 마커 색상 설정
     public string MarkerColors => CurrentLanguage switch
     {
         AppLanguage.KO => "마커 색상",
@@ -535,7 +547,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Reset Colors"
     };
 
-    // 맵 없음 안내
     public string NoMapImage => CurrentLanguage switch
     {
         AppLanguage.KO => "맵 이미지가 없습니다",
@@ -564,7 +575,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Reset"
     };
 
-    // 퀘스트 스타일 옵션
     public string StyleIconOnly => CurrentLanguage switch
     {
         AppLanguage.KO => "아이콘만",
@@ -679,6 +689,789 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "개 퀘스트 해금",
         AppLanguage.JA => "クエスト解放",
         _ => "quest(s) unlock"
+    };
+
+    #endregion
+
+    #region Map Page - Quest Drawer
+
+    public string Quest => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트",
+        AppLanguage.JA => "クエスト",
+        _ => "Quest"
+    };
+
+    public string QuestPanelTooltip => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 패널 열기/닫기 (Q)",
+        AppLanguage.JA => "クエストパネル開閉 (Q)",
+        _ => "Open/Close Quest Panel (Q)"
+    };
+
+    public string ShortcutHelp => CurrentLanguage switch
+    {
+        AppLanguage.KO => "단축키 도움말",
+        AppLanguage.JA => "ショートカットヘルプ",
+        _ => "Shortcut Help"
+    };
+
+    public string DisplayOptions => CurrentLanguage switch
+    {
+        AppLanguage.KO => "표시 옵션",
+        AppLanguage.JA => "表示オプション",
+        _ => "Display Options"
+    };
+
+    public string Close => CurrentLanguage switch
+    {
+        AppLanguage.KO => "닫기",
+        AppLanguage.JA => "閉じる",
+        _ => "Close"
+    };
+
+    public string CloseWithShortcut => CurrentLanguage switch
+    {
+        AppLanguage.KO => "닫기 (Q)",
+        AppLanguage.JA => "閉じる (Q)",
+        _ => "Close (Q)"
+    };
+
+    public string SearchPlaceholder => CurrentLanguage switch
+    {
+        AppLanguage.KO => "🔍 검색...",
+        AppLanguage.JA => "🔍 検索...",
+        _ => "🔍 Search..."
+    };
+
+    public string Incomplete => CurrentLanguage switch
+    {
+        AppLanguage.KO => "미완료",
+        AppLanguage.JA => "未完了",
+        _ => "Incomplete"
+    };
+
+    public string CurrentMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "현재 맵",
+        AppLanguage.JA => "現在のマップ",
+        _ => "Current Map"
+    };
+
+    public string SortByName => CurrentLanguage switch
+    {
+        AppLanguage.KO => "이름",
+        AppLanguage.JA => "名前",
+        _ => "Name"
+    };
+
+    public string SortByProgress => CurrentLanguage switch
+    {
+        AppLanguage.KO => "진행률",
+        AppLanguage.JA => "進捗",
+        _ => "Progress"
+    };
+
+    public string SortByCount => CurrentLanguage switch
+    {
+        AppLanguage.KO => "개수",
+        AppLanguage.JA => "個数",
+        _ => "Count"
+    };
+
+    public string NoQuestsToDisplay => CurrentLanguage switch
+    {
+        AppLanguage.KO => "표시할 퀘스트 없음",
+        AppLanguage.JA => "表示するクエストがありません",
+        _ => "No quests to display"
+    };
+
+    public string TryAdjustingFilters => CurrentLanguage switch
+    {
+        AppLanguage.KO => "필터를 조정해 보세요",
+        AppLanguage.JA => "フィルターを調整してください",
+        _ => "Try adjusting filters"
+    };
+
+    public string MarkAllComplete => CurrentLanguage switch
+    {
+        AppLanguage.KO => "모두 완료",
+        AppLanguage.JA => "すべて完了",
+        _ => "Complete All"
+    };
+
+    public string MarkAllIncomplete => CurrentLanguage switch
+    {
+        AppLanguage.KO => "모두 미완료",
+        AppLanguage.JA => "すべて未完了",
+        _ => "Mark All Incomplete"
+    };
+
+    public string HideFromMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵에서 숨기기",
+        AppLanguage.JA => "マップから隠す",
+        _ => "Hide from Map"
+    };
+
+    public string ShowHideOnMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵에 표시/숨김",
+        AppLanguage.JA => "マップに表示/非表示",
+        _ => "Show/Hide on Map"
+    };
+
+    public string ViewOnMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵에서 보기",
+        AppLanguage.JA => "マップで表示",
+        _ => "View on Map"
+    };
+
+    // Keyboard Hints
+    public string OpenClose => CurrentLanguage switch
+    {
+        AppLanguage.KO => "열기/닫기",
+        AppLanguage.JA => "開閉",
+        _ => "Open/Close"
+    };
+
+    public string Move => CurrentLanguage switch
+    {
+        AppLanguage.KO => "이동",
+        AppLanguage.JA => "移動",
+        _ => "Move"
+    };
+
+    public string Select => CurrentLanguage switch
+    {
+        AppLanguage.KO => "선택",
+        AppLanguage.JA => "選択",
+        _ => "Select"
+    };
+
+    public string GoToMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵이동",
+        AppLanguage.JA => "マップ移動",
+        _ => "Go to Map"
+    };
+
+    public string ToggleComplete => CurrentLanguage switch
+    {
+        AppLanguage.KO => "완료토글",
+        AppLanguage.JA => "完了切替",
+        _ => "Toggle Complete"
+    };
+
+    public string Click => CurrentLanguage switch
+    {
+        AppLanguage.KO => "클릭",
+        AppLanguage.JA => "クリック",
+        _ => "Click"
+    };
+
+    public string RightClick => CurrentLanguage switch
+    {
+        AppLanguage.KO => "우클릭",
+        AppLanguage.JA => "右クリック",
+        _ => "Right-click"
+    };
+
+    #endregion
+
+    #region Map Page - Map Area
+
+    public string Scroll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "스크롤",
+        AppLanguage.JA => "スクロール",
+        _ => "Scroll"
+    };
+
+    public string Zoom => CurrentLanguage switch
+    {
+        AppLanguage.KO => "줌",
+        AppLanguage.JA => "ズーム",
+        _ => "Zoom"
+    };
+
+    public string Drag => CurrentLanguage switch
+    {
+        AppLanguage.KO => "드래그",
+        AppLanguage.JA => "ドラッグ",
+        _ => "Drag"
+    };
+
+    public string Reset => CurrentLanguage switch
+    {
+        AppLanguage.KO => "리셋",
+        AppLanguage.JA => "リセット",
+        _ => "Reset"
+    };
+
+    public string LoadingMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵 로딩 중...",
+        AppLanguage.JA => "マップ読み込み中...",
+        _ => "Loading map..."
+    };
+
+    public string ZoomInTooltip => CurrentLanguage switch
+    {
+        AppLanguage.KO => "확대 (Scroll Up)",
+        AppLanguage.JA => "拡大 (Scroll Up)",
+        _ => "Zoom In (Scroll Up)"
+    };
+
+    public string ZoomOutTooltip => CurrentLanguage switch
+    {
+        AppLanguage.KO => "축소 (Scroll Down)",
+        AppLanguage.JA => "縮小 (Scroll Down)",
+        _ => "Zoom Out (Scroll Down)"
+    };
+
+    public string ResetViewTooltip => CurrentLanguage switch
+    {
+        AppLanguage.KO => "뷰 초기화 (R)",
+        AppLanguage.JA => "ビューリセット (R)",
+        _ => "Reset View (R)"
+    };
+
+    #endregion
+
+    #region Map Page - Legend
+
+    public string MapLegend => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵 범례",
+        AppLanguage.JA => "マップ凡例",
+        _ => "Map Legend"
+    };
+
+    public string Extract => CurrentLanguage switch
+    {
+        AppLanguage.KO => "탈출구",
+        AppLanguage.JA => "脱出口",
+        _ => "Extract"
+    };
+
+    public string TransitPoint => CurrentLanguage switch
+    {
+        AppLanguage.KO => "환승 지점",
+        AppLanguage.JA => "乗り換え地点",
+        _ => "Transit Point"
+    };
+
+    public string QuestObjective => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 목표",
+        AppLanguage.JA => "クエスト目標",
+        _ => "Quest Objective"
+    };
+
+    public string QuestType => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 타입",
+        AppLanguage.JA => "クエストタイプ",
+        _ => "Quest Type"
+    };
+
+    public string Visit => CurrentLanguage switch
+    {
+        AppLanguage.KO => "방문",
+        AppLanguage.JA => "訪問",
+        _ => "Visit"
+    };
+
+    public string Mark => CurrentLanguage switch
+    {
+        AppLanguage.KO => "마킹",
+        AppLanguage.JA => "マーキング",
+        _ => "Mark"
+    };
+
+    public string PlantItem => CurrentLanguage switch
+    {
+        AppLanguage.KO => "아이템 설치",
+        AppLanguage.JA => "アイテム設置",
+        _ => "Plant Item"
+    };
+
+    public string Kill => CurrentLanguage switch
+    {
+        AppLanguage.KO => "처치",
+        AppLanguage.JA => "撃破",
+        _ => "Kill"
+    };
+
+    #endregion
+
+    #region Map Page - Quest Filter
+
+    public string QuestTypeFilter => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 타입 필터",
+        AppLanguage.JA => "クエストタイプフィルター",
+        _ => "Quest Type Filter"
+    };
+
+    public string VisitType => CurrentLanguage switch
+    {
+        AppLanguage.KO => "방문 (Visit)",
+        AppLanguage.JA => "訪問 (Visit)",
+        _ => "Visit"
+    };
+
+    public string MarkType => CurrentLanguage switch
+    {
+        AppLanguage.KO => "마킹 (Mark)",
+        AppLanguage.JA => "マーキング (Mark)",
+        _ => "Mark"
+    };
+
+    public string PlantType => CurrentLanguage switch
+    {
+        AppLanguage.KO => "아이템 설치 (Plant)",
+        AppLanguage.JA => "アイテム設置 (Plant)",
+        _ => "Plant Item"
+    };
+
+    public string ExtractType => CurrentLanguage switch
+    {
+        AppLanguage.KO => "탈출 (Extract)",
+        AppLanguage.JA => "脱出 (Extract)",
+        _ => "Extract"
+    };
+
+    public string FindType => CurrentLanguage switch
+    {
+        AppLanguage.KO => "아이템 찾기 (Find)",
+        AppLanguage.JA => "アイテム発見 (Find)",
+        _ => "Find Item"
+    };
+
+    public string KillType => CurrentLanguage switch
+    {
+        AppLanguage.KO => "처치 (Kill)",
+        AppLanguage.JA => "撃破 (Kill)",
+        _ => "Kill"
+    };
+
+    public string OtherType => CurrentLanguage switch
+    {
+        AppLanguage.KO => "기타 (Other)",
+        AppLanguage.JA => "その他 (Other)",
+        _ => "Other"
+    };
+
+    public string SelectAll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "전체 선택",
+        AppLanguage.JA => "すべて選択",
+        _ => "Select All"
+    };
+
+    public string DeselectAll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "전체 해제",
+        AppLanguage.JA => "すべて解除",
+        _ => "Deselect All"
+    };
+
+    #endregion
+
+    #region Map Page - Minimap
+
+    public string Minimap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "미니맵",
+        AppLanguage.JA => "ミニマップ",
+        _ => "Minimap"
+    };
+
+    #endregion
+
+    #region Map Page - Settings
+
+    public string SettingsTitle => CurrentLanguage switch
+    {
+        AppLanguage.KO => "⚙ 설정",
+        AppLanguage.JA => "⚙ 設定",
+        _ => "⚙ Settings"
+    };
+
+    public string SettingsTooltip => CurrentLanguage switch
+    {
+        AppLanguage.KO => "설정 (레이어, 마커 크기, 트래커)",
+        AppLanguage.JA => "設定 (レイヤー、マーカーサイズ、トラッカー)",
+        _ => "Settings (Layers, Marker Size, Tracker)"
+    };
+
+    public string TabDisplay => CurrentLanguage switch
+    {
+        AppLanguage.KO => "표시",
+        AppLanguage.JA => "表示",
+        _ => "Display"
+    };
+
+    public string TabMarker => CurrentLanguage switch
+    {
+        AppLanguage.KO => "마커",
+        AppLanguage.JA => "マーカー",
+        _ => "Marker"
+    };
+
+    public string TabTracker => CurrentLanguage switch
+    {
+        AppLanguage.KO => "트래커",
+        AppLanguage.JA => "トラッカー",
+        _ => "Tracker"
+    };
+
+    public string TabShortcuts => CurrentLanguage switch
+    {
+        AppLanguage.KO => "단축키",
+        AppLanguage.JA => "ショートカット",
+        _ => "Shortcuts"
+    };
+
+    // Display Tab
+    public string Layers => CurrentLanguage switch
+    {
+        AppLanguage.KO => "레이어",
+        AppLanguage.JA => "レイヤー",
+        _ => "Layers"
+    };
+
+    public string Trail => CurrentLanguage switch
+    {
+        AppLanguage.KO => "이동 경로",
+        AppLanguage.JA => "移動経路",
+        _ => "Trail"
+    };
+
+    public string ShowMinimap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "미니맵 표시",
+        AppLanguage.JA => "ミニマップ表示",
+        _ => "Show Minimap"
+    };
+
+    public string MinimapSize => CurrentLanguage switch
+    {
+        AppLanguage.KO => "미니맵 크기",
+        AppLanguage.JA => "ミニマップサイズ",
+        _ => "Minimap Size"
+    };
+
+    public string QuestFilter => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 필터",
+        AppLanguage.JA => "クエストフィルター",
+        _ => "Quest Filter"
+    };
+
+    public string Legend => CurrentLanguage switch
+    {
+        AppLanguage.KO => "범례",
+        AppLanguage.JA => "凡例",
+        _ => "Legend"
+    };
+
+    // Marker Tab
+    public string MarkerSize => CurrentLanguage switch
+    {
+        AppLanguage.KO => "마커 크기",
+        AppLanguage.JA => "マーカーサイズ",
+        _ => "Marker Size"
+    };
+
+    public string MarkerOpacity => CurrentLanguage switch
+    {
+        AppLanguage.KO => "마커 투명도",
+        AppLanguage.JA => "マーカー透明度",
+        _ => "Marker Opacity"
+    };
+
+    public string QuestDisplay => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 표시",
+        AppLanguage.JA => "クエスト表示",
+        _ => "Quest Display"
+    };
+
+    public string AutoHideCompleted => CurrentLanguage switch
+    {
+        AppLanguage.KO => "완료 퀘스트 자동 숨김",
+        AppLanguage.JA => "完了クエストを自動非表示",
+        _ => "Auto-hide Completed Quests"
+    };
+
+    public string FadeCompleted => CurrentLanguage switch
+    {
+        AppLanguage.KO => "완료 퀘스트 흐리게",
+        AppLanguage.JA => "完了クエストを薄く表示",
+        _ => "Fade Completed Quests"
+    };
+
+    public string ShowMarkerLabels => CurrentLanguage switch
+    {
+        AppLanguage.KO => "마커 라벨 표시",
+        AppLanguage.JA => "マーカーラベル表示",
+        _ => "Show Marker Labels"
+    };
+
+    // Tracker Tab
+    public string TrackerStatus => CurrentLanguage switch
+    {
+        AppLanguage.KO => "트래커 상태",
+        AppLanguage.JA => "トラッカー状態",
+        _ => "Tracker Status"
+    };
+
+    public string Waiting => CurrentLanguage switch
+    {
+        AppLanguage.KO => "대기 중",
+        AppLanguage.JA => "待機中",
+        _ => "Waiting"
+    };
+
+    public string Tracking => CurrentLanguage switch
+    {
+        AppLanguage.KO => "추적 중",
+        AppLanguage.JA => "追跡中",
+        _ => "Tracking"
+    };
+
+    public string NoFolderSelected => CurrentLanguage switch
+    {
+        AppLanguage.KO => "폴더 미선택",
+        AppLanguage.JA => "フォルダ未選択",
+        _ => "No folder selected"
+    };
+
+    public string Folder => CurrentLanguage switch
+    {
+        AppLanguage.KO => "폴더",
+        AppLanguage.JA => "フォルダ",
+        _ => "Folder"
+    };
+
+    public string Open => CurrentLanguage switch
+    {
+        AppLanguage.KO => "열기",
+        AppLanguage.JA => "開く",
+        _ => "Open"
+    };
+
+    public string Start => CurrentLanguage switch
+    {
+        AppLanguage.KO => "시작",
+        AppLanguage.JA => "開始",
+        _ => "Start"
+    };
+
+    public string Stop => CurrentLanguage switch
+    {
+        AppLanguage.KO => "중지",
+        AppLanguage.JA => "停止",
+        _ => "Stop"
+    };
+
+    public string SelectScreenshotFolder => CurrentLanguage switch
+    {
+        AppLanguage.KO => "스크린샷 폴더 선택",
+        AppLanguage.JA => "スクリーンショットフォルダ選択",
+        _ => "Select Screenshot Folder"
+    };
+
+    public string OpenFolder => CurrentLanguage switch
+    {
+        AppLanguage.KO => "폴더 열기",
+        AppLanguage.JA => "フォルダを開く",
+        _ => "Open Folder"
+    };
+
+    public string StartStopTracking => CurrentLanguage switch
+    {
+        AppLanguage.KO => "트래킹 시작/중지",
+        AppLanguage.JA => "トラッキング開始/停止",
+        _ => "Start/Stop Tracking"
+    };
+
+    public string ClearPath => CurrentLanguage switch
+    {
+        AppLanguage.KO => "경로 초기화",
+        AppLanguage.JA => "経路クリア",
+        _ => "Clear Path"
+    };
+
+    public string PathSettings => CurrentLanguage switch
+    {
+        AppLanguage.KO => "경로 설정",
+        AppLanguage.JA => "経路設定",
+        _ => "Path Settings"
+    };
+
+    public string PathColor => CurrentLanguage switch
+    {
+        AppLanguage.KO => "경로 색상",
+        AppLanguage.JA => "経路色",
+        _ => "Path Color"
+    };
+
+    public string PathThickness => CurrentLanguage switch
+    {
+        AppLanguage.KO => "경로 두께",
+        AppLanguage.JA => "経路太さ",
+        _ => "Path Thickness"
+    };
+
+    public string Automation => CurrentLanguage switch
+    {
+        AppLanguage.KO => "자동화",
+        AppLanguage.JA => "自動化",
+        _ => "Automation"
+    };
+
+    public string AutoTrackOnMapLoad => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵 로드시 자동 추적",
+        AppLanguage.JA => "マップ読み込み時に自動追跡",
+        _ => "Auto Track on Map Load"
+    };
+
+    // Shortcuts Tab
+    public string MapControls => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵 조작",
+        AppLanguage.JA => "マップ操作",
+        _ => "Map Controls"
+    };
+
+    public string ZoomInOut => CurrentLanguage switch
+    {
+        AppLanguage.KO => "확대/축소",
+        AppLanguage.JA => "拡大/縮小",
+        _ => "Zoom In/Out"
+    };
+
+    public string PanMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵 이동",
+        AppLanguage.JA => "マップ移動",
+        _ => "Pan Map"
+    };
+
+    public string LayerToggle => CurrentLanguage switch
+    {
+        AppLanguage.KO => "레이어 토글",
+        AppLanguage.JA => "レイヤー切替",
+        _ => "Layer Toggle"
+    };
+
+    public string ShowHideExtracts => CurrentLanguage switch
+    {
+        AppLanguage.KO => "탈출구 표시/숨김",
+        AppLanguage.JA => "脱出口表示/非表示",
+        _ => "Show/Hide Extracts"
+    };
+
+    public string ShowHideTransit => CurrentLanguage switch
+    {
+        AppLanguage.KO => "환승 표시/숨김",
+        AppLanguage.JA => "乗り換え表示/非表示",
+        _ => "Show/Hide Transit"
+    };
+
+    public string ShowHideQuests => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 표시/숨김",
+        AppLanguage.JA => "クエスト表示/非表示",
+        _ => "Show/Hide Quests"
+    };
+
+    public string Panel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "패널",
+        AppLanguage.JA => "パネル",
+        _ => "Panel"
+    };
+
+    public string QuestPanel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 패널",
+        AppLanguage.JA => "クエストパネル",
+        _ => "Quest Panel"
+    };
+
+    public string FloorChange => CurrentLanguage switch
+    {
+        AppLanguage.KO => "층 변경 (다층맵)",
+        AppLanguage.JA => "階層変更 (多層マップ)",
+        _ => "Floor Change (Multi-floor)"
+    };
+
+    // Footer
+    public string ResetAll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "초기화",
+        AppLanguage.JA => "リセット",
+        _ => "Reset"
+    };
+
+    public string ResetAllSettings => CurrentLanguage switch
+    {
+        AppLanguage.KO => "모든 설정 초기화",
+        AppLanguage.JA => "すべての設定をリセット",
+        _ => "Reset All Settings"
+    };
+
+    #endregion
+
+    #region Map Page - Status Bar
+
+    public string SelectMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵 선택",
+        AppLanguage.JA => "マップ選択",
+        _ => "Select Map"
+    };
+
+    public string CopyCoordinates => CurrentLanguage switch
+    {
+        AppLanguage.KO => "좌표 복사",
+        AppLanguage.JA => "座標コピー",
+        _ => "Copy Coordinates"
+    };
+
+    public string ShowAll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "전체 표시",
+        AppLanguage.JA => "すべて表示",
+        _ => "Show All"
+    };
+
+    public string HideAll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "전체 숨기기",
+        AppLanguage.JA => "すべて非表示",
+        _ => "Hide All"
+    };
+
+    public string ExpandAll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "전체 펼치기",
+        AppLanguage.JA => "すべて展開",
+        _ => "Expand All"
+    };
+
+    public string CollapseAll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "전체 접기",
+        AppLanguage.JA => "すべて折りたたむ",
+        _ => "Collapse All"
     };
 
     #endregion

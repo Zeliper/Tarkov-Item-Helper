@@ -18,17 +18,15 @@ namespace TarkovHelper;
 public partial class MainWindow : Window
 {
     private readonly LocalizationService _loc = LocalizationService.Instance;
-    private readonly WikiDataService _wikiService = WikiDataService.Instance;
     private readonly HideoutProgressService _hideoutProgressService = HideoutProgressService.Instance;
     private readonly SettingsService _settingsService = SettingsService.Instance;
     private readonly LogSyncService _logSyncService = LogSyncService.Instance;
     private bool _isLoading;
-    private bool _isRefreshing;
     private QuestListPage? _questListPage;
     private HideoutPage? _hideoutPage;
     private ItemsPage? _itemsPage;
     private CollectorPage? _collectorPage;
-    private MapTrackerPage? _mapTrackerPage;
+    private TestMapPage? _testMapPage;
     private List<HideoutModule>? _hideoutModules;
     private ObservableCollection<QuestChangeInfo>? _pendingSyncChanges;
     private bool _isFullScreen;
@@ -107,77 +105,17 @@ public partial class MainWindow : Window
 
         _isLoading = false;
 
-        // Check if data needs to be refreshed (tasks.json doesn't exist)
+        // Load and show quest data from DB
         await CheckAndRefreshDataAsync();
     }
 
     /// <summary>
-    /// Check if task data exists, if not run RefreshData automatically
+    /// Load and show quest data from DB
     /// </summary>
     private async Task CheckAndRefreshDataAsync()
     {
-        var tasksFilePath = Path.Combine(AppEnv.DataPath, "tasks.json");
-
-        if (!File.Exists(tasksFilePath))
-        {
-            await RefreshDataWithOverlayAsync();
-        }
-        else
-        {
-            // Data exists, load and show Quest List
-            await LoadAndShowQuestListAsync();
-        }
-    }
-
-    /// <summary>
-    /// Refresh data with loading overlay
-    /// </summary>
-    public async Task RefreshDataWithOverlayAsync()
-    {
-        if (_isRefreshing) return;
-        _isRefreshing = true;
-
-        ShowLoadingOverlay("Initializing...");
-
-        try
-        {
-            var tarkovService = TarkovDataService.Instance;
-            var result = await tarkovService.RefreshAllDataAsync(message =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    UpdateLoadingStatus(message);
-                });
-            });
-
-            if (result.Success)
-            {
-                await LoadAndShowQuestListAsync();
-            }
-            else
-            {
-                TxtWelcome.Text = $"Failed to load data: {result.ErrorMessage}";
-                MessageBox.Show(
-                    $"Failed to refresh data:\n{result.ErrorMessage}",
-                    "Data Refresh Error",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-            }
-        }
-        catch (Exception ex)
-        {
-            TxtWelcome.Text = "Failed to load data";
-            MessageBox.Show(
-                $"Error refreshing data:\n{ex.Message}",
-                "Error",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-        }
-        finally
-        {
-            HideLoadingOverlay();
-            _isRefreshing = false;
-        }
+        // Quest data is now bundled in tarkov_data.db, load directly
+        await LoadAndShowQuestListAsync();
     }
 
     /// <summary>
@@ -214,25 +152,82 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 마이그레이션 진행 상황 업데이트
+    /// </summary>
+    private void OnMigrationProgress(string message)
+    {
+        // BeginInvoke를 사용하여 비동기로 UI 업데이트 (데드락 방지)
+        Dispatcher.BeginInvoke(() => UpdateLoadingStatus(message));
+    }
+
+    /// <summary>
     /// Load task data and show Quest List page
     /// </summary>
     private async Task LoadAndShowQuestListAsync()
     {
-        var tarkovService = TarkovDataService.Instance;
         var progressService = QuestProgressService.Instance;
-        var apiService = TarkovDevApiService.Instance;
+        var userDataDb = UserDataDbService.Instance;
 
-        // Load tasks from JSON
-        var tasks = await tarkovService.LoadTasksFromJsonAsync();
+        List<TarkovTask>? tasks = null;
 
-        // Load hideout data from JSON
-        _hideoutModules = await apiService.LoadHideoutStationsFromJsonAsync();
+        // 마이그레이션 필요 여부 확인 및 진행 표시
+        bool needsMigration = userDataDb.NeedsMigration();
+        if (needsMigration)
+        {
+            ShowLoadingOverlay("데이터 마이그레이션 준비 중...");
+            userDataDb.MigrationProgress += OnMigrationProgress;
+        }
+
+        try
+        {
+            // DB에서 퀘스트 데이터 로드
+            if (await progressService.InitializeFromDbAsync())
+            {
+                tasks = progressService.AllTasks.ToList();
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] Loaded {tasks.Count} quests from DB");
+            }
+        }
+        finally
+        {
+            if (needsMigration)
+            {
+                userDataDb.MigrationProgress -= OnMigrationProgress;
+                HideLoadingOverlay();
+            }
+        }
+
+        // Load hideout data from DB
+        var hideoutDbService = HideoutDbService.Instance;
+        var hideoutLoaded = await hideoutDbService.LoadStationsAsync();
+        System.Diagnostics.Debug.WriteLine($"[MainWindow] Hideout DB loaded: {hideoutLoaded}, StationCount: {hideoutDbService.StationCount}");
+        if (hideoutLoaded)
+        {
+            _hideoutModules = hideoutDbService.AllStations.ToList();
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Hideout modules count: {_hideoutModules.Count}");
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Hideout loading failed. DB exists: {hideoutDbService.DatabaseExists}");
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[MainWindow] Tasks count: {tasks?.Count ?? 0}");
+
+        // Log diagnostic info to file
+        try
+        {
+            var logPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "startup_log.txt");
+            var logContent = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Startup Diagnostics\n" +
+                             $"  Hideout DB Loaded: {hideoutLoaded}\n" +
+                             $"  Hideout Stations: {hideoutDbService.StationCount}\n" +
+                             $"  Hideout Modules: {_hideoutModules?.Count ?? 0}\n" +
+                             $"  Tasks Count: {tasks?.Count ?? 0}\n" +
+                             $"  Database Path: {hideoutDbService.DatabaseExists}\n\n";
+            System.IO.File.AppendAllText(logPath, logContent);
+        }
+        catch { /* Ignore logging errors */ }
 
         if (tasks != null && tasks.Count > 0)
         {
-            // Initialize progress service with tasks
-            progressService.Initialize(tasks);
-
             // Initialize quest graph service for dependency tracking
             QuestGraphService.Instance.Initialize(tasks);
 
@@ -254,12 +249,15 @@ public partial class MainWindow : Window
                 _questListPage = new QuestListPage();
             }
 
+            // Debug: Show hideout module status
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Creating HideoutPage: modules={_hideoutModules?.Count ?? 0}");
             _hideoutPage = _hideoutModules != null && _hideoutModules.Count > 0
                 ? new HideoutPage()
                 : null;
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] HideoutPage created: {_hideoutPage != null}");
             _itemsPage = new ItemsPage();
             _collectorPage = new CollectorPage();
-            // MapTrackerPage is created lazily when the tab is selected
+            // TestMapPage is created lazily when the tab is selected
 
             // Show tab area with Quests selected
             TxtWelcome.Visibility = Visibility.Collapsed;
@@ -313,11 +311,11 @@ public partial class MainWindow : Window
         {
             PageContent.Content = _collectorPage;
         }
-        else if (sender == TabMapTracker)
+        else if (sender == TabTestMap)
         {
-            // Lazy creation of MapTrackerPage
-            _mapTrackerPage ??= new MapTrackerPage();
-            PageContent.Content = _mapTrackerPage;
+            // Lazy creation of TestMapPage
+            _testMapPage ??= new TestMapPage();
+            PageContent.Content = _testMapPage;
         }
     }
 
@@ -595,14 +593,6 @@ public partial class MainWindow : Window
         {
             // Ignore errors opening browser
         }
-    }
-
-    /// <summary>
-    /// Refresh data from API
-    /// </summary>
-    private async void BtnRefreshData_Click(object sender, RoutedEventArgs e)
-    {
-        await RefreshDataWithOverlayAsync();
     }
 
     /// <summary>
@@ -1706,19 +1696,11 @@ public partial class MainWindow : Window
                 Directory.Delete(cachePath, true);
             }
 
-            // Clear data files (except quest_progress.json, hideout_progress.json, settings.json)
+            // Clear data files (user data is now in Config/user_data.db, safe to delete all)
             var dataPath = AppEnv.DataPath;
             if (Directory.Exists(dataPath))
             {
-                var preserveFiles = new[] { "quest_progress.json", "hideout_progress.json", "settings.json" };
-                foreach (var file in Directory.GetFiles(dataPath))
-                {
-                    var fileName = Path.GetFileName(file);
-                    if (!preserveFiles.Contains(fileName, StringComparer.OrdinalIgnoreCase))
-                    {
-                        File.Delete(file);
-                    }
-                }
+                Directory.Delete(dataPath, true);
             }
 
             UpdateCacheSizeDisplay();
@@ -1726,22 +1708,17 @@ public partial class MainWindow : Window
             // Hide settings overlay
             HideSettingsOverlay();
 
-            // Ask if user wants to refresh data now
-            var refreshResult = MessageBox.Show(
+            // Show confirmation
+            MessageBox.Show(
                 _loc.CurrentLanguage switch
                 {
-                    AppLanguage.KO => "데이터가 삭제되었습니다.\n지금 새 데이터를 다운로드하시겠습니까?",
-                    AppLanguage.JA => "データが削除されました。\n今すぐ新しいデータをダウンロードしますか？",
-                    _ => "Data cleared.\nDownload new data now?"
+                    AppLanguage.KO => "캐시가 삭제되었습니다.",
+                    AppLanguage.JA => "キャッシュが削除されました。",
+                    _ => "Cache cleared."
                 },
-                _loc.CurrentLanguage switch { AppLanguage.KO => "데이터 새로고침", AppLanguage.JA => "データ更新", _ => "Refresh Data" },
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (refreshResult == MessageBoxResult.Yes)
-            {
-                await RefreshDataWithOverlayAsync();
-            }
+                _loc.CurrentLanguage switch { AppLanguage.KO => "완료", AppLanguage.JA => "完了", _ => "Done" },
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
@@ -1810,9 +1787,13 @@ public partial class MainWindow : Window
             return;
         }
 
-        // Load traders data asynchronously (cache it)
-        var apiService = TarkovDevApiService.Instance;
-        _cachedTraders = await apiService.LoadTradersFromJsonAsync();
+        // Load traders data from DB
+        var traderDbService = TraderDbService.Instance;
+        if (!traderDbService.IsLoaded)
+        {
+            await traderDbService.LoadTradersAsync();
+        }
+        _cachedTraders = traderDbService.AllTraders.ToList();
 
         // Initialize quest list
         LoadQuestSelectionList();

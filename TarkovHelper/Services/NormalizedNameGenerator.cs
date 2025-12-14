@@ -124,6 +124,41 @@ namespace TarkovHelper.Services
             if (!string.IsNullOrEmpty(normalized2) && !alternatives.Contains(normalized2))
                 alternatives.Add(normalized2);
 
+            // Alternative 3: For ammo - try without type suffix (NATO, M80, etc.)
+            // e.g., "7.62x51mm NATO" -> "762x51mm"
+            var ammoWithoutType = Regex.Replace(name, @"\s+(NATO|M\d+|FMJ|HP|AP|SP|BT|T|PS|PP|BP|BS|BT|US|PRS|SNB|LPS|MAI|PMM|RIP|Quakemaker|Warmage|Action\s*SX|Luger\s*CCI|Green\s*Tracer|Red\s*Tracer|Tracer)$", "", RegexOptions.IgnoreCase);
+            var normalized3 = Generate(ammoWithoutType);
+            if (!string.IsNullOrEmpty(normalized3) && !alternatives.Contains(normalized3))
+                alternatives.Add(normalized3);
+
+            // Alternative 4: Try with "mm" removed for caliber matching
+            // e.g., "762x51mm" -> "762x51"
+            var withoutMm = primary.Replace("mm", "");
+            if (!string.IsNullOrEmpty(withoutMm) && !alternatives.Contains(withoutMm))
+                alternatives.Add(withoutMm);
+
+            // Alternative 5: Handle dogtag name variations
+            // "BEAR Dogtag" -> "dogtag-bear", "bear-dogtag"
+            if (name.Contains("Dogtag", StringComparison.OrdinalIgnoreCase) ||
+                name.Contains("Dog tag", StringComparison.OrdinalIgnoreCase))
+            {
+                var dogtag1 = "dogtag-bear";
+                var dogtag2 = "dogtag-usec";
+                var dogtag3 = "bear-dogtag";
+                var dogtag4 = "usec-dogtag";
+
+                if (name.Contains("BEAR", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!alternatives.Contains(dogtag1)) alternatives.Add(dogtag1);
+                    if (!alternatives.Contains(dogtag3)) alternatives.Add(dogtag3);
+                }
+                if (name.Contains("USEC", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!alternatives.Contains(dogtag2)) alternatives.Add(dogtag2);
+                    if (!alternatives.Contains(dogtag4)) alternatives.Add(dogtag4);
+                }
+            }
+
             return alternatives;
         }
 

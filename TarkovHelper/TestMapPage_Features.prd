@@ -1,0 +1,996 @@
+# TestMapPage 기능 구현 PRD (개선판)
+
+## 1. 기존 MapTrackerPage 문제점 분석
+
+### 1.1 코드 구조 문제
+| 문제 | 설명 | 영향 |
+|------|------|------|
+| **거대한 단일 파일** | 4,772줄의 단일 파일 | 유지보수 어려움, 가독성 저하 |
+| **이중 데이터 소스** | TarkovMarket (레거시) + DB 마커 병행 | 중복 코드, 복잡한 분기 |
+| **미구현 기능** | RefreshQuestMarkers(), RefreshQuestDrawer()에 TODO만 존재 | 퀘스트 마커 실제로 동작 안함 |
+| **좌표 변환 복잡** | 여러 변환 경로 (레거시 + 신규) | 버그 발생 원인 |
+
+### 1.2 기능별 문제점
+
+#### 퀘스트 마커 (라인 1575-2894)
+```csharp
+// 현재 MapTrackerPage의 RefreshQuestMarkers() - 실제로 비어있음!
+private void RefreshQuestMarkers()
+{
+    // ...
+    // TODO: 퀘스트 마커는 DB의 QuestObjectives 테이블에서 로드하도록 구현 필요
+    // 현재는 퀘스트 마커 표시 안함
+}
+```
+**문제**: 퀘스트 마커가 실제로 표시되지 않음 (TODO 상태)
+
+#### 퀘스트 Drawer (라인 2894-3091)
+```csharp
+// RefreshQuestDrawer()도 빈 목록 반환
+var viewModels = new List<QuestObjectiveViewModel>();  // 항상 빈 목록!
+```
+**문제**: Drawer에 아무 내용도 표시되지 않음
+
+#### 마커 생성 메서드 중복
+- `CreateQuestMarker()` - TaskObjectiveWithLocation용
+- `CreateTarkovMarketQuestMarker()` - TarkovMarketMarker용
+- `CreateDbExtractMarker()` - DB 탈출구용
+- `CreateTarkovMarketExtractMarker()` - 레거시 탈출구용
+- `CreateDbTransitMarker()` - DB 트랜짓용
+- `CreateTarkovMarketTransitMarker()` - 레거시 트랜짓용
+
+**문제**: 동일한 렌더링 로직이 6개 메서드에 분산
+
+#### 좌표 변환 복잡성
+```csharp
+// 여러 서비스에서 각각 다른 방식으로 변환
+_dbMarkerService.GetMarkerScreenCoords(marker);           // DB 마커용
+_tmMarkerService.GetMarkerScreenCoords(marker, config);   // TarkovMarket용
+config.GameToScreenCoords(gameX, gameZ);                  // 직접 변환
+```
+**문제**: 좌표 변환 방식이 통일되지 않아 위치 불일치 발생
+
+---
+
+## 2. 개선 방향
+
+### 2.1 아키텍처 개선
+
+#### Before (MapTrackerPage)
+```
+MapTrackerPage.xaml.cs (4,772 lines)
+├── 맵 표시
+├── 플레이어 추적
+├── 퀘스트 마커 (미구현)
+├── 탈출구 마커 (DB + 레거시)
+├── 트랜짓 마커 (DB + 레거시)
+├── 퀘스트 Drawer (미구현)
+├── 설정 패널
+└── 줌/패닝
+```
+
+#### After (TestMapPage)
+```
+TestMapPage.xaml.cs (예상 800-1000 lines)
+├── 맵 표시 (완료)
+├── 줌/패닝 (완료)
+├── 마커 표시 (통합 시스템)
+└── UI 이벤트 핸들링
+
+Services/
+├── UnifiedMarkerRenderer.cs (신규) - 마커 렌더링 통합
+└── QuestMarkerService.cs (신규) - 퀘스트 마커 전용
+
+Components/ (필요시)
+├── QuestDrawerControl.xaml - Drawer UI 분리
+└── MarkerTooltipControl.xaml - 툴팁 UI 분리
+```
+
+### 2.2 핵심 개선 사항
+
+| 항목 | 기존 | 개선 |
+|------|------|------|
+| 데이터 소스 | TarkovMarket + DB 병행 | **DB 단일 소스** |
+| 좌표 변환 | 여러 경로 | **DbMapConfig.GameToScreen() 단일화** |
+| 마커 렌더링 | 타입별 별도 메서드 | **통합 렌더러** |
+| 퀘스트 마커 | 미구현 (TODO) | **실제 구현** |
+| 퀘스트 Drawer | 미구현 | **실제 구현** |
+
+---
+
+## 3. Phase별 구현 계획
+
+### Phase 1: 기본 맵 뷰어 ✅ 완료
+- [x] SvgViewbox + Stretch="None"
+- [x] DbMapConfig 기반 크기 설정
+- [x] 줌/패닝
+- [x] 층 선택
+- [x] 탈출구 마커 (DB)
+- [x] 트랜짓 마커 (DB)
+
+### Phase 2: 퀘스트 마커 시스템 (신규 구현)
+
+#### 2.1 데이터 구조 정의
+```csharp
+/// <summary>
+/// 통합 마커 데이터 - 모든 마커 타입의 공통 인터페이스
+/// </summary>
+public interface IMapMarkerData
+{
+    string Id { get; }
+    string Name { get; }
+    string? NameKo { get; }
+    double GameX { get; }
+    double GameZ { get; }
+    string? FloorId { get; }
+    MarkerCategory Category { get; }  // Extract, Transit, Quest
+}
+
+public enum MarkerCategory
+{
+    Extract,    // 탈출구
+    Transit,    // 트랜짓
+    Quest       // 퀘스트 목표
+}
+
+public enum QuestObjectiveType
+{
+    Visit,      // 방문
+    Mark,       // 마킹
+    Plant,      // 설치
+    Extract,    // 탈출
+    Find,       // 획득
+    Kill,       // 처치
+    Other       // 기타
+}
+```
+
+#### 2.2 통합 마커 렌더러
+```csharp
+/// <summary>
+/// 모든 마커 타입을 렌더링하는 통합 클래스
+/// </summary>
+public class UnifiedMarkerRenderer
+{
+    private readonly DbMapConfig _mapConfig;
+    private readonly double _zoomLevel;
+
+    public FrameworkElement CreateMarker(IMapMarkerData marker, MarkerStyle style)
+    {
+        // 1. 좌표 변환 (단일 방식)
+        var (screenX, screenY) = _mapConfig.GameToScreen(marker.GameX, marker.GameZ);
+
+        // 2. 카테고리별 스타일 적용
+        var color = GetMarkerColor(marker);
+        var icon = GetMarkerIcon(marker);
+
+        // 3. 캔버스 생성 및 요소 추가
+        return BuildMarkerCanvas(screenX, screenY, color, icon, marker.Name);
+    }
+}
+```
+
+#### 2.3 퀘스트 목표 데이터 로드
+**데이터 소스 선택**:
+- Option A: `QuestObjectiveService` (tarkov.dev API) - 위치 정보 있음
+- Option B: `tarkov_data.db`의 `QuestObjectives` 테이블 - DB 에디터에서 편집 가능
+- **선택: Option A** - 이미 구현되어 있고 위치 데이터 포함
+
+```csharp
+// 퀘스트 목표 로드
+private async Task LoadQuestMarkersAsync()
+{
+    var questService = QuestObjectiveService.Instance;
+    if (!questService.IsLoaded)
+    {
+        await questService.LoadAsync();
+    }
+
+    // 현재 맵의 목표만 필터링
+    _questObjectives = questService.GetObjectivesForMap(_currentMapConfig.Key);
+}
+```
+
+#### 2.4 퀘스트 마커 색상 체계
+```csharp
+private static readonly Dictionary<QuestObjectiveType, Color> QuestColors = new()
+{
+    { QuestObjectiveType.Visit,   Color.FromRgb(33, 150, 243) },   // 파랑 #2196F3
+    { QuestObjectiveType.Mark,    Color.FromRgb(76, 175, 80) },    // 초록 #4CAF50
+    { QuestObjectiveType.Plant,   Color.FromRgb(255, 152, 0) },    // 주황 #FF9800
+    { QuestObjectiveType.Extract, Color.FromRgb(244, 67, 54) },    // 빨강 #F44336
+    { QuestObjectiveType.Find,    Color.FromRgb(255, 235, 59) },   // 노랑 #FFEB3B
+    { QuestObjectiveType.Kill,    Color.FromRgb(156, 39, 176) },   // 보라 #9C27B0
+    { QuestObjectiveType.Other,   Color.FromRgb(158, 158, 158) },  // 회색 #9E9E9E
+};
+```
+
+#### 2.5 완료 상태 연동
+```csharp
+private readonly QuestProgressService _progressService = QuestProgressService.Instance;
+
+private bool IsObjectiveCompleted(TaskObjectiveWithLocation objective)
+{
+    // 목표 ID로 완료 상태 확인
+    return _progressService.IsObjectiveCompleted(objective.ObjectiveId);
+}
+
+private void OnObjectiveCheckChanged(string objectiveId, bool isCompleted)
+{
+    if (isCompleted)
+        _progressService.MarkObjectiveCompleted(objectiveId);
+    else
+        _progressService.MarkObjectiveIncomplete(objectiveId);
+}
+```
+
+### Phase 3: 퀘스트 Drawer (실제 구현)
+
+#### 3.1 Drawer UI 구조
+```xml
+<!-- 간결한 Drawer 구조 -->
+<Border x:Name="QuestDrawerPanel" Width="300" Visibility="Collapsed">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- 헤더 -->
+            <RowDefinition Height="Auto"/>  <!-- 필터 -->
+            <RowDefinition Height="*"/>     <!-- 목록 -->
+        </Grid.RowDefinitions>
+
+        <!-- 헤더: 제목 + 진행률 -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="Quest Objectives"/>
+            <ProgressBar Value="{Binding CompletionPercent}"/>
+        </StackPanel>
+
+        <!-- 필터: 간소화 -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal">
+            <ToggleButton Content="미완료만" IsChecked="{Binding ShowIncompleteOnly}"/>
+            <ToggleButton Content="현재 맵만" IsChecked="{Binding CurrentMapOnly}"/>
+        </StackPanel>
+
+        <!-- 목록: 가상화 적용 -->
+        <ListView Grid.Row="2"
+                  ItemsSource="{Binding FilteredObjectives}"
+                  VirtualizingPanel.IsVirtualizing="True">
+            <!-- ... -->
+        </ListView>
+    </Grid>
+</Border>
+```
+
+#### 3.2 필터 간소화
+**기존 (MapTrackerPage)**: 6개 필터 옵션
+- 상태 (전체/미완료/완료)
+- 타입 (전체/방문/마크/설치/탈출/획득)
+- 현재 맵만
+- 그룹화
+
+**개선 (TestMapPage)**: 3개 토글
+- [ ] 미완료만 보기
+- [ ] 현재 맵만 보기
+- [ ] 퀘스트별 그룹화
+
+#### 3.3 목표 클릭 → 맵 포커스
+```csharp
+private void OnObjectiveSelected(TaskObjectiveWithLocation objective)
+{
+    if (objective.Position == null) return;
+
+    // 화면 좌표 계산
+    var (screenX, screenY) = _currentMapConfig.GameToScreen(
+        objective.Position.X,
+        objective.Position.Z);
+
+    // 해당 위치로 맵 이동 (애니메이션)
+    AnimateToPosition(screenX, screenY, targetZoom: 2.0);
+}
+
+private void AnimateToPosition(double x, double y, double targetZoom)
+{
+    // 부드러운 이동 애니메이션
+    var duration = TimeSpan.FromMilliseconds(300);
+
+    var translateXAnim = new DoubleAnimation(
+        MapTranslate.X,
+        CalculateTranslateX(x, targetZoom),
+        duration);
+    var translateYAnim = new DoubleAnimation(
+        MapTranslate.Y,
+        CalculateTranslateY(y, targetZoom),
+        duration);
+
+    MapTranslate.BeginAnimation(TranslateTransform.XProperty, translateXAnim);
+    MapTranslate.BeginAnimation(TranslateTransform.YProperty, translateYAnim);
+}
+```
+
+### Phase 4: 플레이어 추적 (선택)
+
+**구현 여부**: 별도 검토 필요
+- 장점: 실시간 위치 추적
+- 단점: 스크린샷 폴더 설정 필요, 간접적 방식
+
+**구현 시 개선점**:
+1. 설정 UI 간소화
+2. 자동 폴더 탐지 개선
+3. Trail 경로 최적화 (점 개수 제한)
+
+---
+
+## 4. 추천 구현 순서 (상세)
+
+### Overview: 의존성 기반 구현 흐름
+```
+[Phase 1 완료] 기본 맵 뷰어
+       ↓
+[Step 1] 퀘스트 데이터 로드 ← 기반
+       ↓
+[Step 2] 퀘스트 마커 표시 ← 핵심 기능
+       ↓
+[Step 3] 마커 필터 + 토글 ← UX 개선
+       ↓
+[Step 4] 마커 상호작용 ← 사용성
+       ↓
+[Step 5] 퀘스트 Drawer ← 고급 기능
+       ↓
+[Step 6] 설정 저장/로드 ← 마무리
+```
+
+---
+
+### Step 1: 퀘스트 데이터 로드 (기반)
+**목표**: QuestObjectiveService 연동 및 데이터 준비
+**예상 시간**: 30분
+**난이도**: ★☆☆☆☆
+
+#### 1.1 서비스 필드 추가
+```csharp
+// TestMapPage.xaml.cs 상단에 추가
+private readonly QuestObjectiveService _questService = QuestObjectiveService.Instance;
+private readonly QuestProgressService _progressService = QuestProgressService.Instance;
+private List<TaskObjectiveWithLocation> _currentMapQuestObjectives = new();
+private bool _showQuestMarkers = true;
+```
+
+#### 1.2 데이터 로드 메서드
+```csharp
+private async Task LoadQuestDataAsync()
+{
+    try
+    {
+        StatusText.Text = "Loading quest objectives...";
+
+        // 캐시 또는 API에서 로드
+        if (!_questService.IsLoaded)
+        {
+            await _questService.LoadAsync();
+        }
+
+        StatusText.Text = $"Loaded {_questService.AllObjectives.Count} quest objectives";
+    }
+    catch (Exception ex)
+    {
+        StatusText.Text = $"Quest data load failed: {ex.Message}";
+    }
+}
+```
+
+#### 1.3 Loaded 이벤트에서 호출
+```csharp
+private async void TestMapPage_Loaded(object sender, RoutedEventArgs e)
+{
+    // 기존 코드...
+
+    // 퀘스트 데이터 로드 추가
+    await LoadQuestDataAsync();
+}
+```
+
+#### 1.4 완료 조건
+- [ ] `_questService.IsLoaded == true`
+- [ ] `_questService.AllObjectives.Count > 0`
+- [ ] StatusText에 로드된 개수 표시
+
+---
+
+### Step 2: 퀘스트 마커 표시 (핵심)
+**목표**: 맵에 퀘스트 목표 마커 렌더링
+**예상 시간**: 1-2시간
+**난이도**: ★★★☆☆
+
+#### 2.1 XAML - QuestMarkersCanvas 추가
+```xml
+<!-- MapCanvas 내부, TransitCanvas 다음에 추가 -->
+<Canvas x:Name="QuestMarkersCanvas"/>
+```
+
+#### 2.2 현재 맵 목표 필터링
+```csharp
+private void UpdateCurrentMapQuestObjectives()
+{
+    _currentMapQuestObjectives.Clear();
+
+    if (_currentMapConfig == null || !_questService.IsLoaded) return;
+
+    // 맵 키로 필터링 (별칭 포함)
+    var mapKey = _currentMapConfig.Key.ToLowerInvariant();
+    _currentMapQuestObjectives = _questService.GetActiveObjectivesForMap(
+        mapKey,
+        _progressService);
+}
+```
+
+#### 2.3 마커 렌더링 메서드
+```csharp
+private void RefreshQuestMarkers()
+{
+    QuestMarkersCanvas.Children.Clear();
+
+    if (!_showQuestMarkers || _currentMapConfig == null) return;
+
+    UpdateCurrentMapQuestObjectives();
+
+    var inverseScale = 1.0 / _zoomLevel;
+
+    foreach (var objective in _currentMapQuestObjectives)
+    {
+        // 위치가 있는 목표만 처리
+        foreach (var location in objective.Locations)
+        {
+            // 맵 일치 확인
+            if (!IsLocationOnCurrentMap(location)) continue;
+
+            // 좌표 변환 (DB Editor 방식)
+            var screenCoords = _currentMapConfig.GameToScreen(location.X, location.Z);
+            if (screenCoords == null) continue;
+
+            var (sx, sy) = screenCoords.Value;
+
+            // 마커 생성
+            var marker = CreateQuestMarkerElement(objective, location, sx, sy, inverseScale);
+            QuestMarkersCanvas.Children.Add(marker);
+        }
+    }
+
+    // 카운트 업데이트
+    UpdateQuestMarkerCount();
+}
+```
+
+#### 2.4 마커 요소 생성
+```csharp
+private FrameworkElement CreateQuestMarkerElement(
+    TaskObjectiveWithLocation objective,
+    QuestObjectiveLocation location,
+    double screenX,
+    double screenY,
+    double inverseScale)
+{
+    // 타입별 색상
+    var color = GetQuestTypeColor(objective.Type);
+    var markerSize = 32 * inverseScale;
+
+    var canvas = new Canvas { Width = 0, Height = 0, Tag = objective };
+
+    // 외곽 글로우
+    var glow = new Ellipse
+    {
+        Width = markerSize * 1.5,
+        Height = markerSize * 1.5,
+        Fill = new SolidColorBrush(Color.FromArgb(64, color.R, color.G, color.B))
+    };
+    Canvas.SetLeft(glow, -markerSize * 0.75);
+    Canvas.SetTop(glow, -markerSize * 0.75);
+    canvas.Children.Add(glow);
+
+    // 중심 원
+    var center = new Ellipse
+    {
+        Width = markerSize,
+        Height = markerSize,
+        Fill = new SolidColorBrush(color),
+        Stroke = Brushes.White,
+        StrokeThickness = 2 * inverseScale
+    };
+    Canvas.SetLeft(center, -markerSize / 2);
+    Canvas.SetTop(center, -markerSize / 2);
+    canvas.Children.Add(center);
+
+    // 위치 설정
+    Canvas.SetLeft(canvas, screenX);
+    Canvas.SetTop(canvas, screenY);
+
+    return canvas;
+}
+
+private Color GetQuestTypeColor(string type)
+{
+    return type.ToLowerInvariant() switch
+    {
+        "visit" => Color.FromRgb(33, 150, 243),    // 파랑
+        "mark" => Color.FromRgb(76, 175, 80),      // 초록
+        "plantitem" => Color.FromRgb(255, 152, 0), // 주황
+        "extract" => Color.FromRgb(244, 67, 54),   // 빨강
+        "finditem" or "findquestitem" => Color.FromRgb(255, 235, 59), // 노랑
+        "kill" or "shoot" => Color.FromRgb(156, 39, 176), // 보라
+        _ => Color.FromRgb(158, 158, 158)          // 회색
+    };
+}
+```
+
+#### 2.5 맵 변경 시 새로고침
+```csharp
+// MapSelector_SelectionChanged에 추가
+RefreshQuestMarkers();
+```
+
+#### 2.6 Multi-Point Objective 렌더링 (TarkovDBEditor 방식)
+
+퀘스트 목표 중 LocationPoints가 여러 개인 경우, 단순 마커가 아닌 **지역(Area)**으로 표시합니다.
+TarkovDBEditor의 `MapPreviewWindow.xaml.cs` RedrawObjectives() 방식을 사용합니다.
+
+**렌더링 규칙:**
+| 포인트 수 | 렌더링 방식 | 설명 |
+|----------|------------|------|
+| 3개 이상 | **Polygon** | 채워진 영역 + 점선 테두리 |
+| 2개 | **Line** | 두 점을 잇는 선 |
+| 1개 | **Diamond Marker** | 마름모 마커 |
+
+```csharp
+private void RenderQuestObjectiveArea(
+    List<QuestObjectiveLocation> locations,
+    Color objectiveColor,
+    double inverseScale,
+    string? currentFloorId)
+{
+    // 현재 층의 포인트만 필터링
+    var currentFloorPoints = locations
+        .Where(p => string.IsNullOrEmpty(currentFloorId) || p.FloorId == currentFloorId)
+        .ToList();
+
+    // 다른 층의 포인트 (페이드 처리)
+    var otherFloorPoints = locations
+        .Where(p => !string.IsNullOrEmpty(currentFloorId) && p.FloorId != currentFloorId)
+        .ToList();
+
+    // 1. 3개 이상: Polygon (채워진 영역)
+    if (currentFloorPoints.Count >= 3)
+    {
+        var polygon = new Polygon
+        {
+            Fill = new SolidColorBrush(Color.FromArgb(60, objectiveColor.R, objectiveColor.G, objectiveColor.B)),
+            Stroke = new SolidColorBrush(objectiveColor),
+            StrokeThickness = 2 * inverseScale,
+            StrokeDashArray = new DoubleCollection { 4, 2 }  // 점선
+        };
+
+        foreach (var point in currentFloorPoints)
+        {
+            var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+            polygon.Points.Add(new Point(sx, sy));
+        }
+
+        QuestMarkersCanvas.Children.Add(polygon);
+
+        // Centroid에 라벨 추가
+        var centroid = CalculateCentroid(currentFloorPoints);
+        AddAreaLabel(centroid, objective.TaskName, objectiveColor, inverseScale);
+    }
+    // 2. 2개: Line
+    else if (currentFloorPoints.Count == 2)
+    {
+        var p1 = _currentMapConfig.GameToScreen(currentFloorPoints[0].X, currentFloorPoints[0].Z);
+        var p2 = _currentMapConfig.GameToScreen(currentFloorPoints[1].X, currentFloorPoints[1].Z);
+
+        var line = new Line
+        {
+            X1 = p1.screenX, Y1 = p1.screenY,
+            X2 = p2.screenX, Y2 = p2.screenY,
+            Stroke = new SolidColorBrush(objectiveColor),
+            StrokeThickness = 3 * inverseScale,
+            StrokeDashArray = new DoubleCollection { 4, 2 }
+        };
+
+        QuestMarkersCanvas.Children.Add(line);
+    }
+    // 3. 1개: Diamond Marker
+    else if (currentFloorPoints.Count == 1)
+    {
+        var (sx, sy) = _currentMapConfig.GameToScreen(currentFloorPoints[0].X, currentFloorPoints[0].Z);
+        var marker = CreateDiamondMarker(sx, sy, objectiveColor, inverseScale);
+        QuestMarkersCanvas.Children.Add(marker);
+    }
+
+    // 다른 층의 포인트는 페이드 처리 (opacity 0.3)
+    foreach (var point in otherFloorPoints)
+    {
+        var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+        var fadedMarker = CreateDiamondMarker(sx, sy, objectiveColor, inverseScale);
+        fadedMarker.Opacity = 0.3;
+        QuestMarkersCanvas.Children.Add(fadedMarker);
+    }
+}
+
+/// <summary>
+/// Polygon 중심점 계산 (라벨 위치용)
+/// </summary>
+private (double X, double Z) CalculateCentroid(List<QuestObjectiveLocation> points)
+{
+    var avgX = points.Average(p => p.X);
+    var avgZ = points.Average(p => p.Z);
+    return (avgX, avgZ);
+}
+
+/// <summary>
+/// 마름모 마커 생성 (단일 포인트용)
+/// </summary>
+private FrameworkElement CreateDiamondMarker(double screenX, double screenY, Color color, double inverseScale)
+{
+    var size = 12 * inverseScale;
+
+    var diamond = new Polygon
+    {
+        Points = new PointCollection
+        {
+            new Point(0, -size),      // 상단
+            new Point(size, 0),       // 우측
+            new Point(0, size),       // 하단
+            new Point(-size, 0)       // 좌측
+        },
+        Fill = new SolidColorBrush(color),
+        Stroke = Brushes.White,
+        StrokeThickness = 1.5 * inverseScale
+    };
+
+    Canvas.SetLeft(diamond, screenX);
+    Canvas.SetTop(diamond, screenY);
+
+    return diamond;
+}
+```
+
+**OptionalPoints 처리:**
+- QuestObjectives 테이블에는 `LocationPoints` 외에 `OptionalPoints`도 존재
+- OptionalPoints는 동일한 방식으로 렌더링하되, 다른 색상(예: 주황색)으로 구분
+
+```csharp
+// OptionalPoints 렌더링 (선택적 지역)
+if (objective.OptionalPoints?.Count > 0)
+{
+    var optionalColor = Color.FromRgb(255, 152, 0);  // 주황색
+    RenderQuestObjectiveArea(objective.OptionalPoints, optionalColor, inverseScale, currentFloorId);
+}
+```
+
+#### 2.7 완료 조건
+- [ ] 맵에 퀘스트 마커가 표시됨
+- [ ] 타입별로 다른 색상 적용
+- [ ] 맵 변경 시 마커 갱신
+- [ ] 줌 시 마커 크기 유지
+- [ ] **3개+ 포인트: Polygon 영역으로 표시**
+- [ ] **2개 포인트: Line으로 표시**
+- [ ] **1개 포인트: Diamond 마커로 표시**
+- [ ] **다른 층 포인트: 페이드 처리 (opacity 0.3)**
+
+---
+
+### Step 3: 마커 필터 + 토글 (UX)
+**목표**: 마커 표시 제어 및 완료 상태 표시
+**예상 시간**: 1시간
+**난이도**: ★★☆☆☆
+
+#### 3.1 XAML - 체크박스 추가
+```xml
+<!-- 상단 컨트롤에 추가 -->
+<CheckBox x:Name="ChkShowQuestMarkers" Content="Quests" Foreground="#FFC107"
+          IsChecked="True" VerticalAlignment="Center" Margin="0,0,12,0"
+          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed"/>
+```
+
+#### 3.2 완료된 목표 표시 스타일
+```csharp
+// CreateQuestMarkerElement에 추가
+var isCompleted = _progressService.IsObjectiveCompleted(objective.ObjectiveId);
+
+if (isCompleted)
+{
+    // 반투명 처리
+    canvas.Opacity = 0.4;
+
+    // 체크마크 추가
+    var checkMark = new TextBlock
+    {
+        Text = "✓",
+        FontSize = markerSize * 0.6,
+        FontWeight = FontWeights.Bold,
+        Foreground = Brushes.White
+    };
+    checkMark.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+    Canvas.SetLeft(checkMark, -checkMark.DesiredSize.Width / 2);
+    Canvas.SetTop(checkMark, -checkMark.DesiredSize.Height / 2);
+    canvas.Children.Add(checkMark);
+}
+```
+
+#### 3.3 완료 마커 숨기기 옵션
+```csharp
+private bool _hideCompletedQuestMarkers = false;
+
+// RefreshQuestMarkers()에서 필터링
+if (_hideCompletedQuestMarkers && _progressService.IsObjectiveCompleted(objective.ObjectiveId))
+    continue;
+```
+
+#### 3.4 StatusBar에 카운트 추가
+```xml
+<TextBlock Text="  |  Quests: " Foreground="#FFC107" Margin="10,0,0,0"/>
+<TextBlock x:Name="QuestMarkerCountText" Text="0" Foreground="#FFC107" FontWeight="Bold"/>
+```
+
+#### 3.5 완료 조건
+- [ ] 체크박스로 퀘스트 마커 토글 가능
+- [ ] 완료된 목표는 체크마크 + 반투명
+- [ ] StatusBar에 마커 개수 표시
+
+---
+
+### Step 4: 마커 상호작용 (사용성)
+**목표**: 클릭, 툴팁, 층 필터링
+**예상 시간**: 1시간
+**난이도**: ★★☆☆☆
+
+#### 4.1 툴팁 추가
+```csharp
+// CreateQuestMarkerElement에 추가
+var questName = !string.IsNullOrEmpty(objective.TaskNameKo)
+    ? objective.TaskNameKo
+    : objective.TaskName;
+var description = !string.IsNullOrEmpty(objective.DescriptionKo)
+    ? objective.DescriptionKo
+    : objective.Description;
+
+canvas.ToolTip = $"{questName}\n{description}";
+canvas.Cursor = Cursors.Hand;
+```
+
+#### 4.2 클릭 이벤트
+```csharp
+canvas.MouseLeftButtonDown += QuestMarker_Click;
+
+private void QuestMarker_Click(object sender, MouseButtonEventArgs e)
+{
+    if (sender is Canvas canvas && canvas.Tag is TaskObjectiveWithLocation objective)
+    {
+        // TODO: 상세 정보 표시 또는 Drawer 열기
+        MessageBox.Show($"Quest: {objective.TaskName}\n{objective.Description}",
+            "Quest Objective", MessageBoxButton.OK, MessageBoxImage.Information);
+        e.Handled = true;
+    }
+}
+```
+
+#### 4.3 층 필터링
+```csharp
+// RefreshQuestMarkers()에서 층 확인
+if (_sortedFloors != null && _currentFloorId != null)
+{
+    // 층 정보가 있으면 필터링
+    // (location에 FloorId가 없으면 모든 층에 표시)
+    // opacity로 구분
+}
+```
+
+#### 4.4 완료 조건
+- [ ] 마커에 마우스 오버 시 툴팁 표시
+- [ ] 마커 클릭 시 정보 표시
+- [ ] 다른 층의 마커는 반투명 표시
+
+---
+
+### Step 5: 퀘스트 Drawer (고급)
+**목표**: 사이드바에 퀘스트 목표 리스트
+**예상 시간**: 2-3시간
+**난이도**: ★★★★☆
+
+#### 5.1 Grid 레이아웃 변경
+```xml
+<Grid>
+    <Grid.ColumnDefinitions>
+        <ColumnDefinition x:Name="QuestDrawerColumn" Width="0"/>
+        <ColumnDefinition Width="*"/>
+    </Grid.ColumnDefinitions>
+
+    <!-- Quest Drawer (왼쪽) -->
+    <Border x:Name="QuestDrawerPanel" Grid.Column="0"
+            Background="{StaticResource BackgroundMediumBrush}"
+            Visibility="Collapsed">
+        <!-- Drawer 내용 -->
+    </Border>
+
+    <!-- Map Viewer (오른쪽) -->
+    <Grid Grid.Column="1">
+        <!-- 기존 맵 뷰어 내용 -->
+    </Grid>
+</Grid>
+```
+
+#### 5.2 Drawer 내용
+```xml
+<Grid>
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+    </Grid.RowDefinitions>
+
+    <!-- 헤더 -->
+    <Border Grid.Row="0" Padding="12,8" Background="{StaticResource BackgroundDarkBrush}">
+        <Grid>
+            <TextBlock Text="Quest Objectives" FontWeight="Bold"
+                       Foreground="{StaticResource TextPrimaryBrush}"/>
+            <Button Content="✕" HorizontalAlignment="Right"
+                    Click="BtnCloseDrawer_Click"/>
+        </Grid>
+    </Border>
+
+    <!-- 필터 -->
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="12,8">
+        <CheckBox x:Name="ChkIncompleteOnly" Content="미완료만"
+                  Foreground="{StaticResource TextSecondaryBrush}"
+                  Checked="DrawerFilter_Changed" Unchecked="DrawerFilter_Changed"/>
+        <CheckBox x:Name="ChkCurrentMapOnly" Content="현재 맵만" IsChecked="True"
+                  Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,0,0"
+                  Checked="DrawerFilter_Changed" Unchecked="DrawerFilter_Changed"/>
+    </StackPanel>
+
+    <!-- 목표 리스트 -->
+    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <ItemsControl x:Name="QuestObjectivesList">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <!-- 목표 아이템 템플릿 -->
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </ScrollViewer>
+</Grid>
+```
+
+#### 5.3 Drawer 토글
+```csharp
+private void ToggleQuestDrawer()
+{
+    if (QuestDrawerPanel.Visibility == Visibility.Visible)
+    {
+        QuestDrawerColumn.Width = new GridLength(0);
+        QuestDrawerPanel.Visibility = Visibility.Collapsed;
+    }
+    else
+    {
+        QuestDrawerColumn.Width = new GridLength(300);
+        QuestDrawerPanel.Visibility = Visibility.Visible;
+        RefreshQuestDrawer();
+    }
+}
+```
+
+#### 5.4 목표 클릭 → 맵 포커스
+```csharp
+private void OnDrawerObjectiveClick(TaskObjectiveWithLocation objective)
+{
+    if (objective.Locations.Count == 0) return;
+
+    var location = objective.Locations[0];
+    var screenCoords = _currentMapConfig?.GameToScreen(location.X, location.Z);
+    if (screenCoords == null) return;
+
+    // 해당 위치로 이동 + 줌
+    AnimateToPosition(screenCoords.Value.screenX, screenCoords.Value.screenY);
+}
+```
+
+#### 5.5 완료 조건
+- [ ] Drawer 열기/닫기 동작
+- [ ] 목표 리스트 표시
+- [ ] 필터 동작 (미완료만, 현재맵만)
+- [ ] 목표 클릭 시 맵 포커스 이동
+
+---
+
+### Step 6: 설정 저장/로드 (마무리)
+**목표**: 사용자 설정 유지
+**예상 시간**: 30분
+**난이도**: ★☆☆☆☆
+
+#### 6.1 설정 항목
+```csharp
+// 저장할 설정
+- ShowQuestMarkers (bool)
+- HideCompletedQuestMarkers (bool)
+- DrawerIncompleteOnly (bool)
+- DrawerCurrentMapOnly (bool)
+```
+
+#### 6.2 JSON 저장
+```csharp
+private void SaveTestMapSettings()
+{
+    var settings = new
+    {
+        ShowQuestMarkers = _showQuestMarkers,
+        HideCompletedQuestMarkers = _hideCompletedQuestMarkers
+        // ...
+    };
+
+    var json = JsonSerializer.Serialize(settings);
+    File.WriteAllText(GetSettingsPath(), json);
+}
+```
+
+#### 6.3 완료 조건
+- [ ] 앱 종료 시 설정 저장
+- [ ] 앱 시작 시 설정 로드
+- [ ] 설정 변경 즉시 적용
+
+---
+
+## 5. 구현 체크리스트
+
+### 필수 (MVP)
+- [x] **Step 1**: 퀘스트 데이터 로드 ✅
+- [x] **Step 2**: 퀘스트 마커 표시 ✅
+- [x] **Step 3**: 마커 필터 + 토글 ✅
+
+### 권장
+- [x] **Step 4**: 마커 상호작용 ✅
+- [ ] **Step 5**: 퀘스트 Drawer
+
+### 선택
+- [ ] **Step 6**: 설정 저장/로드
+- [ ] 애니메이션 (맵 이동)
+- [ ] 다국어 지원
+
+---
+
+## 5. 파일 변경 계획
+
+### 신규 생성
+- (없음 - TestMapPage.xaml.cs에 통합)
+
+### 수정
+- `Pages/TestMapPage.xaml` - UI 요소 추가
+- `Pages/TestMapPage.xaml.cs` - 로직 구현
+
+### 참조 (재사용)
+- `Services/MapTracker/QuestObjectiveService.cs` - 퀘스트 목표 데이터
+- `Services/QuestProgressService.cs` - 진행 상태 관리
+- `Services/MapTracker/MapMarkerDbService.cs` - DB 마커 (기존)
+- `Models/MapTracker/QuestObjectiveLocation.cs` - 모델
+
+---
+
+## 6. 예상 코드량
+
+| 영역 | 기존 (MapTrackerPage) | 개선 (TestMapPage) |
+|------|----------------------|-------------------|
+| 전체 | 4,772 lines | ~1,200 lines |
+| 마커 렌더링 | ~1,500 lines (중복) | ~300 lines (통합) |
+| Drawer | ~400 lines (미구현) | ~200 lines (실제 구현) |
+| 좌표 변환 | ~200 lines (분산) | ~50 lines (단일화) |
+
+---
+
+## 7. 테스트 계획
+
+### 기능 테스트
+- [ ] 퀘스트 마커 표시 확인
+- [ ] 완료 상태 토글 동작
+- [ ] 층별 필터링 동작
+- [ ] Drawer 필터 동작
+- [ ] 맵 포커스 이동 동작
+
+### 좌표 정확도 테스트
+- [ ] TarkovDBEditor와 동일 위치 확인
+- [ ] 각 맵별 마커 위치 검증
+- [ ] 층 전환 시 마커 위치 유지
