@@ -57,6 +57,9 @@ public partial class MapPreviewWindow : Window
     private readonly ScreenshotWatcherService _watcherService = ScreenshotWatcherService.Instance;
     private readonly FloorLocationService _floorLocationService = FloorLocationService.Instance;
 
+    // Global hotkey service
+    private readonly GlobalHotkeyService _hotkeyService = GlobalHotkeyService.Instance;
+
     public MapPreviewWindow()
     {
         InitializeComponent();
@@ -64,6 +67,9 @@ public partial class MapPreviewWindow : Window
         Loaded += MapPreviewWindow_Loaded;
         Closed += MapPreviewWindow_Closed;
         PreviewKeyDown += MapPreviewWindow_KeyDown;
+
+        // Connect global hotkey service for floor switching when EFT is foreground
+        _hotkeyService.FloorHotkeyPressed += OnFloorHotkeyPressed;
     }
 
     private async void MapPreviewWindow_Loaded(object sender, RoutedEventArgs e)
@@ -79,6 +85,9 @@ public partial class MapPreviewWindow : Window
         _watcherService.PositionDetected += OnPositionDetected;
         _watcherService.StateChanged += OnWatcherStateChanged;
         UpdateWatcherStatus();
+
+        // Start global hotkey hook for floor switching when EFT is foreground
+        _hotkeyService.StartHook();
     }
 
     private void MapPreviewWindow_Closed(object? sender, EventArgs e)
@@ -86,6 +95,10 @@ public partial class MapPreviewWindow : Window
         // Unsubscribe from watcher events
         _watcherService.PositionDetected -= OnPositionDetected;
         _watcherService.StateChanged -= OnWatcherStateChanged;
+
+        // Stop global hotkey hook
+        _hotkeyService.FloorHotkeyPressed -= OnFloorHotkeyPressed;
+        _hotkeyService.StopHook();
     }
 
     private void LoadMapConfigs()
@@ -359,6 +372,24 @@ public partial class MapPreviewWindow : Window
             FloorSelector.SelectedIndex = floorIndex;
             e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// Global hotkey handler for floor switching when EFT is in foreground
+    /// </summary>
+    private void OnFloorHotkeyPressed(object? sender, FloorHotkeyEventArgs e)
+    {
+        // Dispatch to UI thread
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (_sortedFloors == null || _sortedFloors.Count == 0)
+                return;
+
+            if (e.FloorIndex >= 0 && e.FloorIndex < _sortedFloors.Count)
+            {
+                FloorSelector.SelectedIndex = e.FloorIndex;
+            }
+        });
     }
 
     #endregion

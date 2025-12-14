@@ -772,7 +772,7 @@ public partial class MapTransferWindow : Window
         }
 
         var result = MessageBox.Show(
-            $"Import {markersToImport.Count} markers to ApiMarkers table?\n\nSVG coordinates will be saved directly and converted to screen coordinates during display.",
+            $"Import {markersToImport.Count} markers to ApiMarkers table?\n\nGame coordinates (transformed from SVG) will be saved.",
             "Confirm Import",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
@@ -781,7 +781,7 @@ public partial class MapTransferWindow : Window
 
         try
         {
-            // ApiMarker 목록 생성 - 원본 SVG 좌표 사용
+            // ApiMarker 목록 생성 - 변환된 게임 좌표 사용
             var apiMarkersToSave = markersToImport.Select(m =>
             {
                 // 퀘스트 정보 가져오기
@@ -800,9 +800,9 @@ public partial class MapTransferWindow : Window
                     Category = m.Category,
                     SubCategory = m.SubCategory,
                     MapKey = _currentMapConfig.Key,
-                    X = m.Geometry!.X,  // 원본 SVG X 좌표
-                    Y = m.Level ?? 0,   // Level 값 저장 (층 정보)
-                    Z = m.Geometry!.Y,  // 원본 SVG Y 좌표
+                    X = m.GameX ?? m.Geometry!.X,  // 변환된 게임 X 좌표 (없으면 SVG X 사용)
+                    Y = m.Level ?? 0,              // Level 값 저장 (층 정보)
+                    Z = m.GameZ ?? m.Geometry!.Y,  // 변환된 게임 Z 좌표 (없으면 SVG Y 사용)
                     FloorId = floorId,
                     QuestBsgId = quest?.BsgId,
                     QuestNameEn = quest?.NameEn,
