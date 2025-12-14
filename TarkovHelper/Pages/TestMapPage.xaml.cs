@@ -82,7 +82,8 @@ public partial class TestMapPage : UserControl
     // Map Tracker related
     private readonly MapTrackerService _trackerService;
     private readonly LogMapWatcherService _logMapWatcher = LogMapWatcherService.Instance;
-    private Ellipse? _playerMarker;
+    private Ellipse? _playerMarkerCircle;
+    private Polygon? _playerMarkerArrow;
     private readonly List<Ellipse> _trailMarkers = new();
     private bool _showPlayerMarker = true;
     private bool _showTrail = true;
@@ -3720,25 +3721,37 @@ public partial class TestMapPage : UserControl
     /// </summary>
     private void BtnToggleTracking_Click(object sender, RoutedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine($"[TestMapPage] BtnToggleTracking_Click: IsWatching={_trackerService.IsWatching}");
+
         if (_trackerService.IsWatching)
         {
             _trackerService.StopTracking();
+            System.Diagnostics.Debug.WriteLine("[TestMapPage] Tracking stopped");
         }
         else
         {
             if (string.IsNullOrEmpty(_trackerService.Settings.ScreenshotFolderPath))
             {
                 StatusText.Text = "먼저 스크린샷 폴더를 선택하세요";
+                System.Diagnostics.Debug.WriteLine("[TestMapPage] ERROR: No screenshot folder configured");
                 return;
             }
+
+            System.Diagnostics.Debug.WriteLine($"[TestMapPage] Screenshot folder: {_trackerService.Settings.ScreenshotFolderPath}");
 
             // Set current map for coordinate transformation
             if (_currentMapConfig != null)
             {
                 _trackerService.SetCurrentMap(_currentMapConfig.Key);
+                System.Diagnostics.Debug.WriteLine($"[TestMapPage] SetCurrentMap: {_currentMapConfig.Key}");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[TestMapPage] WARNING: No map selected when starting tracking");
             }
 
             _trackerService.StartTracking();
+            System.Diagnostics.Debug.WriteLine($"[TestMapPage] StartTracking called, IsWatching={_trackerService.IsWatching}");
 
             // Also start log map watcher for auto map switching
             if (!_logMapWatcher.IsWatching)
@@ -3764,30 +3777,61 @@ public partial class TestMapPage : UserControl
     /// </summary>
     private void OnPositionUpdated(object? sender, ScreenPosition position)
     {
+        System.Diagnostics.Debug.WriteLine($"[TestMapPage] OnPositionUpdated: ScreenX={position.X:F1}, ScreenY={position.Y:F1}");
+
         Dispatcher.Invoke(() =>
         {
-            if (_currentMapConfig == null) return;
-
-            // ScreenPosition.X and Y are already image pixel coordinates
-            var svgX = position.X;
-            var svgY = position.Y;
-
-            // Add trail marker for previous position
-            if (_playerMarker != null && _showTrail)
+            if (_currentMapConfig == null)
             {
-                AddTrailMarker(Canvas.GetLeft(_playerMarker), Canvas.GetTop(_playerMarker));
+                System.Diagnostics.Debug.WriteLine("[TestMapPage] WARNING: _currentMapConfig is null");
+                return;
             }
 
-            // Update player marker
-            UpdatePlayerMarker(svgX, svgY);
+            System.Diagnostics.Debug.WriteLine($"[TestMapPage] Current map: {_currentMapConfig.Key}");
+
+            // Use DbMapConfig.GameToScreen (same as quest markers)
+            // This ensures player marker uses the same coordinate system as quest objectives
+            double svgX = position.X;
+            double svgY = position.Y;
+
+            if (position.OriginalPosition != null)
+            {
+                var gameX = position.OriginalPosition.X;
+                var gameZ = position.OriginalPosition.Z ?? 0;
+                System.Diagnostics.Debug.WriteLine($"[TestMapPage] Game coords: X={gameX:F2}, Z={gameZ:F2}");
+
+                // Transform using DbMapConfig.RealGameToScreen for player position
+                // This applies tarkov.dev transform (scale, offset, rotation) before SVG mapping
+                var screenCoords = _currentMapConfig.RealGameToScreen(gameX, gameZ);
+                if (screenCoords.HasValue)
+                {
+                    svgX = screenCoords.Value.screenX;
+                    svgY = screenCoords.Value.screenY;
+                    System.Diagnostics.Debug.WriteLine($"[TestMapPage] RealGameToScreen: ScreenX={svgX:F1}, ScreenY={svgY:F1}");
+                }
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[TestMapPage] MapSize: {_currentMapConfig.ImageWidth}x{_currentMapConfig.ImageHeight}");
+
+            // Add trail marker for previous position
+            if (_playerMarkerCircle != null && _showTrail)
+            {
+                var prevX = Canvas.GetLeft(_playerMarkerCircle) + 7; // Center of circle (14/2)
+                var prevY = Canvas.GetTop(_playerMarkerCircle) + 7;
+                AddTrailMarker(prevX, prevY);
+            }
+
+            // Update player marker with direction
+            var angle = position.Angle ?? position.OriginalPosition?.Angle;
+            UpdatePlayerMarker(svgX, svgY, angle);
 
             // Show original game coordinates in status
             if (position.OriginalPosition != null)
             {
                 _currentGameX = position.OriginalPosition.X;
-                _currentGameZ = position.OriginalPosition.Y;
+                _currentGameZ = position.OriginalPosition.Z ?? 0;
                 _hasValidCoordinates = true;
-                StatusText.Text = $"위치: X={position.OriginalPosition.X:F0}, Z={position.OriginalPosition.Y:F0}";
+                StatusText.Text = $"위치: X={position.OriginalPosition.X:F0}, Z={position.OriginalPosition.Z:F0}";
             }
             else
             {
@@ -3861,34 +3905,99 @@ public partial class TestMapPage : UserControl
     }
 
     /// <summary>
-    /// 플레이어 마커 업데이트
+    /// 플레이어 마커 업데이트 (원형 + 방향 삼각형)
     /// </summary>
-    private void UpdatePlayerMarker(double svgX, double svgY)
+    private void UpdatePlayerMarker(double svgX, double svgY, double? angle = null)
     {
         if (!_showPlayerMarker) return;
 
-        if (_playerMarker == null)
+        const double circleSize = 14;
+        const double arrowLength = 20;
+        const double arrowWidth = 12;
+
+        // Create circle marker if not exists
+        if (_playerMarkerCircle == null)
         {
-            _playerMarker = new Ellipse
+            _playerMarkerCircle = new Ellipse
             {
-                Width = 16,
-                Height = 16,
+                Width = circleSize,
+                Height = circleSize,
                 Fill = new SolidColorBrush(Color.FromRgb(33, 150, 243)), // Blue
                 Stroke = Brushes.White,
                 StrokeThickness = 2
             };
-            _playerMarker.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            _playerMarkerCircle.Effect = new System.Windows.Media.Effects.DropShadowEffect
             {
                 Color = Colors.Black,
                 BlurRadius = 4,
                 ShadowDepth = 2,
                 Opacity = 0.5
             };
-            PlayerMarkerCanvas.Children.Add(_playerMarker);
+            PlayerMarkerCanvas.Children.Add(_playerMarkerCircle);
         }
 
-        Canvas.SetLeft(_playerMarker, svgX - 8);
-        Canvas.SetTop(_playerMarker, svgY - 8);
+        // Create arrow marker if not exists
+        if (_playerMarkerArrow == null)
+        {
+            _playerMarkerArrow = new Polygon
+            {
+                Fill = new SolidColorBrush(Color.FromRgb(255, 193, 7)), // Yellow/Gold
+                Stroke = Brushes.White,
+                StrokeThickness = 1
+            };
+            _playerMarkerArrow.Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Colors.Black,
+                BlurRadius = 2,
+                ShadowDepth = 1,
+                Opacity = 0.5
+            };
+            PlayerMarkerCanvas.Children.Add(_playerMarkerArrow);
+        }
+
+        // Position circle at center
+        Canvas.SetLeft(_playerMarkerCircle, svgX - circleSize / 2);
+        Canvas.SetTop(_playerMarkerCircle, svgY - circleSize / 2);
+
+        // Update arrow position and rotation
+        if (angle.HasValue)
+        {
+            _playerMarkerArrow.Visibility = Visibility.Visible;
+
+            // Calculate arrow tip position based on angle
+            // EFT: 0° = North (up), clockwise
+            var angleRad = (angle.Value - 90) * Math.PI / 180.0; // Convert to standard math angle
+
+            var tipX = svgX + Math.Cos(angleRad) * (circleSize / 2 + arrowLength);
+            var tipY = svgY + Math.Sin(angleRad) * (circleSize / 2 + arrowLength);
+
+            // Arrow base points (perpendicular to direction)
+            var baseAngle = angleRad + Math.PI; // Opposite direction
+            var perpAngle1 = baseAngle + Math.PI / 2;
+            var perpAngle2 = baseAngle - Math.PI / 2;
+
+            var baseX = svgX + Math.Cos(angleRad) * (circleSize / 2);
+            var baseY = svgY + Math.Sin(angleRad) * (circleSize / 2);
+
+            var base1X = baseX + Math.Cos(perpAngle1) * (arrowWidth / 2);
+            var base1Y = baseY + Math.Sin(perpAngle1) * (arrowWidth / 2);
+
+            var base2X = baseX + Math.Cos(perpAngle2) * (arrowWidth / 2);
+            var base2Y = baseY + Math.Sin(perpAngle2) * (arrowWidth / 2);
+
+            _playerMarkerArrow.Points = new PointCollection
+            {
+                new Point(tipX, tipY),      // Arrow tip
+                new Point(base1X, base1Y),  // Base left
+                new Point(base2X, base2Y)   // Base right
+            };
+        }
+        else
+        {
+            _playerMarkerArrow.Visibility = Visibility.Collapsed;
+        }
+
+        System.Diagnostics.Debug.WriteLine($"[TestMapPage] Player marker placed at: ({svgX:F1}, {svgY:F1}), Angle: {angle?.ToString("F1") ?? "null"}");
     }
 
     /// <summary>
@@ -3904,8 +4013,8 @@ public partial class TestMapPage : UserControl
             Opacity = Math.Max(0.3, 1.0 - (_trailMarkers.Count * 0.02)) // Fade out older markers
         };
 
-        Canvas.SetLeft(trailDot, svgX - 3 + 8); // Center on player marker position
-        Canvas.SetTop(trailDot, svgY - 3 + 8);
+        Canvas.SetLeft(trailDot, svgX - 3); // Center the 6px dot at the position
+        Canvas.SetTop(trailDot, svgY - 3);
         TrailCanvas.Children.Add(trailDot);
         _trailMarkers.Add(trailDot);
 
@@ -3932,10 +4041,15 @@ public partial class TestMapPage : UserControl
     /// </summary>
     private void ClearPlayerMarker()
     {
-        if (_playerMarker != null)
+        if (_playerMarkerCircle != null)
         {
-            PlayerMarkerCanvas.Children.Remove(_playerMarker);
-            _playerMarker = null;
+            PlayerMarkerCanvas.Children.Remove(_playerMarkerCircle);
+            _playerMarkerCircle = null;
+        }
+        if (_playerMarkerArrow != null)
+        {
+            PlayerMarkerCanvas.Children.Remove(_playerMarkerArrow);
+            _playerMarkerArrow = null;
         }
     }
 

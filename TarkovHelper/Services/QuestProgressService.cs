@@ -421,6 +421,8 @@ namespace TarkovHelper.Services
         /// </summary>
         public void CompleteQuest(TarkovTask task, bool completePrerequisites = true)
         {
+            System.Diagnostics.Debug.WriteLine($"[QuestProgressService] CompleteQuest: {task.NormalizedName}, prerequisites: {completePrerequisites}");
+
             var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool anyChanged = CompleteQuestInternal(task, completePrerequisites, visited);
 
@@ -446,8 +448,14 @@ namespace TarkovHelper.Services
             // Save and notify only once after all recursive completions
             if (anyChanged)
             {
+                System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Saving progress, {_questProgress.Count} entries");
                 SaveProgress();
+                System.Diagnostics.Debug.WriteLine("[QuestProgressService] Progress saved");
                 ProgressChanged?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[QuestProgressService] No changes to save");
             }
         }
 
@@ -513,7 +521,23 @@ namespace TarkovHelper.Services
         public void ResetAllProgress()
         {
             _questProgress.Clear();
-            SaveProgress();
+            _objectiveProgress.Clear();
+
+            // DB에서 모든 퀘스트 진행 데이터 삭제
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await _userDataDb.ClearAllQuestProgressAsync();
+                    await _userDataDb.ClearAllObjectiveProgressAsync();
+                    System.Diagnostics.Debug.WriteLine("[QuestProgressService] All progress cleared from DB");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Reset failed: {ex.Message}");
+                }
+            }).GetAwaiter().GetResult();
+
             ProgressChanged?.Invoke(this, EventArgs.Empty);
         }
 
@@ -840,11 +864,9 @@ namespace TarkovHelper.Services
         private void LoadProgress()
         {
             // Task.Run으로 데드락 방지
+            // 마이그레이션은 MainWindow에서 먼저 수행됨
             Task.Run(async () =>
             {
-                // JSON → DB 마이그레이션 먼저 수행
-                await _userDataDb.MigrateFromJsonAsync();
-
                 // DB에서 로드
                 await LoadProgressFromDbAsync();
             }).GetAwaiter().GetResult();
@@ -860,6 +882,7 @@ namespace TarkovHelper.Services
                 foreach (var kvp in dbProgress)
                 {
                     _questProgress[kvp.Key] = kvp.Value;
+                    System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Loaded progress: {kvp.Key} = {kvp.Value}");
                 }
 
                 System.Diagnostics.Debug.WriteLine($"[QuestProgressService] Loaded {_questProgress.Count} quest progress from DB");

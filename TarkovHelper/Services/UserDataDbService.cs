@@ -369,6 +369,21 @@ public sealed class UserDataDbService
         await cmd.ExecuteNonQueryAsync();
     }
 
+    /// <summary>
+    /// 모든 목표 진행 상태 삭제
+    /// </summary>
+    public async Task ClearAllObjectiveProgressAsync()
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        await using var cmd = new SqliteCommand("DELETE FROM ObjectiveProgress", connection);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
     #endregion
 
     #region Hideout Progress

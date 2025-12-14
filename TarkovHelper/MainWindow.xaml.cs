@@ -176,6 +176,17 @@ public partial class MainWindow : Window
         {
             ShowLoadingOverlay("데이터 마이그레이션 준비 중...");
             userDataDb.MigrationProgress += OnMigrationProgress;
+
+            try
+            {
+                // 마이그레이션을 먼저 수행 (UI 업데이트가 가능하도록 await)
+                await userDataDb.MigrateFromJsonAsync();
+            }
+            finally
+            {
+                userDataDb.MigrationProgress -= OnMigrationProgress;
+                HideLoadingOverlay();
+            }
         }
 
         try
@@ -187,13 +198,9 @@ public partial class MainWindow : Window
                 System.Diagnostics.Debug.WriteLine($"[MainWindow] Loaded {tasks.Count} quests from DB");
             }
         }
-        finally
+        catch (Exception ex)
         {
-            if (needsMigration)
-            {
-                userDataDb.MigrationProgress -= OnMigrationProgress;
-                HideLoadingOverlay();
-            }
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Failed to load quests: {ex.Message}");
         }
 
         // Load hideout data from DB

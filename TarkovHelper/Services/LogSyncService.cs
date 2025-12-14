@@ -365,10 +365,12 @@ namespace TarkovHelper.Services
         {
             var result = new SyncResult();
 
+            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Starting sync from: {logFolderPath}");
             progress?.Report("Scanning log files...");
 
             // Parse all log files
             var events = await ParseLogDirectoryAsync(logFolderPath, progress);
+            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Found {events.Count} quest events in logs");
 
             // Apply date filter if specified
             if (daysRange > 0)
@@ -395,6 +397,7 @@ namespace TarkovHelper.Services
 
             // Build a lookup for quest IDs
             var tasksByQuestId = BuildQuestIdLookup(progressService.AllTasks);
+            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Built lookup with {tasksByQuestId.Count} quest IDs from {progressService.AllTasks.Count} tasks");
 
             // STEP 1: Determine final state for each quest (last event wins)
             // Key: normalizedName, Value: (finalEventType, timestamp, task)
@@ -558,6 +561,19 @@ namespace TarkovHelper.Services
 
             progress?.Report($"Found {questsToComplete.Count} quests to update");
 
+            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Sync complete: {result.TotalEventsFound} events, {result.QuestsToComplete.Count} to complete, {result.InProgressQuests.Count} in progress, {result.UnmatchedQuestIds.Count} unmatched");
+
+            // 매칭되지 않은 ID 샘플 출력
+            if (result.UnmatchedQuestIds.Count > 0)
+            {
+                var sampleUnmatched = result.UnmatchedQuestIds.Take(10).ToList();
+                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Sample unmatched IDs: {string.Join(", ", sampleUnmatched)}");
+
+                // DB의 샘플 ID도 출력
+                var sampleDbIds = tasksByQuestId.Keys.Take(10).ToList();
+                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Sample DB IDs: {string.Join(", ", sampleDbIds)}");
+            }
+
             return result;
         }
 
@@ -568,21 +584,33 @@ namespace TarkovHelper.Services
         {
             var progressService = QuestProgressService.Instance;
 
+            System.Diagnostics.Debug.WriteLine($"[LogSyncService] ApplyQuestChanges: {changes.Count} total changes, {changes.Count(c => c.IsSelected)} selected");
+
             foreach (var change in changes.Where(c => c.IsSelected))
             {
                 var task = progressService.GetTask(change.NormalizedName);
-                if (task == null) continue;
+                if (task == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[LogSyncService] Task not found for NormalizedName: {change.NormalizedName}");
+                    continue;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Applying change: {change.NormalizedName} -> {change.ChangeType}");
 
                 switch (change.ChangeType)
                 {
                     case QuestEventType.Completed:
                         progressService.CompleteQuest(task, completePrerequisites: false);
+                        System.Diagnostics.Debug.WriteLine($"[LogSyncService] Completed quest: {task.Name}");
                         break;
                     case QuestEventType.Failed:
                         progressService.FailQuest(task);
+                        System.Diagnostics.Debug.WriteLine($"[LogSyncService] Failed quest: {task.Name}");
                         break;
                 }
             }
+
+            System.Diagnostics.Debug.WriteLine("[LogSyncService] ApplyQuestChanges completed");
         }
 
         /// <summary>

@@ -282,10 +282,9 @@ namespace TarkovHelper.Services
         private void LoadInventory()
         {
             // Task.Run으로 데드락 방지
+            // 마이그레이션은 MainWindow에서 먼저 수행됨
             Task.Run(async () =>
             {
-                // 마이그레이션 실행 (JSON → DB)
-                await _userDataDb.MigrateFromJsonAsync();
                 await LoadInventoryFromDbAsync();
             }).GetAwaiter().GetResult();
         }

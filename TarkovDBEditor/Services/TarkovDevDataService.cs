@@ -465,10 +465,14 @@ namespace TarkovDBEditor.Services
                         WikiLink = wikiLink
                     };
 
-                    // wikiLink가 있으면 키로 사용
+                    // wikiLink가 있으면 키로 사용, 없으면 ID 사용
                     if (!string.IsNullOrEmpty(wikiLink))
                     {
                         result[wikiLink] = quest;
+                    }
+                    else if (!string.IsNullOrEmpty(id))
+                    {
+                        result[id] = quest;
                     }
                 }
             }

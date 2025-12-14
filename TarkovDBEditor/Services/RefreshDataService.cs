@@ -532,24 +532,35 @@ namespace TarkovDBEditor.Services
 
                 // tarkov.dev 매칭 (캐시된 데이터 사용) - 번역용
                 TarkovDevQuestCacheItem? devQuest = null;
+                var normalizedQuestName = NormalizeQuestName(questName);
+
+                // 1차: wikiPageLink로 매칭 시도
+                // 2차: normalizedName으로 매칭 시도
                 if (devQuestsCached.TryGetValue(wikiPageLink, out devQuest) ||
-                    devQuestsByNormalizedName.TryGetValue(NormalizeQuestName(questName), out devQuest))
+                    devQuestsByNormalizedName.TryGetValue(normalizedQuestName, out devQuest))
                 {
                     dbQuest.BsgId = devQuest.Id;
                     dbQuest.NameEN = devQuest.NameEN;
                     dbQuest.NameKO = devQuest.NameKO;
                     dbQuest.NameJA = devQuest.NameJA;
                     // Trader는 캐시에서 이미 설정됨 (Wiki givenby 우선)
+                    System.Diagnostics.Debug.WriteLine($"[RefreshData] Matched quest: {questName} -> BSG ID: {devQuest.Id}");
                 }
                 else
                 {
                     dbQuest.NameEN = questName;
                     dbQuest.NameKO = questName;
                     dbQuest.NameJA = questName;
+                    System.Diagnostics.Debug.WriteLine($"[RefreshData] No match for: {questName} (normalized: {normalizedQuestName})");
                 }
 
                 dbQuests.Add(dbQuest);
             }
+
+            // 매칭 통계 출력
+            var matchedCount = dbQuests.Count(q => !string.IsNullOrEmpty(q.BsgId));
+            progress?.Invoke($"Matched {matchedCount}/{dbQuests.Count} quests with tarkov.dev data");
+            System.Diagnostics.Debug.WriteLine($"[RefreshData] Matched {matchedCount}/{dbQuests.Count} quests with tarkov.dev BsgId");
 
             // 퀘스트 선행 조건(requirements) 파싱
             progress?.Invoke("Parsing quest requirements...");

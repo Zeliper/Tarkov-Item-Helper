@@ -32,11 +32,37 @@ public sealed class DbMapConfig
     [JsonPropertyName("calibratedTransform")]
     public double[]? CalibratedTransform { get; set; }
 
+    /// <summary>
+    /// tarkov.dev 변환 정보: [scale, offsetX, scale, offsetY]
+    /// </summary>
+    [JsonPropertyName("tarkovDevTransform")]
+    public double[]? TarkovDevTransform { get; set; }
+
+    /// <summary>
+    /// tarkov.dev 좌표 회전 (보통 180)
+    /// </summary>
+    [JsonPropertyName("coordinateRotation")]
+    public double CoordinateRotation { get; set; }
+
+    /// <summary>
+    /// tarkov.dev SVG bounds: [[maxX, minY], [minX, maxY]]
+    /// </summary>
+    [JsonPropertyName("svgBounds")]
+    public double[][]? SvgBounds { get; set; }
+
+    /// <summary>
+    /// tarkov.market 변환 정보: [scaleX, offsetX, scaleY, offsetY]
+    /// screenX = scaleX * gameX + offsetX
+    /// screenY = scaleY * gameZ + offsetY
+    /// </summary>
+    [JsonPropertyName("tarkovMarketTransform")]
+    public double[]? TarkovMarketTransform { get; set; }
+
     [JsonPropertyName("floors")]
     public List<DbMapFloorConfig>? Floors { get; set; }
 
     /// <summary>
-    /// 게임 좌표를 화면 좌표로 변환합니다.
+    /// tarkov.dev API 좌표를 화면 좌표로 변환합니다. (퀘스트 마커용)
     /// </summary>
     public (double screenX, double screenY)? GameToScreen(double gameX, double gameZ)
     {
@@ -54,6 +80,66 @@ public sealed class DbMapConfig
         var screenY = c * gameX + d * gameZ + ty;
 
         return (screenX, screenY);
+    }
+
+    /// <summary>
+    /// 실제 게임 좌표를 화면 좌표로 변환합니다. (플레이어 위치용)
+    /// tarkov.market의 간단한 변환을 우선 사용하고, 없으면 tarkov.dev 변환을 사용합니다.
+    /// </summary>
+    public (double screenX, double screenY)? RealGameToScreen(double gameX, double gameZ)
+    {
+        // tarkov.market 변환 정보가 있으면 사용 (가장 정확함)
+        // [scaleX, offsetX, scaleY, offsetY]
+        // screenX = scaleX * gameX + offsetX
+        // screenY = scaleY * gameZ + offsetY
+        if (TarkovMarketTransform != null && TarkovMarketTransform.Length >= 4)
+        {
+            var scaleX = TarkovMarketTransform[0];
+            var offsetX = TarkovMarketTransform[1];
+            var scaleY = TarkovMarketTransform[2];
+            var offsetY = TarkovMarketTransform[3];
+
+            var screenX = scaleX * gameX + offsetX;
+            var screenY = scaleY * gameZ + offsetY;
+
+            return (screenX, screenY);
+        }
+
+        // tarkov.dev 변환 정보가 있으면 사용
+        if (TarkovDevTransform != null && TarkovDevTransform.Length >= 4 && SvgBounds != null && SvgBounds.Length >= 2)
+        {
+            var scale = TarkovDevTransform[0];
+            var offsetX = TarkovDevTransform[1];
+            var offsetY = TarkovDevTransform[3];
+
+            // 180도 회전 적용 (coordinateRotation이 180이면 좌표 부호 반전)
+            double rotX = gameX;
+            double rotZ = gameZ;
+            if (CoordinateRotation == 180)
+            {
+                rotX = -gameX;
+                rotZ = -gameZ;
+            }
+
+            // tarkov.dev 내부 좌표로 변환
+            var internalX = rotX * scale + offsetX;
+            var internalY = rotZ * scale + offsetY;
+
+            // svgBounds: [[maxX, minY], [minX, maxY]]
+            var minX = SvgBounds[1][0];
+            var maxX = SvgBounds[0][0];
+            var minY = SvgBounds[0][1];
+            var maxY = SvgBounds[1][1];
+
+            // 내부 좌표를 SVG 좌표로 변환
+            var svgX = (internalX - minX) / (maxX - minX) * ImageWidth;
+            var svgY = (internalY - minY) / (maxY - minY) * ImageHeight;
+
+            return (svgX, svgY);
+        }
+
+        // fallback: CalibratedTransform 사용
+        return GameToScreen(gameX, gameZ);
     }
 
     /// <summary>

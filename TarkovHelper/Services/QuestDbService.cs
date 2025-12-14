@@ -164,6 +164,7 @@ public sealed class QuestDbService
         // 동적으로 존재하는 컬럼 확인
         var hasNormalizedName = await ColumnExistsAsync(connection, "Quests", "NormalizedName");
         var hasBsgId = await ColumnExistsAsync(connection, "Quests", "BsgId");
+        System.Diagnostics.Debug.WriteLine($"[QuestDbService] BsgId column exists: {hasBsgId}");
 
         // NormalizedName이 없으면 Name에서 생성
         var normalizedNameExpr = hasNormalizedName
@@ -211,6 +212,14 @@ public sealed class QuestDbService
             }
 
             quests.Add(quest);
+        }
+
+        // BsgId 통계 출력
+        var questsWithBsgId = quests.Count(q => q.Ids != null && q.Ids.Count > 1);
+        System.Diagnostics.Debug.WriteLine($"[QuestDbService] Quests with BsgId: {questsWithBsgId}/{quests.Count}");
+        if (quests.Count > 0 && quests[0].Ids != null)
+        {
+            System.Diagnostics.Debug.WriteLine($"[QuestDbService] Sample quest IDs: {string.Join(", ", quests[0].Ids)} - {quests[0].Name}");
         }
 
         return quests;

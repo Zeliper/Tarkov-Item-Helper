@@ -334,14 +334,19 @@ public sealed class MapTrackerService : IDisposable
 
     private void OnPositionDetected(object? sender, PositionDetectedEventArgs e)
     {
+        System.Diagnostics.Debug.WriteLine($"[MapTracker] OnPositionDetected: X={e.Position.X:F2}, Y={e.Position.Y:F2}, Z={e.Position.Z:F2}");
+
         // 현재 선택된 맵 사용 (파싱된 맵 이름이 Unknown이거나 비어있는 경우)
         var mapKey = string.IsNullOrEmpty(e.Position.MapName) || e.Position.MapName == "Unknown"
             ? _currentMapKey
             : e.Position.MapName;
 
+        System.Diagnostics.Debug.WriteLine($"[MapTracker] Using mapKey: {mapKey} (currentMapKey: {_currentMapKey})");
+
         if (string.IsNullOrEmpty(mapKey))
         {
             OnError("맵이 선택되지 않았습니다. 맵을 먼저 선택하세요.");
+            System.Diagnostics.Debug.WriteLine("[MapTracker] ERROR: No map selected");
             return;
         }
 
@@ -359,6 +364,7 @@ public sealed class MapTrackerService : IDisposable
 
         if (_transformer.TryTransform(position, out var screenPos) && screenPos != null)
         {
+            System.Diagnostics.Debug.WriteLine($"[MapTracker] Transform SUCCESS: Screen X={screenPos.X:F1}, Y={screenPos.Y:F1}");
             _currentPosition = screenPos;
 
             // 이동 경로에 추가
@@ -376,6 +382,7 @@ public sealed class MapTrackerService : IDisposable
         }
         else
         {
+            System.Diagnostics.Debug.WriteLine($"[MapTracker] Transform FAILED for map '{mapKey}'");
             OnError($"맵 '{mapKey}'의 좌표 변환 실패");
         }
     }

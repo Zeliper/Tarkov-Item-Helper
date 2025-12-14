@@ -67,11 +67,17 @@ public sealed class ScreenshotWatcherService : IDisposable
     /// <returns>시작 성공 여부</returns>
     public bool StartWatching(string folderPath)
     {
+        System.Diagnostics.Debug.WriteLine($"[ScreenshotWatcher] StartWatching: {folderPath}");
+
         if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            System.Diagnostics.Debug.WriteLine("[ScreenshotWatcher] ERROR: Empty folder path");
             return false;
+        }
 
         if (!Directory.Exists(folderPath))
         {
+            System.Diagnostics.Debug.WriteLine($"[ScreenshotWatcher] ERROR: Folder does not exist: {folderPath}");
             OnError($"폴더가 존재하지 않습니다: {folderPath}");
             return false;
         }
@@ -97,6 +103,7 @@ public sealed class ScreenshotWatcherService : IDisposable
                 _watcher.EnableRaisingEvents = true;
                 CurrentWatchPath = folderPath;
 
+                System.Diagnostics.Debug.WriteLine($"[ScreenshotWatcher] Started watching: {folderPath}");
                 OnStateChanged(true, folderPath);
                 return true;
             }
@@ -155,13 +162,17 @@ public sealed class ScreenshotWatcherService : IDisposable
     private void ProcessFile(string filePath)
     {
         var fileName = Path.GetFileName(filePath);
+        System.Diagnostics.Debug.WriteLine($"[ScreenshotWatcher] ProcessFile: {fileName}");
 
         // 디바운싱: 최근에 처리한 파일인지 확인
         var now = DateTime.UtcNow;
         if (_recentFiles.TryGetValue(fileName, out var lastProcessed))
         {
             if ((now - lastProcessed).TotalMilliseconds < DebounceDelayMs)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ScreenshotWatcher] Skipping (debounce): {fileName}");
                 return;
+            }
         }
 
         _recentFiles[fileName] = now;
@@ -184,10 +195,12 @@ public sealed class ScreenshotWatcherService : IDisposable
                 // 좌표 파싱
                 if (_parser.TryParse(fileName, out var position) && position != null)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[ScreenshotWatcher] Parse SUCCESS: X={position.X:F2}, Y={position.Y:F2}, Z={position.Z:F2}");
                     OnPositionDetected(position, filePath);
                 }
                 else
                 {
+                    System.Diagnostics.Debug.WriteLine($"[ScreenshotWatcher] Parse FAILED: {fileName}");
                     OnParsingFailed(fileName, "패턴이 일치하지 않습니다");
                 }
             }
