@@ -153,6 +153,50 @@ public sealed class DbMapConfigList
 }
 
 /// <summary>
+/// DB MapFloorLocations 테이블에서 로드되는 층 위치 정보
+/// </summary>
+public sealed class MapFloorLocation
+{
+    public string Id { get; set; } = string.Empty;
+    public string MapKey { get; set; } = string.Empty;
+    public string FloorId { get; set; } = string.Empty;
+    public string RegionName { get; set; } = string.Empty;
+    public double MinY { get; set; }
+    public double MaxY { get; set; }
+    public double? MinX { get; set; }
+    public double? MaxX { get; set; }
+    public double? MinZ { get; set; }
+    public double? MaxZ { get; set; }
+    public int Priority { get; set; }
+
+    /// <summary>
+    /// 좌표가 이 영역에 포함되는지 확인
+    /// </summary>
+    public bool Contains(double x, double y, double z)
+    {
+        // Y 좌표 범위 확인 (필수)
+        if (y < MinY || y > MaxY)
+            return false;
+
+        // X 좌표 범위 확인 (선택)
+        if (MinX.HasValue && MaxX.HasValue)
+        {
+            if (x < MinX.Value || x > MaxX.Value)
+                return false;
+        }
+
+        // Z 좌표 범위 확인 (선택)
+        if (MinZ.HasValue && MaxZ.HasValue)
+        {
+            if (z < MinZ.Value || z > MaxZ.Value)
+                return false;
+        }
+
+        return true;
+    }
+}
+
+/// <summary>
 /// SQLite DB에서 맵 마커를 로드하고 관리하는 서비스.
 /// tarkov_data.db의 MapMarkers 테이블과 map_configs.json을 사용합니다.
 /// </summary>
@@ -167,9 +211,11 @@ public sealed class MapMarkerDbService
     private Dictionary<string, List<DbQuestObjective>> _objectivesByMap = new();
     private Dictionary<string, DbMapConfig> _mapConfigs = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, string> _aliasToKey = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, List<MapFloorLocation>> _floorLocationsByMap = new(StringComparer.OrdinalIgnoreCase);
     private bool _isLoaded;
     private bool _configsLoaded;
     private bool _objectivesLoaded;
+    private bool _floorLocationsLoaded;
 
     /// <summary>
     /// 맵 키 이름 정규화 매핑
@@ -475,6 +521,107 @@ public sealed class MapMarkerDbService
 
     #endregion
 
+    #region Floor Locations
+
+    /// <summary>
+    /// DB에서 층 위치 정보를 로드합니다.
+    /// </summary>
+    public async Task<bool> LoadFloorLocationsAsync()
+    {
+        if (!DatabaseExists)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MapMarkerDbService] Database not found: {_databasePath}");
+            return false;
+        }
+
+        try
+        {
+            var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+            await using var connection = new SqliteConnection(connectionString);
+            await connection.OpenAsync();
+
+            // MapFloorLocations 테이블 존재 여부 확인
+            if (!await TableExistsAsync(connection, "MapFloorLocations"))
+            {
+                System.Diagnostics.Debug.WriteLine("[MapMarkerDbService] MapFloorLocations table not found");
+                return false;
+            }
+
+            var locations = new List<MapFloorLocation>();
+            var sql = @"
+                SELECT Id, MapKey, FloorId, RegionName, MinY, MaxY, MinX, MaxX, MinZ, MaxZ, Priority
+                FROM MapFloorLocations
+                ORDER BY MapKey, Priority DESC, RegionName";
+
+            await using var cmd = new SqliteCommand(sql, connection);
+            await using var reader = await cmd.ExecuteReaderAsync();
+
+            while (await reader.ReadAsync())
+            {
+                var location = new MapFloorLocation
+                {
+                    Id = reader.GetString(0),
+                    MapKey = reader.GetString(1),
+                    FloorId = reader.GetString(2),
+                    RegionName = reader.GetString(3),
+                    MinY = reader.GetDouble(4),
+                    MaxY = reader.GetDouble(5),
+                    MinX = reader.IsDBNull(6) ? null : reader.GetDouble(6),
+                    MaxX = reader.IsDBNull(7) ? null : reader.GetDouble(7),
+                    MinZ = reader.IsDBNull(8) ? null : reader.GetDouble(8),
+                    MaxZ = reader.IsDBNull(9) ? null : reader.GetDouble(9),
+                    Priority = reader.GetInt32(10)
+                };
+                locations.Add(location);
+            }
+
+            // 맵별로 그룹화
+            _floorLocationsByMap = locations
+                .GroupBy(l => NormalizeMapKey(l.MapKey))
+                .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+            _floorLocationsLoaded = true;
+            System.Diagnostics.Debug.WriteLine($"[MapMarkerDbService] Loaded {locations.Count} floor locations from DB");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MapMarkerDbService] Error loading floor locations: {ex.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 좌표에 해당하는 Floor ID를 감지합니다.
+    /// </summary>
+    /// <param name="mapKey">맵 키</param>
+    /// <param name="x">X 좌표</param>
+    /// <param name="y">Y 좌표 (높이)</param>
+    /// <param name="z">Z 좌표</param>
+    /// <returns>감지된 Floor ID 또는 null</returns>
+    public string? DetectFloor(string mapKey, double x, double y, double z)
+    {
+        var normalizedKey = NormalizeMapKey(mapKey);
+        if (!_floorLocationsByMap.TryGetValue(normalizedKey, out var locations) || locations.Count == 0)
+            return null;
+
+        // Priority 높은 순으로 정렬되어 있음
+        foreach (var loc in locations)
+        {
+            if (loc.Contains(x, y, z))
+                return loc.FloorId;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// 층 위치 정보가 로드되었는지 확인
+    /// </summary>
+    public bool FloorLocationsLoaded => _floorLocationsLoaded;
+
+    #endregion
+
     /// <summary>
     /// map_configs.json에서 맵 설정을 로드합니다.
     /// </summary>
@@ -605,13 +752,16 @@ public sealed class MapMarkerDbService
         _isLoaded = false;
         _configsLoaded = false;
         _objectivesLoaded = false;
+        _floorLocationsLoaded = false;
         _markersByMap.Clear();
         _objectivesByMap.Clear();
         _mapConfigs.Clear();
         _aliasToKey.Clear();
+        _floorLocationsByMap.Clear();
 
         LoadMapConfigs();
         await LoadMarkersAsync();
         await LoadQuestObjectivesAsync();
+        await LoadFloorLocationsAsync();
     }
 }

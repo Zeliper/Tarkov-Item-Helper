@@ -29,6 +29,9 @@ public partial class MapPage : UserControl
 
             await _dbService.LoadQuestObjectivesAsync();
 
+            // Floor Locations 로드 (Y 좌표 기반 층 자동 감지용)
+            await _dbService.LoadFloorLocationsAsync();
+
             StatusText.Text = $"Loaded {_dbService.TotalObjectiveCount} quest objectives from DB";
         }
         catch (Exception ex)
@@ -73,30 +76,48 @@ public partial class MapPage : UserControl
             Locations = new List<QuestObjectiveLocation>()
         };
 
+        var mapKey = dbObj.EffectiveMapName ?? "";
+
         // LocationPoints를 QuestObjectiveLocation으로 변환
         // DB 좌표: X=수평X, Y=높이, Z=수평깊이
         foreach (var pt in dbObj.LocationPoints)
         {
+            // FloorId가 없으면 Y 좌표 기반으로 자동 감지
+            var floorId = pt.FloorId;
+            if (string.IsNullOrEmpty(floorId) && !string.IsNullOrEmpty(mapKey))
+            {
+                floorId = _dbService.DetectFloor(mapKey, pt.X, pt.Y, pt.Z);
+            }
+
             result.Locations.Add(new QuestObjectiveLocation
             {
                 Id = $"{dbObj.Id}_{pt.X}_{pt.Z}",
-                MapName = dbObj.EffectiveMapName ?? "",
+                MapName = mapKey,
                 X = pt.X,
                 Y = pt.Y,  // 높이
-                Z = pt.Z   // 수평 깊이 (GameToScreen의 두 번째 파라미터)
+                Z = pt.Z,  // 수평 깊이 (GameToScreen의 두 번째 파라미터)
+                FloorId = floorId  // 층 정보 (자동 감지 포함)
             });
         }
 
         // OptionalPoints도 Locations에 추가 (별도 표시가 필요하면 나중에 분리)
         foreach (var pt in dbObj.OptionalPoints)
         {
+            // FloorId가 없으면 Y 좌표 기반으로 자동 감지
+            var floorId = pt.FloorId;
+            if (string.IsNullOrEmpty(floorId) && !string.IsNullOrEmpty(mapKey))
+            {
+                floorId = _dbService.DetectFloor(mapKey, pt.X, pt.Y, pt.Z);
+            }
+
             result.Locations.Add(new QuestObjectiveLocation
             {
                 Id = $"{dbObj.Id}_opt_{pt.X}_{pt.Z}",
-                MapName = dbObj.EffectiveMapName ?? "",
+                MapName = mapKey,
                 X = pt.X,
                 Y = pt.Y,
-                Z = pt.Z
+                Z = pt.Z,
+                FloorId = floorId  // 층 정보 (자동 감지 포함)
             });
         }
 
