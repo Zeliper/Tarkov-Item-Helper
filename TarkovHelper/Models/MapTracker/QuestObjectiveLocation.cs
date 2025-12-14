@@ -75,6 +75,12 @@ public sealed class QuestObjectiveLocation
     /// </summary>
     [JsonPropertyName("bottom")]
     public double? Bottom { get; set; }
+
+    /// <summary>
+    /// 층 ID (예: "main", "basement", "floor2")
+    /// </summary>
+    [JsonPropertyName("floorId")]
+    public string? FloorId { get; set; }
 }
 
 /// <summary>

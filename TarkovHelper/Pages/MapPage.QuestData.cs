@@ -141,9 +141,22 @@ public partial class MapPage : UserControl
             var isCompleted = _progressService.IsObjectiveCompletedById(objective.ObjectiveId);
             objective.IsCompleted = isCompleted;
 
-            // 목표 타입별 색상 (완료된 경우 흐리게)
+            // 목표 타입별 색상
             var objectiveColor = GetQuestTypeColor(objective.Type);
-            var opacity = isCompleted ? 0.4 : 1.0;
+
+            // 층별 opacity 계산 (탈출구와 동일한 방식)
+            double floorOpacity = 1.0;
+            if (hasFloors && _currentFloorId != null)
+            {
+                // 현재 층에 해당하는 위치가 하나라도 있으면 불투명, 전부 다른 층이면 반투명
+                var hasCurrentFloorLocation = locationsForCurrentMap.Any(loc =>
+                    string.IsNullOrEmpty(loc.FloorId) || // FloorId 없으면 현재 층으로 간주
+                    string.Equals(loc.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
+                floorOpacity = hasCurrentFloorLocation ? 1.0 : 0.3;
+            }
+
+            // 완료된 경우 추가로 흐리게
+            var opacity = isCompleted ? floorOpacity * 0.4 : floorOpacity;
 
             // Multi-point 렌더링 (TarkovDBEditor 방식)
             RenderQuestObjectiveArea(objective, locationsForCurrentMap, objectiveColor, inverseScale, hasFloors, opacity);
