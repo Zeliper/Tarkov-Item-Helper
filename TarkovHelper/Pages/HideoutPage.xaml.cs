@@ -632,5 +632,44 @@ namespace TarkovHelper.Pages
                 // Ignore errors opening browser
             }
         }
+
+        #region Cross-Tab Navigation
+
+        /// <summary>
+        /// Select a hideout module by station ID (for cross-tab navigation)
+        /// </summary>
+        public void SelectModule(string stationId)
+        {
+            // Reset filters to ensure the module is visible
+            _isInitializing = true;
+            TxtSearch.Text = "";
+            _isInitializing = false;
+
+            // Apply filters to update the list
+            ApplyFilters();
+
+            // Find the module view model from the filtered list
+            var filteredModules = LstModules.ItemsSource as IEnumerable<HideoutModuleViewModel>;
+            var moduleVm = filteredModules?.FirstOrDefault(vm =>
+                string.Equals(vm.Module.Id, stationId, StringComparison.OrdinalIgnoreCase));
+
+            if (moduleVm == null) return;
+
+            // For virtualized lists: scroll first, then select
+            LstModules.ScrollIntoView(moduleVm);
+            LstModules.UpdateLayout();
+
+            // Now select the module
+            LstModules.SelectedItem = moduleVm;
+            LstModules.UpdateLayout();
+
+            // Scroll again to ensure visibility after selection
+            LstModules.ScrollIntoView(moduleVm);
+
+            // Focus the list to show selection highlight
+            LstModules.Focus();
+        }
+
+        #endregion
     }
 }

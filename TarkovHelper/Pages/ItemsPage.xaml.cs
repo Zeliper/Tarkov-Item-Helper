@@ -215,6 +215,9 @@ namespace TarkovHelper.Pages
         public string LevelDisplay => $"Level {Level}";
         public string AmountDisplay => $"x{Amount}";
         public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
+
+        // Navigation identifier
+        public string StationId { get; set; } = string.Empty;
     }
 
     /// <summary>
@@ -1153,6 +1156,20 @@ namespace TarkovHelper.Pages
             }
         }
 
+        /// <summary>
+        /// Handle click on hideout module name to navigate to Hideout tab
+        /// </summary>
+        private void HideoutModuleName_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is HideoutItemSourceViewModel vm)
+            {
+                if (string.IsNullOrEmpty(vm.StationId)) return;
+
+                var mainWindow = Window.GetWindow(this) as MainWindow;
+                mainWindow?.NavigateToHideout(vm.StationId);
+            }
+        }
+
         private List<HideoutItemSourceViewModel> GetHideoutSources(string itemNormalizedName)
         {
             var sources = new List<HideoutItemSourceViewModel>();
@@ -1173,7 +1190,8 @@ namespace TarkovHelper.Pages
                                 ModuleName = moduleName,
                                 Level = level.Level,
                                 Amount = itemReq.Count,
-                                FoundInRaid = itemReq.FoundInRaid
+                                FoundInRaid = itemReq.FoundInRaid,
+                                StationId = module.Id
                             });
                         }
                     }

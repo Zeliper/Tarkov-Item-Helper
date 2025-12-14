@@ -915,6 +915,19 @@ public partial class MainWindow : Window
         _itemsPage?.SelectItem(itemNormalizedName);
     }
 
+    /// <summary>
+    /// Navigate to Hideout tab and select a specific module
+    /// </summary>
+    public void NavigateToHideout(string stationId)
+    {
+        // Switch to Hideout tab
+        TabHideout.IsChecked = true;
+        PageContent.Content = _hideoutPage;
+
+        // Request module selection
+        _hideoutPage?.SelectModule(stationId);
+    }
+
     #endregion
 
     #region Quest Log Sync
