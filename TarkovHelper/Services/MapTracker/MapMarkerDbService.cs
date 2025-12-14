@@ -58,6 +58,14 @@ public sealed class DbMapConfig
     [JsonPropertyName("tarkovMarketTransform")]
     public double[]? TarkovMarketTransform { get; set; }
 
+    /// <summary>
+    /// 플레이어 마커 변환 정보 (2D 아핀 변환): [a, b, c, d, tx, ty]
+    /// screenX = a * gameX + b * gameZ + tx
+    /// screenY = c * gameX + d * gameZ + ty
+    /// </summary>
+    [JsonPropertyName("playerMarkerTransform")]
+    public double[]? PlayerMarkerTransform { get; set; }
+
     [JsonPropertyName("floors")]
     public List<DbMapFloorConfig>? Floors { get; set; }
 
@@ -84,58 +92,27 @@ public sealed class DbMapConfig
 
     /// <summary>
     /// 실제 게임 좌표를 화면 좌표로 변환합니다. (플레이어 위치용)
-    /// tarkov.market의 간단한 변환을 우선 사용하고, 없으면 tarkov.dev 변환을 사용합니다.
+    /// playerMarkerTransform을 우선 사용합니다.
     /// </summary>
     public (double screenX, double screenY)? RealGameToScreen(double gameX, double gameZ)
     {
-        // tarkov.market 변환 정보가 있으면 사용 (가장 정확함)
-        // [scaleX, offsetX, scaleY, offsetY]
-        // screenX = scaleX * gameX + offsetX
-        // screenY = scaleY * gameZ + offsetY
-        if (TarkovMarketTransform != null && TarkovMarketTransform.Length >= 4)
+        // playerMarkerTransform이 있으면 우선 사용 (가장 정확함)
+        // [a, b, c, d, tx, ty] - 2D 아핀 변환
+        // screenX = a * gameX + b * gameZ + tx
+        // screenY = c * gameX + d * gameZ + ty
+        if (PlayerMarkerTransform != null && PlayerMarkerTransform.Length >= 6)
         {
-            var scaleX = TarkovMarketTransform[0];
-            var offsetX = TarkovMarketTransform[1];
-            var scaleY = TarkovMarketTransform[2];
-            var offsetY = TarkovMarketTransform[3];
+            var a = PlayerMarkerTransform[0];
+            var b = PlayerMarkerTransform[1];
+            var c = PlayerMarkerTransform[2];
+            var d = PlayerMarkerTransform[3];
+            var tx = PlayerMarkerTransform[4];
+            var ty = PlayerMarkerTransform[5];
 
-            var screenX = scaleX * gameX + offsetX;
-            var screenY = scaleY * gameZ + offsetY;
+            var screenX = a * gameX + b * gameZ + tx;
+            var screenY = c * gameX + d * gameZ + ty;
 
             return (screenX, screenY);
-        }
-
-        // tarkov.dev 변환 정보가 있으면 사용
-        if (TarkovDevTransform != null && TarkovDevTransform.Length >= 4 && SvgBounds != null && SvgBounds.Length >= 2)
-        {
-            var scale = TarkovDevTransform[0];
-            var offsetX = TarkovDevTransform[1];
-            var offsetY = TarkovDevTransform[3];
-
-            // 180도 회전 적용 (coordinateRotation이 180이면 좌표 부호 반전)
-            double rotX = gameX;
-            double rotZ = gameZ;
-            if (CoordinateRotation == 180)
-            {
-                rotX = -gameX;
-                rotZ = -gameZ;
-            }
-
-            // tarkov.dev 내부 좌표로 변환
-            var internalX = rotX * scale + offsetX;
-            var internalY = rotZ * scale + offsetY;
-
-            // svgBounds: [[maxX, minY], [minX, maxY]]
-            var minX = SvgBounds[1][0];
-            var maxX = SvgBounds[0][0];
-            var minY = SvgBounds[0][1];
-            var maxY = SvgBounds[1][1];
-
-            // 내부 좌표를 SVG 좌표로 변환
-            var svgX = (internalX - minX) / (maxX - minX) * ImageWidth;
-            var svgY = (internalY - minY) / (maxY - minY) * ImageHeight;
-
-            return (svgX, svgY);
         }
 
         // fallback: CalibratedTransform 사용
