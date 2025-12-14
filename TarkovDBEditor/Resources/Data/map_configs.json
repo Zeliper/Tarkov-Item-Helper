@@ -7,7 +7,8 @@
       "imageWidth": 4800,
       "imageHeight": 4800,
       "aliases": ["woods", "WOODS"],
-      "calibratedTransform": [-3.394478979463914, -0.00672470985271966, 0.028968077414678935, 3.3624781094363794, 2073.690129251411, 3161.542755683878]
+      "calibratedTransform": [-3.394478979463914, -0.00672470985271966, 0.028968077414678935, 3.3624781094363794, 2073.690129251411, 3161.542755683878],
+      "playerMarkerTransform": [-2, 0, 0, 2, 2200, 2840]
     },
     {
       "key": "Customs",
@@ -17,6 +18,7 @@
       "imageHeight": 3200,
       "aliases": ["customs", "CUSTOMS", "bigmap"],
       "calibratedTransform": [-3.6649134212117196, 0.2964105833041642, -0.09212328415752055, 4.934946350706538, 2940.3734739766946, 1626.687757738243],
+      "playerMarkerTransform": [-2.0, 0, 0, 2.0, 2600, 1600],
       "floors": [
         {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
         {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
@@ -32,6 +34,7 @@
       "imageHeight": 3100,
       "aliases": ["shoreline", "SHORELINE"],
       "calibratedTransform": [-2.147451106044105, 0.015949683724444705, -0.0062445432176331545, 2.8002156918819003, 1256.0507944168528, 1290.7979930779154],
+      "playerMarkerTransform": [-1, 0, 0, 1, 1570, 1450],
       "floors": [
         {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
         {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
@@ -47,6 +50,7 @@
       "imageHeight": 3900,
       "aliases": ["interchange", "INTERCHANGE"],
       "calibratedTransform": [-4.3629135184885035, -0.46787647488898804, 0.01740221516511105, 4.08171562795115, 2309.0213766878187, 1987.6213844573472],
+      "playerMarkerTransform": [-2, 0, 0, 2, 2166, 2004],
       "floors": [
         {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
         {"layerId": "level2", "displayName": "Level 2", "order": 1, "isDefault": false},
@@ -61,6 +65,7 @@
       "imageHeight": 3000,
       "aliases": ["reserve", "RESERVE", "RezervBase"],
       "calibratedTransform": [-4.659551818591078, 1.4968674164044333, 1.4130686420734615, 6.194225988393516, 1605.6973392433374, 1531.5214718745203],
+      "playerMarkerTransform": [-2, 0, 0, -6, 1523, 310],
       "floors": [
         {"layerId": "bunker", "displayName": "Bunker", "order": -1, "isDefault": false},
         {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
@@ -76,7 +81,8 @@
       "imageWidth": 3100,
       "imageHeight": 3700,
       "aliases": ["lighthouse", "LIGHTHOUSE"],
-      "calibratedTransform": [-2.90420012444279, -0.03695247261865274, 0.07784072176584508, 2.177892974033182, 1528.3789482998613, 2306.9268299580804]
+      "calibratedTransform": [-2.90420012444279, -0.03695247261865274, 0.07784072176584508, 2.177892974033182, 1528.3789482998613, 2306.9268299580804],
+      "playerMarkerTransform": [-1, 0, 0, 1, 1550, 2050]
     },
     {
       "key": "StreetsOfTarkov",
@@ -85,7 +91,8 @@
       "imageWidth": 3260,
       "imageHeight": 3500,
       "aliases": ["streets", "STREETS", "TarkovStreets", "streets-of-tarkov", "Streets of Tarkov"],
-      "calibratedTransform": [-4.9755636069074605, 0.17678253000661656, -0.04605367100221113, 4.532788724198274, 1635.6669035346636, 1040.0215325356564]
+      "calibratedTransform": [-4.9755636069074605, 0.17678253000661656, -0.04605367100221113, 4.532788724198274, 1635.6669035346636, 1040.0215325356564],
+      "playerMarkerTransform": [-2, 0, 0, 2, 1660, 1420]
     },
     {
       "key": "Factory",
@@ -95,6 +102,7 @@
       "imageHeight": 3600,
       "aliases": ["factory", "FACTORY", "factory4_day", "factory4_night", "Night Factory"],
       "calibratedTransform": [0.2798878415258037, -21.627674282585662, -22.72576612862695, 0.024192513858156503, 1780.53763466516, 1900.045614685979],
+      "playerMarkerTransform": [0, -10, -10, 0, 1800, 1850],
       "floors": [
         {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
         {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
@@ -110,6 +118,7 @@
       "imageHeight": 3100,
       "aliases": ["groundzero", "GROUNDZERO", "Sandbox", "sandbox", "ground-zero", "ground-zero-21", "Ground Zero 21+"],
       "calibratedTransform": [-6.95950558606309, 0.1838843128357617, 1.7246964250980257, 5.988803108076605, 2088.258569967093, 789.6971540291354],
+      "playerMarkerTransform": [-2, 0, 0, 2, 1600, 1300],
       "floors": [
         {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
         {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},
@@ -125,6 +134,7 @@
       "imageHeight": 4200,
       "aliases": ["labs", "LABS", "laboratory", "the-lab", "The Lab"],
       "calibratedTransform": [-0.06475489648812036, 15.461642379397855, 18.704109904840276, 0.31533351406309695, 7946.959753722009, 5877.909736136232],
+      "playerMarkerTransform": [0, 10, 10, 0, 6100, 4050],
       "floors": [
         {"layerId": "basement", "displayName": "Basement", "order": -1, "isDefault": false},
         {"layerId": "main", "displayName": "Main Floor", "order": 0, "isDefault": true},

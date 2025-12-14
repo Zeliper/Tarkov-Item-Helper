@@ -54,6 +54,9 @@
                 <MenuItem Header="Refresh Hideout Data..." Click="RefreshHideoutData_Click" ToolTip="Fetch hideout data from tarkov.dev and save to DB"/>
                 <Separator/>
                 <MenuItem Header="Map Editor..." Click="TestMap_Click"/>
+                <Separator/>
+                <MenuItem Header="Floor Setup..." Click="FloorSetup_Click" ToolTip="Y 좌표 기반 자동 Floor 감지 설정"/>
+                <MenuItem Header="Screenshot Watcher Settings..." Click="ScreenshotWatcherSettings_Click" ToolTip="스크린샷 폴더 경로 및 패턴 설정"/>
             </MenuItem>
             <MenuItem Header="Tools">
                 <MenuItem Header="Quest Requirements Validator..." Click="OpenQuestRequirementsValidator_Click"/>

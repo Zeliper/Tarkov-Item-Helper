@@ -763,6 +763,40 @@ public partial class MainWindow : Window
         window.Show();
     }
 
+    private void FloorSetup_Click(object sender, RoutedEventArgs e)
+    {
+        // 데이터베이스가 연결되어 있는지 확인
+        if (!DatabaseService.Instance.IsConnected)
+        {
+            MessageBox.Show(
+                "Please open or create a database first.",
+                "No Database",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var window = new FloorSetupWindow { Owner = this };
+        window.Show();
+    }
+
+    private void ScreenshotWatcherSettings_Click(object sender, RoutedEventArgs e)
+    {
+        // 데이터베이스가 연결되어 있는지 확인
+        if (!DatabaseService.Instance.IsConnected)
+        {
+            MessageBox.Show(
+                "Please open or create a database first.",
+                "No Database",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        var window = new ScreenshotWatcherSettingsDialog { Owner = this };
+        window.ShowDialog();
+    }
+
     private async void CacheTarkovDevData_Click(object sender, RoutedEventArgs e)
     {
         ViewModel.StatusMessage = "Checking tarkov.dev cache status...";

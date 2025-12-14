@@ -1,0 +1,135 @@
+<Window x:Class="TarkovDBEditor.Views.FloorSetupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Floor Setup"
+        Height="600" Width="900"
+        WindowStartupLocation="CenterOwner"
+        Background="#1E1E1E">
+    <Window.Resources>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+        </Style>
+        <Style TargetType="Label">
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#2D2D30"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="BorderBrush" Value="#3F3F46"/>
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="#3E3E42"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="2"/>
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="BorderBrush" Value="#3F3F46"/>
+            <Setter Property="RowBackground" Value="#2D2D30"/>
+            <Setter Property="AlternatingRowBackground" Value="#252526"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#3F3F46"/>
+        </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#3E3E42"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="Padding" Value="8,4"/>
+            <Setter Property="BorderBrush" Value="#555555"/>
+            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        </Style>
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4"/>
+            <Style.Triggers>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#0078D4"/>
+                    <Setter Property="Foreground" Value="White"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Controls -->
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="200"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="200"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Label Grid.Column="0" Content="Map:" VerticalAlignment="Center"/>
+            <ComboBox x:Name="MapSelector" Grid.Column="1"
+                      SelectionChanged="MapSelector_SelectionChanged"
+                      VerticalAlignment="Center"/>
+
+            <Label Grid.Column="2" Content="Floor:" VerticalAlignment="Center" Margin="20,0,0,0"/>
+            <ComboBox x:Name="FloorSelector" Grid.Column="3"
+                      SelectionChanged="FloorSelector_SelectionChanged"
+                      VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- Data Grid -->
+        <DataGrid x:Name="FloorLocationsGrid" Grid.Row="1"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  SelectionMode="Single"
+                  CellEditEnding="FloorLocationsGrid_CellEditEnding">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Region Name" Binding="{Binding RegionName, Mode=TwoWay}" Width="150"/>
+                <DataGridTextColumn Header="Min Y" Binding="{Binding MinY, Mode=TwoWay, StringFormat=F1}" Width="80"/>
+                <DataGridTextColumn Header="Max Y" Binding="{Binding MaxY, Mode=TwoWay, StringFormat=F1}" Width="80"/>
+                <DataGridTextColumn Header="Min X" Binding="{Binding MinX, Mode=TwoWay, StringFormat=F1}" Width="80"/>
+                <DataGridTextColumn Header="Max X" Binding="{Binding MaxX, Mode=TwoWay, StringFormat=F1}" Width="80"/>
+                <DataGridTextColumn Header="Min Z" Binding="{Binding MinZ, Mode=TwoWay, StringFormat=F1}" Width="80"/>
+                <DataGridTextColumn Header="Max Z" Binding="{Binding MaxZ, Mode=TwoWay, StringFormat=F1}" Width="80"/>
+                <DataGridTextColumn Header="Priority" Binding="{Binding Priority, Mode=TwoWay}" Width="70"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,10,0,0">
+            <Button x:Name="AddButton" Content="+ Add Region" Click="AddButton_Click"/>
+            <Button x:Name="DeleteButton" Content="Delete" Click="DeleteButton_Click"/>
+            <Button x:Name="DuplicateButton" Content="Duplicate" Click="DuplicateButton_Click" Margin="20,2,2,2"/>
+            <Button x:Name="EditOnMapButton" Content="Edit Range on Map" Click="EditOnMapButton_Click"
+                    Background="#2196F3" Margin="20,2,2,2"/>
+            <Button x:Name="TestPositionButton" Content="Test Current Position" Click="TestPositionButton_Click" Margin="20,2,2,2"/>
+        </StackPanel>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="3" Background="#252526" BorderBrush="#3F3F46" BorderThickness="1"
+                Margin="0,10,0,0" Padding="10,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock x:Name="WatcherStatusText" Text="Watcher: Not running" Foreground="#808080"/>
+                    <TextBlock Text=" | " Foreground="#555555" Margin="10,0"/>
+                    <TextBlock x:Name="CurrentPositionText" Text="Position: --" Foreground="#70A800"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="Detected Floor: " Foreground="#808080"/>
+                    <TextBlock x:Name="DetectedFloorText" Text="--" Foreground="#FFC107" FontWeight="Bold"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

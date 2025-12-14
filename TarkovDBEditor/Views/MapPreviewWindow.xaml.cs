@@ -53,11 +53,16 @@ public partial class MapPreviewWindow : Window
     // Icon cache
     private static readonly Dictionary<MapMarkerType, BitmapImage?> _iconCache = new();
 
+    // Screenshot watcher for player position
+    private readonly ScreenshotWatcherService _watcherService = ScreenshotWatcherService.Instance;
+    private readonly FloorLocationService _floorLocationService = FloorLocationService.Instance;
+
     public MapPreviewWindow()
     {
         InitializeComponent();
         LoadMapConfigs();
         Loaded += MapPreviewWindow_Loaded;
+        Closed += MapPreviewWindow_Closed;
         PreviewKeyDown += MapPreviewWindow_KeyDown;
     }
 
@@ -69,6 +74,18 @@ public partial class MapPreviewWindow : Window
         {
             MapSelector.SelectedIndex = 0;
         }
+
+        // Subscribe to watcher events
+        _watcherService.PositionDetected += OnPositionDetected;
+        _watcherService.StateChanged += OnWatcherStateChanged;
+        UpdateWatcherStatus();
+    }
+
+    private void MapPreviewWindow_Closed(object? sender, EventArgs e)
+    {
+        // Unsubscribe from watcher events
+        _watcherService.PositionDetected -= OnPositionDetected;
+        _watcherService.StateChanged -= OnWatcherStateChanged;
     }
 
     private void LoadMapConfigs()
@@ -1276,6 +1293,194 @@ public partial class MapPreviewWindow : Window
 
         ZoomToPoint(newZoom, mousePos);
         e.Handled = true;
+    }
+
+    #endregion
+
+    #region Player Position Display
+
+    private void OnPositionDetected(object? sender, PositionDetectedEventArgs e)
+    {
+        Dispatcher.Invoke(async () =>
+        {
+            UpdatePlayerPositionText(e.Position);
+            DrawPlayerMarker(e.Position);
+
+            // Auto-detect floor if configured
+            if (_currentMapConfig != null)
+            {
+                var detectedFloor = await _floorLocationService.DetectFloorAsync(
+                    _currentMapConfig.Key, e.Position.X, e.Position.Y, e.Position.Z);
+
+                if (!string.IsNullOrEmpty(detectedFloor) && detectedFloor != _currentFloorId)
+                {
+                    // Auto-switch floor
+                    var floorItem = FloorSelector.Items.Cast<ComboBoxItem>()
+                        .FirstOrDefault(item => item.Tag as string == detectedFloor);
+
+                    if (floorItem != null)
+                    {
+                        FloorSelector.SelectedItem = floorItem;
+                    }
+                }
+            }
+        });
+    }
+
+    private void OnWatcherStateChanged(object? sender, WatcherStateChangedEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            UpdateWatcherStatus();
+        });
+    }
+
+    private void UpdateWatcherStatus()
+    {
+        if (_watcherService.IsWatching)
+        {
+            WatcherIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x70, 0xA8, 0x00));
+            WatcherToggleButton.Content = "Stop";
+            WatcherToggleButton.Background = new SolidColorBrush(Color.FromRgb(0xD4, 0x1C, 0x00));
+        }
+        else
+        {
+            WatcherIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66));
+            WatcherToggleButton.Content = "Start";
+            WatcherToggleButton.Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
+        }
+
+        var position = _watcherService.CurrentPosition;
+        if (position != null)
+        {
+            UpdatePlayerPositionText(position);
+            DrawPlayerMarker(position);
+        }
+        else
+        {
+            PlayerPositionText.Text = "Player: --";
+        }
+    }
+
+    private void UpdatePlayerPositionText(EftPosition position)
+    {
+        var angleStr = position.Angle.HasValue ? $" {position.Angle:F0}°" : "";
+        PlayerPositionText.Text = $"Player: X:{position.X:F0}, Y:{position.Y:F1}, Z:{position.Z:F0}{angleStr}";
+    }
+
+    private async void WatcherToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_watcherService.IsWatching)
+        {
+            _watcherService.StopWatching();
+        }
+        else
+        {
+            // Try to get saved path from settings
+            var settingsService = AppSettingsService.Instance;
+            var savedPath = await settingsService.GetAsync(AppSettingsService.ScreenshotWatcherPath, "");
+
+            if (string.IsNullOrEmpty(savedPath) || !Directory.Exists(savedPath))
+            {
+                // Try auto-detect
+                savedPath = _watcherService.DetectDefaultScreenshotFolder();
+            }
+
+            if (!string.IsNullOrEmpty(savedPath) && Directory.Exists(savedPath))
+            {
+                _watcherService.StartWatching(savedPath);
+            }
+            else
+            {
+                MessageBox.Show(
+                    "Screenshot folder not configured.\n\nPlease configure it via:\nDebug > Screenshot Watcher Settings...",
+                    "Watcher Not Configured",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+            }
+        }
+        UpdateWatcherStatus();
+    }
+
+    private void DrawPlayerMarker(EftPosition position)
+    {
+        if (_currentMapConfig == null) return;
+
+        PlayerCanvas.Children.Clear();
+
+        // Convert game coords to screen coords
+        var (screenX, screenY) = _currentMapConfig.GameToScreen(position.X, position.Z);
+
+        // Scale for current zoom level
+        double inverseScale = 1.0 / _zoomLevel;
+        double markerSize = 16 * inverseScale;
+
+        // Draw player circle (cyan)
+        var playerCircle = new Ellipse
+        {
+            Width = markerSize,
+            Height = markerSize,
+            Fill = new SolidColorBrush(Color.FromRgb(0x00, 0xBC, 0xD4)),
+            Stroke = Brushes.White,
+            StrokeThickness = 2 * inverseScale
+        };
+
+        Canvas.SetLeft(playerCircle, screenX - markerSize / 2);
+        Canvas.SetTop(playerCircle, screenY - markerSize / 2);
+        PlayerCanvas.Children.Add(playerCircle);
+
+        // Draw direction arrow if angle is available
+        if (position.Angle.HasValue)
+        {
+            double arrowLength = 24 * inverseScale;
+            double angleRad = (position.Angle.Value - 90) * Math.PI / 180.0; // -90 to point up at 0°
+
+            double endX = screenX + Math.Cos(angleRad) * arrowLength;
+            double endY = screenY + Math.Sin(angleRad) * arrowLength;
+
+            // Arrow line
+            var arrowLine = new Line
+            {
+                X1 = screenX,
+                Y1 = screenY,
+                X2 = endX,
+                Y2 = endY,
+                Stroke = new SolidColorBrush(Color.FromRgb(0x00, 0xBC, 0xD4)),
+                StrokeThickness = 3 * inverseScale,
+                StrokeEndLineCap = PenLineCap.Triangle
+            };
+            PlayerCanvas.Children.Add(arrowLine);
+
+            // Arrow head
+            double headSize = 8 * inverseScale;
+            double headAngle1 = angleRad + 2.5;
+            double headAngle2 = angleRad - 2.5;
+
+            var arrowHead = new Polygon
+            {
+                Points = new PointCollection
+                {
+                    new Point(endX, endY),
+                    new Point(endX - Math.Cos(headAngle1) * headSize, endY - Math.Sin(headAngle1) * headSize),
+                    new Point(endX - Math.Cos(headAngle2) * headSize, endY - Math.Sin(headAngle2) * headSize)
+                },
+                Fill = new SolidColorBrush(Color.FromRgb(0x00, 0xBC, 0xD4))
+            };
+            PlayerCanvas.Children.Add(arrowHead);
+        }
+
+        // Draw "P" label
+        var label = new TextBlock
+        {
+            Text = "P",
+            Foreground = Brushes.White,
+            FontSize = 10 * inverseScale,
+            FontWeight = FontWeights.Bold
+        };
+
+        Canvas.SetLeft(label, screenX - 4 * inverseScale);
+        Canvas.SetTop(label, screenY - 5 * inverseScale);
+        PlayerCanvas.Children.Add(label);
     }
 
     #endregion

@@ -161,6 +161,9 @@
 
                     <!-- Map Markers Canvas -->
                     <Canvas x:Name="MarkersCanvas"/>
+
+                    <!-- Player Position Canvas -->
+                    <Canvas x:Name="PlayerCanvas"/>
                 </Canvas>
             </Grid>
         </Border>
@@ -177,7 +180,18 @@
                     <TextBlock Text="Game Coords:" Foreground="#666" Margin="0,0,5,0"/>
                     <TextBlock x:Name="GameCoordsText" Text="X: -, Z: -" Foreground="#9A8866" Margin="0,0,20,0"/>
                     <TextBlock Text="Screen Coords:" Foreground="#666" Margin="0,0,5,0"/>
-                    <TextBlock x:Name="ScreenCoordsText" Text="X: -, Y: -" Foreground="#70A800"/>
+                    <TextBlock x:Name="ScreenCoordsText" Text="X: -, Y: -" Foreground="#70A800" Margin="0,0,20,0"/>
+                    <!-- Player Position from Watcher -->
+                    <Border x:Name="WatcherStatusBorder" CornerRadius="3" Padding="8,2" Margin="10,0,0,0"
+                            Background="#333" BorderBrush="#555" BorderThickness="1">
+                        <StackPanel Orientation="Horizontal">
+                            <Ellipse x:Name="WatcherIndicator" Width="8" Height="8" Fill="#666" Margin="0,0,6,0"/>
+                            <TextBlock x:Name="PlayerPositionText" Text="Player: --" Foreground="#00BCD4"/>
+                            <Button x:Name="WatcherToggleButton" Content="Start" Padding="6,1" Margin="10,0,0,0"
+                                    Background="#444" Foreground="#CCC" BorderThickness="0" FontSize="10"
+                                    Click="WatcherToggleButton_Click"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <TextBlock Grid.Column="1" x:Name="StatusText" Text="Ready" Foreground="#666"/>

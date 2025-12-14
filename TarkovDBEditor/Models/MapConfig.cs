@@ -81,6 +81,14 @@ public class MapConfig
     public List<MapFloorConfig>? Floors { get; set; }
 
     /// <summary>
+    /// 플레이어 마커 전용 좌표 변환 행렬 [a, b, c, d, tx, ty].
+    /// tarkov-market.com 등 외부 소스의 좌표 시스템과 호환을 위해 사용됩니다.
+    /// null이면 CalibratedTransform을 사용합니다.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? PlayerMarkerTransform { get; set; }
+
+    /// <summary>
     /// 게임 좌표를 맵 픽셀 좌표로 변환
     /// </summary>
     public (double screenX, double screenY) GameToScreen(double gameX, double gameZ)
@@ -142,6 +150,33 @@ public class MapConfig
         var gameZ = invC * dx + invD * dy;
 
         return (gameX, gameZ);
+    }
+
+    /// <summary>
+    /// 게임 좌표를 플레이어 마커용 맵 픽셀 좌표로 변환.
+    /// PlayerMarkerTransform이 있으면 사용하고, 없으면 CalibratedTransform 사용.
+    /// </summary>
+    public (double screenX, double screenY) GameToScreenForPlayer(double gameX, double gameZ)
+    {
+        var transform = PlayerMarkerTransform ?? CalibratedTransform;
+
+        if (transform == null || transform.Length < 6)
+        {
+            // Fallback: 단순 변환 (중앙 기준)
+            return (ImageWidth / 2.0 + gameX, ImageHeight / 2.0 + gameZ);
+        }
+
+        var a = transform[0];
+        var b = transform[1];
+        var c = transform[2];
+        var d = transform[3];
+        var tx = transform[4];
+        var ty = transform[5];
+
+        var screenX = a * gameX + b * gameZ + tx;
+        var screenY = c * gameX + d * gameZ + ty;
+
+        return (screenX, screenY);
     }
 
     /// <summary>
