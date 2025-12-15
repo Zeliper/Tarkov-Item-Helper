@@ -26,7 +26,6 @@ public partial class MainWindow : Window
     private HideoutPage? _hideoutPage;
     private ItemsPage? _itemsPage;
     private CollectorPage? _collectorPage;
-    private MapPage? _mapPage;
     private List<HideoutModule>? _hideoutModules;
     private ObservableCollection<QuestChangeInfo>? _pendingSyncChanges;
     private bool _isFullScreen;
@@ -264,7 +263,6 @@ public partial class MainWindow : Window
             System.Diagnostics.Debug.WriteLine($"[MainWindow] HideoutPage created: {_hideoutPage != null}");
             _itemsPage = new ItemsPage();
             _collectorPage = new CollectorPage();
-            // MapPage is created lazily when the tab is selected
 
             // Show tab area with Quests selected
             TxtWelcome.Visibility = Visibility.Collapsed;
@@ -317,12 +315,6 @@ public partial class MainWindow : Window
         else if (sender == TabCollector && _collectorPage != null)
         {
             PageContent.Content = _collectorPage;
-        }
-        else if (sender == TabMap)
-        {
-            // Lazy creation of MapPage
-            _mapPage ??= new MapPage();
-            PageContent.Content = _mapPage;
         }
     }
 
