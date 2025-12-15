@@ -27,9 +27,12 @@ namespace TarkovHelper.Pages;
 internal sealed class MarkerHitRegion
 {
     public MapMarker Marker { get; init; } = null!;
+    public List<MapMarker>? ClusterMarkers { get; init; }  // Non-null for clustered markers
     public double ScreenX { get; init; }
     public double ScreenY { get; init; }
     public double Radius { get; init; }
+
+    public bool IsCluster => ClusterMarkers != null && ClusterMarkers.Count > 1;
 
     public bool Contains(double x, double y)
     {
@@ -127,6 +130,7 @@ public partial class MapTrackerPage : UserControl
     // Marker hit regions for tooltip
     private readonly List<MarkerHitRegion> _markerHitRegions = new();
     private MapMarker? _hoveredMarker;
+    private MarkerHitRegion? _currentTooltipHitRegion;  // For tooltip actions
 
     // Settings panel state
     private bool _settingsPanelOpen = false;
@@ -1272,10 +1276,11 @@ public partial class MapTrackerPage : UserControl
         Canvas.SetTop(countText, badgeY + badgeSize / 2 - countText.DesiredSize.Height / 2);
         MarkersCanvas.Children.Add(countText);
 
-        // Register hit region for the entire cluster (tooltip will show count)
+        // Register hit region for the entire cluster (includes all markers for tooltip)
         _markerHitRegions.Add(new MarkerHitRegion
         {
-            Marker = cluster.Markers[0], // Use first marker for tooltip
+            Marker = cluster.Markers[0],
+            ClusterMarkers = cluster.Markers,
             ScreenX = sx,
             ScreenY = sy,
             Radius = markerSize / 2 + 4 * inverseScale
@@ -1842,23 +1847,24 @@ public partial class MapTrackerPage : UserControl
 
     private void UpdateMarkerTooltip(Point canvasPos, Point viewerPos)
     {
-        // Find marker under cursor
-        MapMarker? foundMarker = null;
+        // Find marker/cluster under cursor
+        MarkerHitRegion? foundRegion = null;
         foreach (var region in _markerHitRegions)
         {
             if (region.Contains(canvasPos.X, canvasPos.Y))
             {
-                foundMarker = region.Marker;
+                foundRegion = region;
                 break;
             }
         }
 
-        if (foundMarker != null)
+        if (foundRegion != null)
         {
-            if (_hoveredMarker != foundMarker)
+            if (_hoveredMarker != foundRegion.Marker || _currentTooltipHitRegion != foundRegion)
             {
-                _hoveredMarker = foundMarker;
-                ShowMarkerTooltip(foundMarker, viewerPos);
+                _hoveredMarker = foundRegion.Marker;
+                _currentTooltipHitRegion = foundRegion;
+                ShowMarkerTooltip(foundRegion, viewerPos);
             }
             else
             {
@@ -1872,48 +1878,108 @@ public partial class MapTrackerPage : UserControl
             if (_hoveredMarker != null)
             {
                 _hoveredMarker = null;
+                _currentTooltipHitRegion = null;
                 MarkerTooltip.Visibility = Visibility.Collapsed;
             }
             MapCanvas.Cursor = Cursors.Arrow;
         }
     }
 
-    private void ShowMarkerTooltip(MapMarker marker, Point viewerPos)
+    private void ShowMarkerTooltip(MarkerHitRegion hitRegion, Point viewerPos)
     {
-        // Set tooltip icon
-        var icon = GetMarkerIcon(marker.Type);
+        var marker = hitRegion.Marker;
+        var isCluster = hitRegion.IsCluster;
+
+        // Set tooltip icon (use primary type for clusters)
+        var displayType = isCluster ? hitRegion.ClusterMarkers!
+            .GroupBy(m => m.Type)
+            .OrderByDescending(g => GetMarkerTypePriority(g.Key))
+            .First().Key : marker.Type;
+        var icon = GetMarkerIcon(displayType);
         TooltipIcon.Source = icon;
 
-        // Set tooltip title (localized)
-        TooltipTitle.Text = GetLocalizedMarkerName(marker);
-
-        // Set marker type (localized)
-        var typeName = _loc.GetMarkerTypeName(marker.Type);
-        TooltipType.Text = $"Type: {typeName}";
-
-        // Set floor info if available
-        if (!string.IsNullOrEmpty(marker.FloorId) && _sortedFloors != null)
+        // Set tooltip title
+        if (isCluster)
         {
-            var floor = _sortedFloors.FirstOrDefault(f =>
-                string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase));
-            TooltipDetails.Text = floor != null ? $"Floor: {floor.DisplayName}" : $"Floor: {marker.FloorId}";
+            TooltipTitle.Text = $"{hitRegion.ClusterMarkers!.Count} Markers";
+            TooltipType.Text = "Cluster";
+
+            // Show cluster info
+            TooltipClusterInfo.Visibility = Visibility.Visible;
+            TooltipClusterCount.Text = $"{hitRegion.ClusterMarkers.Count} markers in this area";
+
+            // Build type summary
+            var typeCounts = hitRegion.ClusterMarkers
+                .GroupBy(m => m.Type)
+                .Select(g => $"{_loc.GetMarkerTypeName(g.Key)}: {g.Count()}")
+                .Take(4);
+            TooltipClusterTypes.Text = string.Join(", ", typeCounts);
+
+            // Hide single-marker details
+            TooltipDetails.Visibility = Visibility.Collapsed;
+
+            // Calculate center coordinates for cluster
+            var avgX = hitRegion.ClusterMarkers.Average(m => m.X);
+            var avgZ = hitRegion.ClusterMarkers.Average(m => m.Z);
+            TooltipCoords.Text = $"Center: X: {avgX:F1}, Z: {avgZ:F1}";
         }
         else
         {
-            TooltipDetails.Text = "";
+            TooltipTitle.Text = GetLocalizedMarkerName(marker);
+            TooltipType.Text = _loc.GetMarkerTypeName(marker.Type);
+
+            // Hide cluster info
+            TooltipClusterInfo.Visibility = Visibility.Collapsed;
+
+            // Set floor info if available
+            if (!string.IsNullOrEmpty(marker.FloorId) && _sortedFloors != null)
+            {
+                var floor = _sortedFloors.FirstOrDefault(f =>
+                    string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase));
+                TooltipDetails.Text = floor != null ? $"Floor: {floor.DisplayName}" : $"Floor: {marker.FloorId}";
+                TooltipDetails.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                TooltipDetails.Text = "";
+                TooltipDetails.Visibility = Visibility.Collapsed;
+            }
+
+            // Set coordinates
+            TooltipCoords.Text = $"X: {marker.X:F1}, Z: {marker.Z:F1}";
         }
 
-        // Set coordinates
-        TooltipCoords.Text = $"X: {marker.X:F1}, Z: {marker.Z:F1}";
-
         // Set border color based on marker type
-        var (r, g, b) = MapMarker.GetMarkerColor(marker.Type);
+        var (r, g, b) = MapMarker.GetMarkerColor(displayType);
         MarkerTooltip.BorderBrush = new SolidColorBrush(Color.FromRgb(r, g, b));
+
+        // Show/hide "Go to Floor" button
+        var hasFloorInfo = !string.IsNullOrEmpty(marker.FloorId) && _sortedFloors != null &&
+                           !string.Equals(marker.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase);
+        BtnGoToFloor.Visibility = (!isCluster && hasFloorInfo) ? Visibility.Visible : Visibility.Collapsed;
 
         // Position and show tooltip
         PositionTooltip(viewerPos);
         MarkerTooltip.Visibility = Visibility.Visible;
     }
+
+    /// <summary>
+    /// Get marker type priority for cluster display (higher = more important)
+    /// </summary>
+    private static int GetMarkerTypePriority(MarkerType type) => type switch
+    {
+        MarkerType.BossSpawn => 100,
+        MarkerType.RaiderSpawn => 90,
+        MarkerType.PmcExtraction => 80,
+        MarkerType.SharedExtraction => 75,
+        MarkerType.ScavExtraction => 70,
+        MarkerType.Transit => 60,
+        MarkerType.Keys => 50,
+        MarkerType.Lever => 40,
+        MarkerType.PmcSpawn => 20,
+        MarkerType.ScavSpawn => 10,
+        _ => 0
+    };
 
     private void PositionTooltip(Point viewerPos)
     {
@@ -1941,6 +2007,77 @@ public partial class MapTrackerPage : UserControl
         tooltipY = Math.Max(10, tooltipY);
 
         MarkerTooltip.Margin = new Thickness(tooltipX, tooltipY, 0, 0);
+    }
+
+    private void BtnCopyCoords_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentTooltipHitRegion == null) return;
+
+        string coordText;
+        if (_currentTooltipHitRegion.IsCluster && _currentTooltipHitRegion.ClusterMarkers != null)
+        {
+            // Copy center coordinates for cluster
+            var avgX = _currentTooltipHitRegion.ClusterMarkers.Average(m => m.X);
+            var avgZ = _currentTooltipHitRegion.ClusterMarkers.Average(m => m.Z);
+            coordText = $"X: {avgX:F1}, Z: {avgZ:F1}";
+        }
+        else
+        {
+            var marker = _currentTooltipHitRegion.Marker;
+            coordText = $"X: {marker.X:F1}, Z: {marker.Z:F1}";
+        }
+
+        try
+        {
+            System.Windows.Clipboard.SetText(coordText);
+            // Brief visual feedback - change button text temporarily
+            BtnCopyCoords.Content = "Copied!";
+            var timer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(1000)
+            };
+            timer.Tick += (_, _) =>
+            {
+                BtnCopyCoords.Content = "Copy";
+                timer.Stop();
+            };
+            timer.Start();
+        }
+        catch
+        {
+            // Clipboard may fail in some scenarios
+        }
+    }
+
+    private void BtnGoToFloor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentTooltipHitRegion == null || _currentTooltipHitRegion.IsCluster) return;
+
+        var marker = _currentTooltipHitRegion.Marker;
+        if (string.IsNullOrEmpty(marker.FloorId) || _sortedFloors == null) return;
+
+        // Find the floor in the list
+        var floor = _sortedFloors.FirstOrDefault(f =>
+            string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase));
+
+        if (floor != null)
+        {
+            // Select the floor in the floor selector (Settings Panel)
+            var floorIndex = _sortedFloors.IndexOf(floor);
+            if (floorIndex >= 0)
+            {
+                _currentFloorId = floor.LayerId;
+
+                // Redraw to update floor visibility
+                RedrawMarkers();
+                RedrawObjectives();
+
+                // Hide tooltip after action
+                MarkerTooltip.Visibility = Visibility.Collapsed;
+                _hoveredMarker = null;
+                _currentTooltipHitRegion = null;
+            }
+        }
     }
 
     private void MapViewer_MouseWheel(object sender, MouseWheelEventArgs e)

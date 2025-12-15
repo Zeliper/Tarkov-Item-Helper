@@ -267,26 +267,106 @@
                     <Canvas x:Name="PlayerCanvas"/>
                 </Canvas>
 
-                <!-- Marker Tooltip -->
+                <!-- Marker Tooltip (Enhanced) -->
                 <Border x:Name="MarkerTooltip" Visibility="Collapsed"
                         Background="{StaticResource OverlayBackgroundBrush}" BorderBrush="{StaticResource MarkerExtractBrush}" BorderThickness="1"
-                        CornerRadius="6" Padding="12,10" MaxWidth="280"
+                        CornerRadius="6" Padding="12,10" MaxWidth="300" MinWidth="200"
                         HorizontalAlignment="Left" VerticalAlignment="Top">
                     <StackPanel>
+                        <!-- Header with icon and title -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <Image x:Name="TooltipIcon" Width="24" Height="24" Margin="0,0,8,0"/>
-                            <TextBlock x:Name="TooltipTitle" Text="Marker Name"
-                                       Foreground="{StaticResource TextPrimaryBrush}" FontSize="14" FontWeight="SemiBold"
-                                       VerticalAlignment="Center"/>
+                            <Image x:Name="TooltipIcon" Width="28" Height="28" Margin="0,0,10,0"/>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock x:Name="TooltipTitle" Text="Marker Name"
+                                           Foreground="{StaticResource TextPrimaryBrush}" FontSize="14" FontWeight="SemiBold"/>
+                                <TextBlock x:Name="TooltipType" Text="PMC Extraction"
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,2,0,0"/>
+                            </StackPanel>
                         </StackPanel>
-                        <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,0,0,6"/>
-                        <TextBlock x:Name="TooltipType" Text="Type: PMC Extraction"
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="12"/>
+
+                        <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,4,0,8"/>
+
+                        <!-- Details section -->
                         <TextBlock x:Name="TooltipDetails" Text=""
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,4,0,0"
-                                   TextWrapping="Wrap"/>
-                        <TextBlock x:Name="TooltipCoords" Text="X: 0, Z: 0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,6,0,0"/>
+                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11"
+                                   TextWrapping="Wrap" Visibility="Collapsed"/>
+
+                        <!-- Cluster info section (hidden for single markers) -->
+                        <StackPanel x:Name="TooltipClusterInfo" Visibility="Collapsed" Margin="0,0,0,8">
+                            <TextBlock x:Name="TooltipClusterCount" Text="5 markers in this area"
+                                       Foreground="{StaticResource AccentBrush}" FontSize="12" FontWeight="SemiBold"/>
+                            <TextBlock x:Name="TooltipClusterTypes" Text=""
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,4,0,0"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <!-- Coordinates -->
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="TooltipCoords" Text="X: 0, Z: 0"
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"
+                                       VerticalAlignment="Center"/>
+                            <Button x:Name="BtnCopyCoords" Grid.Column="1" Content="Copy"
+                                    FontSize="10" Padding="8,2" Cursor="Hand"
+                                    Background="Transparent" Foreground="{StaticResource AccentBrush}"
+                                    BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                                    Click="BtnCopyCoords_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </Grid>
+
+                        <!-- Action buttons -->
+                        <StackPanel x:Name="TooltipActions" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnGoToFloor" Content="Go to Floor" Visibility="Collapsed"
+                                    FontSize="10" Padding="10,4" Margin="0,0,6,0" Cursor="Hand"
+                                    Background="{StaticResource BackgroundLightBrush}"
+                                    Foreground="{StaticResource TextPrimaryBrush}"
+                                    BorderThickness="0" Click="BtnGoToFloor_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 
