@@ -129,6 +129,10 @@
                     <!-- Floor Selector -->
                     <TextBlock x:Name="TxtFloorLabel" Text="Floor:" Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="16,0,8,0" Visibility="Collapsed"/>
+                    <CheckBox x:Name="ChkAutoFloor" Content="Auto" VerticalAlignment="Center"
+                              Margin="0,0,8,0" Visibility="Collapsed" FontSize="11"
+                              Checked="ChkAutoFloor_CheckedChanged" Unchecked="ChkAutoFloor_CheckedChanged"
+                              ToolTip="Automatically detect floor from player position"/>
                     <ComboBox x:Name="FloorSelector" Width="120" Height="28"
                               SelectionChanged="FloorSelector_SelectionChanged" Visibility="Collapsed"/>
                     <TextBlock x:Name="TxtFloorHotkeys" Text="(0-5)"

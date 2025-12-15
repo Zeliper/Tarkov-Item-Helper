@@ -254,12 +254,15 @@ public partial class MapTrackerPage : UserControl
         if (floors == null || floors.Count == 0)
         {
             TxtFloorLabel.Visibility = Visibility.Collapsed;
+            ChkAutoFloor.Visibility = Visibility.Collapsed;
             FloorSelector.Visibility = Visibility.Collapsed;
             TxtFloorHotkeys.Visibility = Visibility.Collapsed;
             return;
         }
 
         TxtFloorLabel.Visibility = Visibility.Visible;
+        ChkAutoFloor.Visibility = Visibility.Visible;
+        ChkAutoFloor.IsChecked = _autoFloorEnabled;
         FloorSelector.Visibility = Visibility.Visible;
         TxtFloorHotkeys.Visibility = Visibility.Visible;
 
@@ -304,6 +307,12 @@ public partial class MapTrackerPage : UserControl
                 }
             }
         }
+    }
+
+    private void ChkAutoFloor_CheckedChanged(object sender, RoutedEventArgs e)
+    {
+        _autoFloorEnabled = ChkAutoFloor.IsChecked == true;
+        // Floor will be auto-detected on next position update
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
