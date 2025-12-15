@@ -48,6 +48,10 @@ public class SettingsService
     private const string KeyMapAutoHideCompleted = "map.autoHideCompleted";
     private const string KeyMapFadeCompleted = "map.fadeCompleted";
     private const string KeyMapShowLabels = "map.showLabels";
+    private const string KeyMapLabelScale = "map.labelScale";
+    private const string KeyMapQuestStatusColors = "map.questStatusColors";
+    private const string KeyMapHideCompletedQuests = "map.hideCompletedQuests";
+    private const string KeyMapShowActiveOnly = "map.showActiveOnly";
     private const string KeyMapTrailColor = "map.trailColor";
     private const string KeyMapTrailThickness = "map.trailThickness";
     private const string KeyMapAutoStartTracking = "map.autoStartTracking";
@@ -98,6 +102,10 @@ public class SettingsService
     private bool? _mapAutoHideCompleted;
     private bool? _mapFadeCompleted;
     private bool? _mapShowLabels;
+    private double? _mapLabelScale;
+    private bool? _mapQuestStatusColors;
+    private bool? _mapHideCompletedQuests;
+    private bool? _mapShowActiveOnly;
     private string? _mapTrailColor;
     private double? _mapTrailThickness;
     private bool? _mapAutoStartTracking;
@@ -760,6 +768,87 @@ public class SettingsService
             {
                 _mapShowLabels = value;
                 SaveSetting(KeyMapShowLabels, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Label scale (0.5 - 1.5)
+    /// </summary>
+    public double MapLabelScale
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapLabelScale ?? 1.0;
+        }
+        set
+        {
+            var clampedValue = Math.Clamp(value, 0.5, 1.5);
+            if (Math.Abs((_mapLabelScale ?? 1.0) - clampedValue) > 0.01)
+            {
+                _mapLabelScale = clampedValue;
+                SaveSetting(KeyMapLabelScale, clampedValue.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Color quests by status (Active/Locked/Done)
+    /// </summary>
+    public bool MapQuestStatusColors
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapQuestStatusColors ?? true;
+        }
+        set
+        {
+            if (_mapQuestStatusColors != value)
+            {
+                _mapQuestStatusColors = value;
+                SaveSetting(KeyMapQuestStatusColors, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Hide completed quests on map
+    /// </summary>
+    public bool MapHideCompletedQuests
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapHideCompletedQuests ?? false;
+        }
+        set
+        {
+            if (_mapHideCompletedQuests != value)
+            {
+                _mapHideCompletedQuests = value;
+                SaveSetting(KeyMapHideCompletedQuests, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show only active quests on map
+    /// </summary>
+    public bool MapShowActiveOnly
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowActiveOnly ?? false;
+        }
+        set
+        {
+            if (_mapShowActiveOnly != value)
+            {
+                _mapShowActiveOnly = value;
+                SaveSetting(KeyMapShowActiveOnly, value.ToString());
             }
         }
     }
@@ -1495,6 +1584,19 @@ public class SettingsService
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyQuestPanelVisible), out var questPanelVisible))
                 _questPanelVisible = questPanelVisible;
+
+            // Load quest display settings
+            if (double.TryParse(_userDataDb.GetSetting(KeyMapLabelScale), out var labelScale))
+                _mapLabelScale = labelScale;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapQuestStatusColors), out var questStatusColors))
+                _mapQuestStatusColors = questStatusColors;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapHideCompletedQuests), out var hideCompletedQuests))
+                _mapHideCompletedQuests = hideCompletedQuests;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowActiveOnly), out var showActiveOnly))
+                _mapShowActiveOnly = showActiveOnly;
         }
         catch (Exception ex)
         {

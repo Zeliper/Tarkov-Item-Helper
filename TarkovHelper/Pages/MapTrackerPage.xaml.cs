@@ -94,6 +94,55 @@ internal sealed class QuestObjectiveDisplay
 }
 
 /// <summary>
+/// Hit region for quest objective tooltip detection
+/// </summary>
+internal sealed class QuestHitRegion
+{
+    public QuestObjective Objective { get; init; } = null!;
+    public List<QuestObjective>? ClusterObjectives { get; init; }  // Non-null for clustered objectives
+    public double ScreenX { get; init; }
+    public double ScreenY { get; init; }
+    public double Radius { get; init; }
+    public string LocalizedQuestName { get; set; } = "";
+    public int Priority { get; set; }  // Higher = more important
+
+    public bool IsCluster => ClusterObjectives != null && ClusterObjectives.Count > 1;
+
+    public bool Contains(double x, double y)
+    {
+        var dx = x - ScreenX;
+        var dy = y - ScreenY;
+        return dx * dx + dy * dy <= Radius * Radius;
+    }
+}
+
+/// <summary>
+/// Cluster of quest objectives at similar locations
+/// </summary>
+internal sealed class QuestObjectiveCluster
+{
+    public List<(QuestObjective Objective, double ScreenX, double ScreenY, int Priority, string LocalizedName, QuestStatus Status)> Items { get; } = new();
+    public double CenterScreenX { get; private set; }
+    public double CenterScreenY { get; private set; }
+
+    public void AddItem(QuestObjective objective, double sx, double sy, int priority, string localizedName, QuestStatus status)
+    {
+        Items.Add((objective, sx, sy, priority, localizedName, status));
+        // Recalculate center
+        CenterScreenX = Items.Average(i => i.ScreenX);
+        CenterScreenY = Items.Average(i => i.ScreenY);
+    }
+
+    /// <summary>
+    /// Gets the highest priority item in the cluster
+    /// </summary>
+    public (QuestObjective Objective, double ScreenX, double ScreenY, int Priority, string LocalizedName, QuestStatus Status) GetPrimaryItem()
+    {
+        return Items.OrderByDescending(i => i.Priority).First();
+    }
+}
+
+/// <summary>
 /// Map Tracker Page - displays map with markers and real-time player position tracking
 /// </summary>
 public partial class MapTrackerPage : UserControl
@@ -148,6 +197,11 @@ public partial class MapTrackerPage : UserControl
     private MapMarker? _hoveredMarker;
     private MarkerHitRegion? _currentTooltipHitRegion;  // For tooltip actions
 
+    // Quest objective hit regions for tooltip
+    private readonly List<QuestHitRegion> _questHitRegions = new();
+    private QuestHitRegion? _hoveredQuestRegion;
+    private const double QuestClusterDistance = 40.0;  // Screen pixels to cluster quests
+
     // Settings panel state
     private bool _settingsPanelOpen = false;
 
@@ -162,8 +216,14 @@ public partial class MapTrackerPage : UserControl
 
     // Display settings
     private double _markerScale = 1.0;
+    private double _labelScale = 1.0;  // Label size scale (0.5 to 1.5)
     private double _labelShowZoomThreshold = 0.5;
     private bool _showMarkerLabels = true;
+
+    // Quest display settings
+    private bool _questStatusColorsEnabled = true;  // Color quests by status
+    private bool _hideCompletedQuests = false;      // Hide done quests
+    private bool _showActiveQuestsOnly = false;     // Show only active quests
 
     // LOD thresholds
     private const double LOD_CLUSTER_ONLY_THRESHOLD = 0.3;
@@ -293,10 +353,16 @@ public partial class MapTrackerPage : UserControl
     {
         // Display settings
         _markerScale = _settings.MapMarkerScale;
+        _labelScale = _settings.MapLabelScale;
         _showMarkerLabels = _settings.MapShowLabels;
         _clusteringEnabled = _settings.MapClusteringEnabled;
         _clusterZoomThreshold = _settings.MapClusterZoomThreshold / 100.0;  // Convert from 0-100 to 0-1
         _autoFloorEnabled = _settings.MapAutoFloorEnabled;
+
+        // Quest display settings
+        _questStatusColorsEnabled = _settings.MapQuestStatusColors;
+        _hideCompletedQuests = _settings.MapHideCompletedQuests;
+        _showActiveQuestsOnly = _settings.MapShowActiveOnly;
 
         // Layer visibility - apply to chips
         ChipBoss.IsChecked = _settings.MapShowBosses;
@@ -712,10 +778,17 @@ public partial class MapTrackerPage : UserControl
     {
         // Sync Display settings
         SliderMarkerSize.Value = _markerScale * 100;
+        SliderLabelSize.Value = _labelScale * 100;
+        TxtLabelSize.Text = $"{_labelScale * 100:F0}%";
         ChkShowLabels.IsChecked = _showMarkerLabels;
         ChkEnableClustering.IsChecked = _clusteringEnabled;
         SliderClusterZoom.Value = _clusterZoomThreshold * 100;
         ChkAutoFloor.IsChecked = _autoFloorEnabled;
+
+        // Sync Quest display settings
+        ChkQuestStatusColors.IsChecked = _questStatusColorsEnabled;
+        ChkHideCompletedQuests.IsChecked = _hideCompletedQuests;
+        ChkShowActiveOnly.IsChecked = _showActiveQuestsOnly;
     }
 
     private void SliderMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -727,12 +800,45 @@ public partial class MapTrackerPage : UserControl
         RedrawMarkers();
     }
 
+    private void SliderLabelSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtLabelSize == null) return;
+        _labelScale = SliderLabelSize.Value / 100.0;
+        TxtLabelSize.Text = $"{SliderLabelSize.Value:F0}%";
+        if (_isInitialized) _settings.MapLabelScale = _labelScale;  // Save to settings
+        RedrawMarkers();
+        RedrawObjectives();
+    }
+
     private void ChkShowLabels_Changed(object sender, RoutedEventArgs e)
     {
         _showMarkerLabels = ChkShowLabels.IsChecked == true;
         if (_isInitialized) _settings.MapShowLabels = _showMarkerLabels;  // Save to settings
         RedrawMarkers();
         RedrawObjectives();
+    }
+
+    private void ChkQuestStatusColors_Changed(object sender, RoutedEventArgs e)
+    {
+        _questStatusColorsEnabled = ChkQuestStatusColors.IsChecked == true;
+        if (_isInitialized) _settings.MapQuestStatusColors = _questStatusColorsEnabled;
+        RedrawObjectives();
+    }
+
+    private void ChkHideCompletedQuests_Changed(object sender, RoutedEventArgs e)
+    {
+        _hideCompletedQuests = ChkHideCompletedQuests.IsChecked == true;
+        if (_isInitialized) _settings.MapHideCompletedQuests = _hideCompletedQuests;
+        RedrawObjectives();
+        UpdateCounts();
+    }
+
+    private void ChkShowActiveOnly_Changed(object sender, RoutedEventArgs e)
+    {
+        _showActiveQuestsOnly = ChkShowActiveOnly.IsChecked == true;
+        if (_isInitialized) _settings.MapShowActiveOnly = _showActiveQuestsOnly;
+        RedrawObjectives();
+        UpdateCounts();
     }
 
     private void ChkEnableClustering_Changed(object sender, RoutedEventArgs e)
@@ -1777,6 +1883,7 @@ public partial class MapTrackerPage : UserControl
         if (ObjectivesCanvas == null || TxtQuestCount == null) return;
 
         ObjectivesCanvas.Children.Clear();
+        _questHitRegions.Clear();
 
         if (_currentMapConfig == null) return;
         if (!ShouldShowQuestObjectives()) return;
@@ -1786,108 +1893,264 @@ public partial class MapTrackerPage : UserControl
 
         var objectives = QuestObjectiveDbService.Instance.GetObjectivesForMap(_currentMapConfig.Key, _currentMapConfig);
 
+        // Collect single-point objectives for clustering
+        var singlePointObjectives = new List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status)>();
+
         int count = 0;
         foreach (var objective in objectives)
         {
+            // Get quest status for filtering and coloring
+            var questStatus = GetQuestStatusForObjective(objective);
+
+            // Apply filtering based on quest status
+            if (_hideCompletedQuests && questStatus == QuestStatus.Done)
+                continue;
+
+            if (_showActiveQuestsOnly && questStatus != QuestStatus.Active)
+                continue;
+
             count++;
+
+            var questName = GetLocalizedQuestName(objective);
+            var priority = CalculateQuestPriority(objective);
 
             // Draw LocationPoints (polygon, line, or single point)
             if (objective.HasCoordinates)
             {
-                DrawObjectiveLocationPoints(objective, inverseScale, hasFloors);
+                var points = objective.LocationPoints;
+                double opacity = GetObjectiveOpacity(points[0].FloorId, hasFloors);
+
+                if (points.Count == 1)
+                {
+                    // Collect single points for smart label clustering
+                    var (sx, sy) = _currentMapConfig!.GameToScreen(points[0].X, points[0].Z);
+                    singlePointObjectives.Add((objective, sx, sy, priority, questName, opacity, questStatus));
+                }
+                else if (points.Count == 2)
+                {
+                    // Two points - draw dashed line (no clustering)
+                    var objectiveColor = GetQuestStatusColor(questStatus, opacity);
+                    bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
+                    DrawObjectiveLine(points[0], points[1], inverseScale, objectiveColor, questName, showLabels);
+                }
+                else
+                {
+                    // 3+ points - draw polygon (no clustering)
+                    var objectiveColor = GetQuestStatusColor(questStatus, opacity);
+                    bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
+                    DrawObjectivePolygon(points, inverseScale, objectiveColor, questName, showLabels);
+                }
             }
 
             // Draw OptionalPoints (OR locations)
             if (objective.HasOptionalPoints)
             {
-                DrawObjectiveOptionalPoints(objective, inverseScale, hasFloors);
+                DrawObjectiveOptionalPoints(objective, inverseScale, hasFloors, questStatus);
             }
         }
+
+        // Apply smart label clustering for single-point objectives
+        DrawClusteredObjectives(singlePointObjectives, inverseScale);
 
         TxtQuestCount.Text = count.ToString();
     }
 
-    private void DrawObjectiveLocationPoints(QuestObjective objective, double inverseScale, bool hasFloors)
+    /// <summary>
+    /// Get quest status for an objective
+    /// </summary>
+    private QuestStatus GetQuestStatusForObjective(QuestObjective objective)
     {
-        var points = objective.LocationPoints;
-        if (points.Count == 0) return;
+        var quest = QuestDbService.Instance.GetQuestById(objective.QuestId);
+        if (quest == null) return QuestStatus.Locked;
 
-        // Determine opacity based on floor
-        double opacity = 1.0;
-        if (hasFloors && _currentFloorId != null)
+        return QuestProgressService.Instance.GetStatus(quest);
+    }
+
+    /// <summary>
+    /// Get color based on quest status
+    /// Active = Green, Locked = Amber, Done = Grey
+    /// </summary>
+    private Color GetQuestStatusColor(QuestStatus status, double opacity)
+    {
+        if (!_questStatusColorsEnabled)
         {
-            var pointFloor = points[0].FloorId;
-            if (pointFloor != null && !string.Equals(pointFloor, _currentFloorId, StringComparison.OrdinalIgnoreCase))
+            // Default amber color when status colors disabled
+            return Color.FromArgb((byte)(opacity * 255), 0xF5, 0xA6, 0x23);
+        }
+
+        return status switch
+        {
+            QuestStatus.Active => Color.FromArgb((byte)(opacity * 255), 0x4C, 0xAF, 0x50),  // Green
+            QuestStatus.Done => Color.FromArgb((byte)(opacity * 255), 0x9E, 0x9E, 0x9E),    // Grey
+            _ => Color.FromArgb((byte)(opacity * 255), 0xFF, 0xA0, 0x00)                     // Amber (Locked)
+        };
+    }
+
+    /// <summary>
+    /// Get opacity based on floor matching
+    /// </summary>
+    private double GetObjectiveOpacity(string? pointFloor, bool hasFloors)
+    {
+        if (hasFloors && _currentFloorId != null && pointFloor != null)
+        {
+            if (!string.Equals(pointFloor, _currentFloorId, StringComparison.OrdinalIgnoreCase))
             {
-                opacity = 0.3;
+                return 0.3;
+            }
+        }
+        return 1.0;
+    }
+
+    /// <summary>
+    /// Calculate priority for a quest objective (higher = more important)
+    /// Priority: Active quests > Kappa required > Lower level requirement
+    /// </summary>
+    private int CalculateQuestPriority(QuestObjective objective)
+    {
+        int priority = 100;  // Base priority
+
+        // Check quest properties from QuestDbService
+        var quest = QuestDbService.Instance.GetQuestById(objective.QuestId);
+        if (quest != null)
+        {
+            // Check if quest is active (highest priority)
+            var questProgress = QuestProgressService.Instance;
+            var status = questProgress.GetStatus(quest);
+            if (status == QuestStatus.Active)
+            {
+                priority += 1000;  // Active quests get huge bonus
+            }
+
+            // Kappa required quests get bonus
+            if (quest.ReqKappa)
+            {
+                priority += 200;
+            }
+
+            // Lower level requirements get higher priority (inverted)
+            if (quest.RequiredLevel.HasValue)
+            {
+                priority += Math.Max(0, 100 - quest.RequiredLevel.Value);
             }
         }
 
-        // Objective color - amber/yellow (#FFC107)
-        var objectiveColor = Color.FromArgb((byte)(opacity * 255), 0xFF, 0xC1, 0x07);
-
-        // Get localized quest name
-        var questName = GetLocalizedQuestName(objective);
-        bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
-
-        if (points.Count == 1)
-        {
-            // Single point - draw diamond marker with "!"
-            DrawObjectivePointMarker(points[0], inverseScale, objectiveColor, opacity, questName, showLabels);
-        }
-        else if (points.Count == 2)
-        {
-            // Two points - draw dashed line between them
-            DrawObjectiveLine(points[0], points[1], inverseScale, objectiveColor, questName, showLabels);
-        }
-        else
-        {
-            // 3+ points - draw dashed polygon
-            DrawObjectivePolygon(points, inverseScale, objectiveColor, questName, showLabels);
-        }
+        return priority;
     }
 
-    private void DrawObjectivePointMarker(LocationPoint point, double inverseScale, Color color, double opacity, string questName, bool showLabel)
+    /// <summary>
+    /// Draw clustered quest objectives with smart label system
+    /// </summary>
+    private void DrawClusteredObjectives(List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status)> objectives, double inverseScale)
     {
-        var (sx, sy) = _currentMapConfig!.GameToScreen(point.X, point.Z);
-        var markerSize = 32 * inverseScale;
+        if (objectives.Count == 0) return;
 
-        // Diamond shape
-        var diamond = new Polygon
+        // Build clusters based on screen distance
+        var clusters = new List<QuestObjectiveCluster>();
+        var clusterDistance = QuestClusterDistance * inverseScale;  // Scale with zoom
+
+        foreach (var obj in objectives)
         {
-            Points = new PointCollection
+            // Find existing cluster within distance
+            QuestObjectiveCluster? targetCluster = null;
+            foreach (var cluster in clusters)
             {
-                new Point(sx, sy - markerSize / 2),
-                new Point(sx + markerSize / 2, sy),
-                new Point(sx, sy + markerSize / 2),
-                new Point(sx - markerSize / 2, sy)
-            },
-            Fill = new SolidColorBrush(Color.FromArgb((byte)(opacity * 200), color.R, color.G, color.B)),
-            Stroke = new SolidColorBrush(color),
-            StrokeThickness = 2 * inverseScale
-        };
-        ObjectivesCanvas.Children.Add(diamond);
+                var dx = obj.SX - cluster.CenterScreenX;
+                var dy = obj.SY - cluster.CenterScreenY;
+                if (Math.Sqrt(dx * dx + dy * dy) < clusterDistance)
+                {
+                    targetCluster = cluster;
+                    break;
+                }
+            }
 
-        // "!" exclamation mark
-        var exclamation = new TextBlock
-        {
-            Text = "!",
-            Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 0, 0, 0)),
-            FontSize = 20 * inverseScale,
-            FontWeight = FontWeights.Bold
-        };
-        exclamation.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Canvas.SetLeft(exclamation, sx - exclamation.DesiredSize.Width / 2);
-        Canvas.SetTop(exclamation, sy - exclamation.DesiredSize.Height / 2);
-        ObjectivesCanvas.Children.Add(exclamation);
+            if (targetCluster != null)
+            {
+                targetCluster.AddItem(obj.Obj, obj.SX, obj.SY, obj.Priority, obj.Name, obj.Status);
+            }
+            else
+            {
+                var newCluster = new QuestObjectiveCluster();
+                newCluster.AddItem(obj.Obj, obj.SX, obj.SY, obj.Priority, obj.Name, obj.Status);
+                clusters.Add(newCluster);
+            }
+        }
 
-        // Quest name label (only show when zoomed in enough)
-        if (showLabel && !string.IsNullOrEmpty(questName))
+        // Draw each cluster
+        bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
+        var markerSize = 24 * inverseScale;
+
+        foreach (var cluster in clusters)
         {
-            var fontSize = Math.Max(10, 24 * inverseScale);
-            DrawQuestNameLabel(sx + markerSize / 2 + 8 * inverseScale, sy - fontSize / 2, questName, color, fontSize, opacity);
+            var primary = cluster.GetPrimaryItem();
+            var sx = cluster.CenterScreenX;
+            var sy = cluster.CenterScreenY;
+
+            // Get opacity and status from first item (approximate)
+            var firstItem = objectives.First(o => o.Obj == primary.Objective);
+            var opacity = firstItem.Opacity;
+            var objectiveColor = GetQuestStatusColor(primary.Status, opacity);
+
+            // Draw circular marker
+            var circle = new Ellipse
+            {
+                Width = markerSize,
+                Height = markerSize,
+                Fill = new SolidColorBrush(Color.FromArgb((byte)(opacity * 220), objectiveColor.R, objectiveColor.G, objectiveColor.B)),
+                Stroke = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 0xFF, 0xFF, 0xFF)),
+                StrokeThickness = 2 * inverseScale
+            };
+            Canvas.SetLeft(circle, sx - markerSize / 2);
+            Canvas.SetTop(circle, sy - markerSize / 2);
+            ObjectivesCanvas.Children.Add(circle);
+
+            // If cluster has multiple items, show count badge
+            if (cluster.Items.Count > 1)
+            {
+                var badgeSize = 14 * inverseScale;
+                var badge = new Border
+                {
+                    Width = badgeSize,
+                    Height = badgeSize,
+                    CornerRadius = new CornerRadius(badgeSize / 2),
+                    Background = new SolidColorBrush(Color.FromRgb(0xFF, 0x70, 0x43)),  // Cluster color
+                    Child = new TextBlock
+                    {
+                        Text = cluster.Items.Count.ToString(),
+                        FontSize = 9 * inverseScale,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = Brushes.White,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center
+                    }
+                };
+                Canvas.SetLeft(badge, sx + markerSize / 2 - badgeSize / 2);
+                Canvas.SetTop(badge, sy - markerSize / 2 - badgeSize / 2);
+                ObjectivesCanvas.Children.Add(badge);
+            }
+
+            // Only show label for the highest priority quest in cluster
+            if (showLabels)
+            {
+                var fontSize = Math.Max(10, 24 * inverseScale * _labelScale);
+                DrawQuestNameLabel(sx + markerSize / 2 + 8 * inverseScale, sy - fontSize / 2, primary.LocalizedName, objectiveColor, fontSize, opacity);
+            }
+
+            // Register hit region for tooltip
+            _questHitRegions.Add(new QuestHitRegion
+            {
+                Objective = primary.Objective,
+                ClusterObjectives = cluster.Items.Count > 1 ? cluster.Items.Select(i => i.Objective).ToList() : null,
+                ScreenX = sx,
+                ScreenY = sy,
+                Radius = markerSize / 2 + 5,
+                LocalizedQuestName = primary.LocalizedName,
+                Priority = primary.Priority
+            });
         }
     }
+
+    // Note: DrawObjectiveLocationPoints and DrawObjectivePointMarker removed -
+    // replaced by DrawClusteredObjectives with smart label system
 
     private void DrawObjectiveLine(LocationPoint p1, LocationPoint p2, double inverseScale, Color color, string questName, bool showLabel)
     {
@@ -2006,10 +2269,16 @@ public partial class MapTrackerPage : UserControl
         ObjectivesCanvas.Children.Add(bgRect);
     }
 
-    private void DrawObjectiveOptionalPoints(QuestObjective objective, double inverseScale, bool hasFloors)
+    private void DrawObjectiveOptionalPoints(QuestObjective objective, double inverseScale, bool hasFloors, QuestStatus questStatus)
     {
-        // Optional points color - orange (#FF9800)
-        var optionalColor = Color.FromRgb(0xFF, 0x98, 0x00);
+        // Get base color from quest status (lighter version for optional points)
+        var baseColor = GetQuestStatusColor(questStatus, 1.0);
+        // Make it lighter/more pastel for optional points
+        var optionalColor = Color.FromRgb(
+            (byte)Math.Min(255, baseColor.R + 50),
+            (byte)Math.Min(255, baseColor.G + 50),
+            (byte)Math.Min(255, baseColor.B + 50));
+
         var questName = GetLocalizedQuestName(objective);
         bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
 
@@ -2029,38 +2298,25 @@ public partial class MapTrackerPage : UserControl
 
             var color = Color.FromArgb((byte)(opacity * 255), optionalColor.R, optionalColor.G, optionalColor.B);
             var (sx, sy) = _currentMapConfig!.GameToScreen(point.X, point.Z);
-            var markerSize = 28 * inverseScale;
+            var markerSize = 20 * inverseScale;  // Smaller than required objectives
 
-            // Circle for optional point
+            // Clean circular marker with white border (no "OR#" label)
             var circle = new Ellipse
             {
                 Width = markerSize,
                 Height = markerSize,
-                Fill = new SolidColorBrush(Color.FromArgb((byte)(opacity * 180), optionalColor.R, optionalColor.G, optionalColor.B)),
-                Stroke = new SolidColorBrush(color),
+                Fill = new SolidColorBrush(Color.FromArgb((byte)(opacity * 200), optionalColor.R, optionalColor.G, optionalColor.B)),
+                Stroke = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 0xFF, 0xFF, 0xFF)),  // White border
                 StrokeThickness = 2 * inverseScale
             };
             Canvas.SetLeft(circle, sx - markerSize / 2);
             Canvas.SetTop(circle, sy - markerSize / 2);
             ObjectivesCanvas.Children.Add(circle);
 
-            // "OR#" label
-            var label = new TextBlock
-            {
-                Text = $"OR{i + 1}",
-                Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 0, 0, 0)),
-                FontSize = 11 * inverseScale,
-                FontWeight = FontWeights.Bold
-            };
-            label.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(label, sx - label.DesiredSize.Width / 2);
-            Canvas.SetTop(label, sy - label.DesiredSize.Height / 2);
-            ObjectivesCanvas.Children.Add(label);
-
             // Quest name label (only for first optional point)
             if (showLabels && i == 0 && !string.IsNullOrEmpty(questName))
             {
-                var fontSize = Math.Max(10, 24 * inverseScale);
+                var fontSize = Math.Max(10, 24 * inverseScale * _labelScale);
                 DrawQuestNameLabel(sx + markerSize / 2 + 8 * inverseScale, sy - fontSize / 2, questName, color, fontSize, opacity);
             }
         }
@@ -2232,8 +2488,25 @@ public partial class MapTrackerPage : UserControl
             }
         }
 
+        // Find quest objective under cursor
+        QuestHitRegion? foundQuestRegion = null;
+        if (foundRegion == null)  // Only check quests if no marker found
+        {
+            foreach (var region in _questHitRegions)
+            {
+                if (region.Contains(canvasPos.X, canvasPos.Y))
+                {
+                    foundQuestRegion = region;
+                    break;
+                }
+            }
+        }
+
         if (foundRegion != null)
         {
+            // Hide quest tooltip if showing
+            _hoveredQuestRegion = null;
+
             if (_hoveredMarker != foundRegion.Marker || _currentTooltipHitRegion != foundRegion)
             {
                 _hoveredMarker = foundRegion.Marker;
@@ -2247,16 +2520,112 @@ public partial class MapTrackerPage : UserControl
             }
             MapCanvas.Cursor = Cursors.Hand;
         }
+        else if (foundQuestRegion != null)
+        {
+            // Hide marker tooltip if showing
+            _hoveredMarker = null;
+            _currentTooltipHitRegion = null;
+
+            if (_hoveredQuestRegion != foundQuestRegion)
+            {
+                _hoveredQuestRegion = foundQuestRegion;
+                ShowQuestTooltip(foundQuestRegion, viewerPos);
+            }
+            else
+            {
+                // Update tooltip position
+                PositionTooltip(viewerPos);
+            }
+            MapCanvas.Cursor = Cursors.Hand;
+        }
         else
         {
-            if (_hoveredMarker != null)
+            if (_hoveredMarker != null || _hoveredQuestRegion != null)
             {
                 _hoveredMarker = null;
+                _hoveredQuestRegion = null;
                 _currentTooltipHitRegion = null;
                 MarkerTooltip.Visibility = Visibility.Collapsed;
             }
             MapCanvas.Cursor = Cursors.Arrow;
         }
+    }
+
+    /// <summary>
+    /// Show tooltip for quest objective cluster
+    /// </summary>
+    private void ShowQuestTooltip(QuestHitRegion hitRegion, Point viewerPos)
+    {
+        var isCluster = hitRegion.IsCluster;
+
+        // Set tooltip icon (quest marker icon)
+        TooltipIcon.Text = "●";
+        TooltipIcon.Foreground = new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23));  // Quest amber color
+
+        if (isCluster && hitRegion.ClusterObjectives != null)
+        {
+            TooltipTitle.Text = $"{hitRegion.ClusterObjectives.Count} Quests";
+            TooltipType.Text = "Quest Cluster";
+
+            // Show cluster info with quest names
+            TooltipClusterInfo.Visibility = Visibility.Visible;
+            TooltipClusterCount.Text = $"{hitRegion.ClusterObjectives.Count} quests at this location";
+
+            // Populate cluster list with quest names
+            var questNames = hitRegion.ClusterObjectives
+                .Select(o => GetLocalizedQuestName(o))
+                .Take(6)
+                .ToList();
+            TooltipClusterList.ItemsSource = questNames;
+
+            TooltipClusterTypes.Text = "";  // No type summary for quests
+
+            // Hide single-marker details
+            TooltipDetails.Visibility = Visibility.Collapsed;
+
+            // Use primary objective coordinates
+            var primaryObj = hitRegion.Objective;
+            if (primaryObj.HasCoordinates)
+            {
+                var pt = primaryObj.LocationPoints[0];
+                TooltipCoords.Text = $"X: {pt.X:F1}, Z: {pt.Z:F1}";
+            }
+        }
+        else
+        {
+            TooltipTitle.Text = hitRegion.LocalizedQuestName;
+            TooltipType.Text = "Quest Objective";
+
+            // Hide cluster info
+            TooltipClusterInfo.Visibility = Visibility.Collapsed;
+            TooltipClusterList.ItemsSource = null;
+
+            // Show quest details
+            var obj = hitRegion.Objective;
+            if (!string.IsNullOrEmpty(obj.Description))
+            {
+                TooltipDetails.Text = obj.Description;
+                TooltipDetails.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                TooltipDetails.Visibility = Visibility.Collapsed;
+            }
+
+            // Set coordinates
+            if (obj.HasCoordinates)
+            {
+                var pt = obj.LocationPoints[0];
+                TooltipCoords.Text = $"X: {pt.X:F1}, Z: {pt.Z:F1}";
+            }
+        }
+
+        // Set border color to quest amber
+        MarkerTooltip.BorderBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23));
+
+        // Position and show tooltip
+        PositionTooltip(viewerPos);
+        MarkerTooltip.Visibility = Visibility.Visible;
     }
 
     private void ShowMarkerTooltip(MarkerHitRegion hitRegion, Point viewerPos)
@@ -2281,6 +2650,14 @@ public partial class MapTrackerPage : UserControl
             // Show cluster info
             TooltipClusterInfo.Visibility = Visibility.Visible;
             TooltipClusterCount.Text = $"{hitRegion.ClusterMarkers.Count} markers in this area";
+
+            // Populate cluster list with marker names (max 6 items)
+            var markerNames = hitRegion.ClusterMarkers
+                .OrderByDescending(m => GetMarkerTypePriority(m.Type))
+                .Take(6)
+                .Select(m => GetLocalizedMarkerName(m))
+                .ToList();
+            TooltipClusterList.ItemsSource = markerNames;
 
             // Build type summary
             var typeCounts = hitRegion.ClusterMarkers
