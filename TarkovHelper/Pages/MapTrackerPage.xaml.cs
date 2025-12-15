@@ -502,6 +502,53 @@ public partial class MapTrackerPage : UserControl
         ChkShowObjectives.IsChecked = false;
     }
 
+    // Category-specific show/hide handlers
+    private void BtnShowAllPOI_Click(object sender, RoutedEventArgs e)
+    {
+        ChkShowExtractions.IsChecked = true;
+        ChkShowTransits.IsChecked = true;
+        ChkShowSpawns.IsChecked = true;
+    }
+
+    private void BtnHideAllPOI_Click(object sender, RoutedEventArgs e)
+    {
+        ChkShowExtractions.IsChecked = false;
+        ChkShowTransits.IsChecked = false;
+        ChkShowSpawns.IsChecked = false;
+    }
+
+    private void BtnShowAllEnemies_Click(object sender, RoutedEventArgs e)
+    {
+        ChkShowBosses.IsChecked = true;
+    }
+
+    private void BtnHideAllEnemies_Click(object sender, RoutedEventArgs e)
+    {
+        ChkShowBosses.IsChecked = false;
+    }
+
+    private void BtnShowAllInteractables_Click(object sender, RoutedEventArgs e)
+    {
+        ChkShowLevers.IsChecked = true;
+        ChkShowKeys.IsChecked = true;
+    }
+
+    private void BtnHideAllInteractables_Click(object sender, RoutedEventArgs e)
+    {
+        ChkShowLevers.IsChecked = false;
+        ChkShowKeys.IsChecked = false;
+    }
+
+    private void BtnShowAllQuests_Click(object sender, RoutedEventArgs e)
+    {
+        ChkShowObjectives.IsChecked = true;
+    }
+
+    private void BtnHideAllQuests_Click(object sender, RoutedEventArgs e)
+    {
+        ChkShowObjectives.IsChecked = false;
+    }
+
     private void BtnShowShortcuts_Click(object sender, RoutedEventArgs e)
     {
         ShortcutsPopup.Visibility = ShortcutsPopup.Visibility == Visibility.Visible

@@ -225,7 +225,20 @@
                         <TextBlock Text="LAYERS" Style="{StaticResource SidebarHeaderStyle}"/>
 
                         <!-- Points of Interest -->
-                        <Expander Header="Points of Interest" IsExpanded="True" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4">
+                        <Expander IsExpanded="True" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4">
+                            <Expander.Header>
+                                <Grid Width="175">
+                                    <TextBlock Text="Points of Interest" VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="All" Click="BtnShowAllPOI_Click" Padding="4,1" FontSize="9"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,4,0"/>
+                                        <Button Content="None" Click="BtnHideAllPOI_Click" Padding="4,1" FontSize="9"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Expander.Header>
                             <StackPanel Margin="16,8,0,0">
                                 <CheckBox x:Name="ChkShowExtractions" Style="{StaticResource LayerCheckBoxStyle}"
                                           IsChecked="True" Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed">
@@ -255,7 +268,20 @@
                         </Expander>
 
                         <!-- Enemies -->
-                        <Expander Header="Enemies" IsExpanded="True" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4">
+                        <Expander IsExpanded="True" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4">
+                            <Expander.Header>
+                                <Grid Width="175">
+                                    <TextBlock Text="Enemies" VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="All" Click="BtnShowAllEnemies_Click" Padding="4,1" FontSize="9"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,4,0"/>
+                                        <Button Content="None" Click="BtnHideAllEnemies_Click" Padding="4,1" FontSize="9"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Expander.Header>
                             <StackPanel Margin="16,8,0,0">
                                 <CheckBox x:Name="ChkShowBosses" Style="{StaticResource LayerCheckBoxStyle}"
                                           IsChecked="True" Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed">
@@ -269,7 +295,20 @@
                         </Expander>
 
                         <!-- Interactables -->
-                        <Expander Header="Interactables" IsExpanded="True" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4">
+                        <Expander IsExpanded="True" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4">
+                            <Expander.Header>
+                                <Grid Width="175">
+                                    <TextBlock Text="Interactables" VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="All" Click="BtnShowAllInteractables_Click" Padding="4,1" FontSize="9"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,4,0"/>
+                                        <Button Content="None" Click="BtnHideAllInteractables_Click" Padding="4,1" FontSize="9"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Expander.Header>
                             <StackPanel Margin="16,8,0,0">
                                 <CheckBox x:Name="ChkShowLevers" Style="{StaticResource LayerCheckBoxStyle}"
                                           IsChecked="True" Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed">
@@ -291,7 +330,20 @@
                         </Expander>
 
                         <!-- Quests -->
-                        <Expander Header="Quests" IsExpanded="True" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4">
+                        <Expander IsExpanded="True" Foreground="{StaticResource TextPrimaryBrush}" Margin="0,0,0,4">
+                            <Expander.Header>
+                                <Grid Width="175">
+                                    <TextBlock Text="Quests" VerticalAlignment="Center"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Button Content="All" Click="BtnShowAllQuests_Click" Padding="4,1" FontSize="9"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,4,0"/>
+                                        <Button Content="None" Click="BtnHideAllQuests_Click" Padding="4,1" FontSize="9"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="{StaticResource TextSecondaryBrush}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </Expander.Header>
                             <StackPanel Margin="16,8,0,0">
                                 <CheckBox x:Name="ChkShowObjectives" Style="{StaticResource LayerCheckBoxStyle}"
                                           IsChecked="True" Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed">
