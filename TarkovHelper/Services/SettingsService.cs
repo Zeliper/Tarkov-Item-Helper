@@ -52,6 +52,8 @@ public class SettingsService
     private const string KeyMapQuestStatusColors = "map.questStatusColors";
     private const string KeyMapHideCompletedQuests = "map.hideCompletedQuests";
     private const string KeyMapShowActiveOnly = "map.showActiveOnly";
+    private const string KeyMapShowKappaHighlight = "map.showKappaHighlight";
+    private const string KeyMapTraderFilter = "map.traderFilter";
     private const string KeyMapTrailColor = "map.trailColor";
     private const string KeyMapTrailThickness = "map.trailThickness";
     private const string KeyMapAutoStartTracking = "map.autoStartTracking";
@@ -106,6 +108,8 @@ public class SettingsService
     private bool? _mapQuestStatusColors;
     private bool? _mapHideCompletedQuests;
     private bool? _mapShowActiveOnly;
+    private bool? _mapShowKappaHighlight;
+    private string? _mapTraderFilter;  // Empty = all, or trader name
     private string? _mapTrailColor;
     private double? _mapTrailThickness;
     private bool? _mapAutoStartTracking;
@@ -854,6 +858,46 @@ public class SettingsService
     }
 
     /// <summary>
+    /// Highlight Kappa-required quests on map
+    /// </summary>
+    public bool MapShowKappaHighlight
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowKappaHighlight ?? true;  // Default: show kappa highlight
+        }
+        set
+        {
+            if (_mapShowKappaHighlight != value)
+            {
+                _mapShowKappaHighlight = value;
+                SaveSetting(KeyMapShowKappaHighlight, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Trader filter for quests on map (empty = all traders)
+    /// </summary>
+    public string MapTraderFilter
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapTraderFilter ?? "";
+        }
+        set
+        {
+            if (_mapTraderFilter != value)
+            {
+                _mapTraderFilter = value;
+                SaveSetting(KeyMapTraderFilter, value ?? "");
+            }
+        }
+    }
+
+    /// <summary>
     /// Trail color (hex string)
     /// </summary>
     public string MapTrailColor
@@ -1597,6 +1641,12 @@ public class SettingsService
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowActiveOnly), out var showActiveOnly))
                 _mapShowActiveOnly = showActiveOnly;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowKappaHighlight), out var showKappaHighlight))
+                _mapShowKappaHighlight = showKappaHighlight;
+
+            _mapTraderFilter = _userDataDb.GetSetting(KeyMapTraderFilter);
+            if (string.IsNullOrEmpty(_mapTraderFilter)) _mapTraderFilter = null;
         }
         catch (Exception ex)
         {

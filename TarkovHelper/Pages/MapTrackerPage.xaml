@@ -637,6 +637,27 @@
                             <CheckBox x:Name="ChkShowActiveOnly" Content="Show active quests only" IsChecked="False" Margin="0,4"
                                       Foreground="{StaticResource TextPrimary}" FontSize="11"
                                       Checked="ChkShowActiveOnly_Changed" Unchecked="ChkShowActiveOnly_Changed"/>
+                            <CheckBox x:Name="ChkShowKappaHighlight" Content="Highlight Kappa quests ⭐" IsChecked="True" Margin="0,4"
+                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
+                                      Checked="ChkShowKappaHighlight_Changed" Unchecked="ChkShowKappaHighlight_Changed"/>
+
+                            <!-- Trader Filter -->
+                            <TextBlock Text="Trader Filter" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,4"/>
+                            <ComboBox x:Name="CmbTraderFilter" FontSize="11" Padding="8,4"
+                                      Background="{StaticResource BgL1}" Foreground="{StaticResource TextPrimary}"
+                                      BorderBrush="{StaticResource BorderSubtle}"
+                                      SelectionChanged="CmbTraderFilter_SelectionChanged">
+                                <ComboBoxItem Content="All Traders" Tag="" IsSelected="True"/>
+                                <ComboBoxItem Content="Prapor" Tag="Prapor"/>
+                                <ComboBoxItem Content="Therapist" Tag="Therapist"/>
+                                <ComboBoxItem Content="Fence" Tag="Fence"/>
+                                <ComboBoxItem Content="Skier" Tag="Skier"/>
+                                <ComboBoxItem Content="Peacekeeper" Tag="Peacekeeper"/>
+                                <ComboBoxItem Content="Mechanic" Tag="Mechanic"/>
+                                <ComboBoxItem Content="Ragman" Tag="Ragman"/>
+                                <ComboBoxItem Content="Jaeger" Tag="Jaeger"/>
+                                <ComboBoxItem Content="Lightkeeper" Tag="Lightkeeper"/>
+                            </ComboBox>
 
                             <Separator Background="{StaticResource BorderSubtle}" Margin="0,12"/>
 

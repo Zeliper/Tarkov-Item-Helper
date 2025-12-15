@@ -121,13 +121,13 @@ internal sealed class QuestHitRegion
 /// </summary>
 internal sealed class QuestObjectiveCluster
 {
-    public List<(QuestObjective Objective, double ScreenX, double ScreenY, int Priority, string LocalizedName, QuestStatus Status)> Items { get; } = new();
+    public List<(QuestObjective Objective, double ScreenX, double ScreenY, int Priority, string LocalizedName, QuestStatus Status, bool IsKappa)> Items { get; } = new();
     public double CenterScreenX { get; private set; }
     public double CenterScreenY { get; private set; }
 
-    public void AddItem(QuestObjective objective, double sx, double sy, int priority, string localizedName, QuestStatus status)
+    public void AddItem(QuestObjective objective, double sx, double sy, int priority, string localizedName, QuestStatus status, bool isKappa)
     {
-        Items.Add((objective, sx, sy, priority, localizedName, status));
+        Items.Add((objective, sx, sy, priority, localizedName, status, isKappa));
         // Recalculate center
         CenterScreenX = Items.Average(i => i.ScreenX);
         CenterScreenY = Items.Average(i => i.ScreenY);
@@ -136,10 +136,15 @@ internal sealed class QuestObjectiveCluster
     /// <summary>
     /// Gets the highest priority item in the cluster
     /// </summary>
-    public (QuestObjective Objective, double ScreenX, double ScreenY, int Priority, string LocalizedName, QuestStatus Status) GetPrimaryItem()
+    public (QuestObjective Objective, double ScreenX, double ScreenY, int Priority, string LocalizedName, QuestStatus Status, bool IsKappa) GetPrimaryItem()
     {
         return Items.OrderByDescending(i => i.Priority).First();
     }
+
+    /// <summary>
+    /// Check if any item in the cluster is Kappa-required
+    /// </summary>
+    public bool HasKappaItem() => Items.Any(i => i.IsKappa);
 }
 
 /// <summary>
@@ -224,6 +229,8 @@ public partial class MapTrackerPage : UserControl
     private bool _questStatusColorsEnabled = true;  // Color quests by status
     private bool _hideCompletedQuests = false;      // Hide done quests
     private bool _showActiveQuestsOnly = false;     // Show only active quests
+    private bool _showKappaHighlight = true;        // Highlight Kappa-required quests
+    private string _traderFilter = "";              // Trader filter (empty = all)
 
     // LOD thresholds
     private const double LOD_CLUSTER_ONLY_THRESHOLD = 0.3;
@@ -363,6 +370,8 @@ public partial class MapTrackerPage : UserControl
         _questStatusColorsEnabled = _settings.MapQuestStatusColors;
         _hideCompletedQuests = _settings.MapHideCompletedQuests;
         _showActiveQuestsOnly = _settings.MapShowActiveOnly;
+        _showKappaHighlight = _settings.MapShowKappaHighlight;
+        _traderFilter = _settings.MapTraderFilter;
 
         // Layer visibility - apply to chips
         ChipBoss.IsChecked = _settings.MapShowBosses;
@@ -789,6 +798,27 @@ public partial class MapTrackerPage : UserControl
         ChkQuestStatusColors.IsChecked = _questStatusColorsEnabled;
         ChkHideCompletedQuests.IsChecked = _hideCompletedQuests;
         ChkShowActiveOnly.IsChecked = _showActiveQuestsOnly;
+        ChkShowKappaHighlight.IsChecked = _showKappaHighlight;
+
+        // Sync trader filter combobox
+        SelectTraderFilterItem(_traderFilter);
+    }
+
+    /// <summary>
+    /// Select the trader filter combobox item by tag value
+    /// </summary>
+    private void SelectTraderFilterItem(string traderTag)
+    {
+        foreach (ComboBoxItem item in CmbTraderFilter.Items)
+        {
+            if ((item.Tag as string ?? "") == traderTag)
+            {
+                CmbTraderFilter.SelectedItem = item;
+                return;
+            }
+        }
+        // Default to first item (All Traders)
+        CmbTraderFilter.SelectedIndex = 0;
     }
 
     private void SliderMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -839,6 +869,24 @@ public partial class MapTrackerPage : UserControl
         if (_isInitialized) _settings.MapShowActiveOnly = _showActiveQuestsOnly;
         RedrawObjectives();
         UpdateCounts();
+    }
+
+    private void ChkShowKappaHighlight_Changed(object sender, RoutedEventArgs e)
+    {
+        _showKappaHighlight = ChkShowKappaHighlight.IsChecked == true;
+        if (_isInitialized) _settings.MapShowKappaHighlight = _showKappaHighlight;
+        RedrawObjectives();
+    }
+
+    private void CmbTraderFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CmbTraderFilter.SelectedItem is ComboBoxItem selectedItem)
+        {
+            _traderFilter = selectedItem.Tag as string ?? "";
+            if (_isInitialized) _settings.MapTraderFilter = _traderFilter;
+            RedrawObjectives();
+            UpdateCounts();
+        }
     }
 
     private void ChkEnableClustering_Changed(object sender, RoutedEventArgs e)
@@ -1894,7 +1942,7 @@ public partial class MapTrackerPage : UserControl
         var objectives = QuestObjectiveDbService.Instance.GetObjectivesForMap(_currentMapConfig.Key, _currentMapConfig);
 
         // Collect single-point objectives for clustering
-        var singlePointObjectives = new List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status)>();
+        var singlePointObjectives = new List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status, bool IsKappa)>();
 
         int count = 0;
         foreach (var objective in objectives)
@@ -1909,10 +1957,15 @@ public partial class MapTrackerPage : UserControl
             if (_showActiveQuestsOnly && questStatus != QuestStatus.Active)
                 continue;
 
+            // Apply trader filter
+            if (!string.IsNullOrEmpty(_traderFilter) && !MatchesTraderFilter(objective))
+                continue;
+
             count++;
 
             var questName = GetLocalizedQuestName(objective);
             var priority = CalculateQuestPriority(objective);
+            var isKappa = IsKappaRequired(objective);
 
             // Draw LocationPoints (polygon, line, or single point)
             if (objective.HasCoordinates)
@@ -1924,7 +1977,7 @@ public partial class MapTrackerPage : UserControl
                 {
                     // Collect single points for smart label clustering
                     var (sx, sy) = _currentMapConfig!.GameToScreen(points[0].X, points[0].Z);
-                    singlePointObjectives.Add((objective, sx, sy, priority, questName, opacity, questStatus));
+                    singlePointObjectives.Add((objective, sx, sy, priority, questName, opacity, questStatus, isKappa));
                 }
                 else if (points.Count == 2)
                 {
@@ -1964,6 +2017,28 @@ public partial class MapTrackerPage : UserControl
         if (quest == null) return QuestStatus.Locked;
 
         return QuestProgressService.Instance.GetStatus(quest);
+    }
+
+    /// <summary>
+    /// Check if objective's quest matches the trader filter
+    /// </summary>
+    private bool MatchesTraderFilter(QuestObjective objective)
+    {
+        if (string.IsNullOrEmpty(_traderFilter)) return true;
+
+        var quest = QuestDbService.Instance.GetQuestById(objective.QuestId);
+        if (quest == null) return false;
+
+        return string.Equals(quest.Trader, _traderFilter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Check if a quest objective is for a Kappa-required quest
+    /// </summary>
+    private bool IsKappaRequired(QuestObjective objective)
+    {
+        var quest = QuestDbService.Instance.GetQuestById(objective.QuestId);
+        return quest?.ReqKappa ?? false;
     }
 
     /// <summary>
@@ -2040,7 +2115,7 @@ public partial class MapTrackerPage : UserControl
     /// <summary>
     /// Draw clustered quest objectives with smart label system
     /// </summary>
-    private void DrawClusteredObjectives(List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status)> objectives, double inverseScale)
+    private void DrawClusteredObjectives(List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status, bool IsKappa)> objectives, double inverseScale)
     {
         if (objectives.Count == 0) return;
 
@@ -2065,12 +2140,12 @@ public partial class MapTrackerPage : UserControl
 
             if (targetCluster != null)
             {
-                targetCluster.AddItem(obj.Obj, obj.SX, obj.SY, obj.Priority, obj.Name, obj.Status);
+                targetCluster.AddItem(obj.Obj, obj.SX, obj.SY, obj.Priority, obj.Name, obj.Status, obj.IsKappa);
             }
             else
             {
                 var newCluster = new QuestObjectiveCluster();
-                newCluster.AddItem(obj.Obj, obj.SX, obj.SY, obj.Priority, obj.Name, obj.Status);
+                newCluster.AddItem(obj.Obj, obj.SX, obj.SY, obj.Priority, obj.Name, obj.Status, obj.IsKappa);
                 clusters.Add(newCluster);
             }
         }
@@ -2102,6 +2177,21 @@ public partial class MapTrackerPage : UserControl
             Canvas.SetLeft(circle, sx - markerSize / 2);
             Canvas.SetTop(circle, sy - markerSize / 2);
             ObjectivesCanvas.Children.Add(circle);
+
+            // Draw Kappa star badge if enabled and cluster has Kappa quest
+            if (_showKappaHighlight && cluster.HasKappaItem())
+            {
+                var starSize = 12 * inverseScale;
+                var star = new TextBlock
+                {
+                    Text = "⭐",
+                    FontSize = starSize,
+                    Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 0xFF, 0xD7, 0x00)),  // Gold
+                };
+                Canvas.SetLeft(star, sx - markerSize / 2 - starSize / 2);
+                Canvas.SetTop(star, sy - markerSize / 2 - starSize / 2);
+                ObjectivesCanvas.Children.Add(star);
+            }
 
             // If cluster has multiple items, show count badge
             if (cluster.Items.Count > 1)
