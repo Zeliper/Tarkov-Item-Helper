@@ -32,6 +32,8 @@
         <Color x:Key="AccentHover">#d4b85a</Color>
         <Color x:Key="SuccessColor">#4caf50</Color>
         <Color x:Key="WarningColor">#ff9800</Color>
+        <Color x:Key="BackgroundHover">#4E4E52</Color>
+        <Color x:Key="BackgroundPressed">#5E5E62</Color>
 
         <!-- Brushes -->
         <SolidColorBrush x:Key="BackgroundDarkBrush" Color="{StaticResource BackgroundDark}"/>
@@ -44,6 +46,8 @@
         <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHover}"/>
         <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
         <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
+        <SolidColorBrush x:Key="BackgroundHoverBrush" Color="{StaticResource BackgroundHover}"/>
+        <SolidColorBrush x:Key="BackgroundPressedBrush" Color="{StaticResource BackgroundPressed}"/>
 
         <!-- Window Style -->
         <Style TargetType="Window">

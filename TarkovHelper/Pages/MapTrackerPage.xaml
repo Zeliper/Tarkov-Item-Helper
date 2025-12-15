@@ -20,6 +20,10 @@
         <SolidColorBrush x:Key="MarkerKeyBrush" Color="#FFC107"/>
         <SolidColorBrush x:Key="PlayerCyanBrush" Color="#00BCD4"/>
 
+        <!-- Overlay backgrounds with transparency -->
+        <SolidColorBrush x:Key="OverlayBackgroundBrush" Color="#E0252525"/>
+        <SolidColorBrush x:Key="OverlayDarkBackgroundBrush" Color="#F0252525"/>
+
         <!-- Sidebar Section Header Style -->
         <Style x:Key="SidebarHeaderStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="11"/>
@@ -69,38 +73,11 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#4E4E52"/>
+                                <Setter TargetName="border" Property="Background" Value="{StaticResource BackgroundHoverBrush}"/>
                                 <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#5E5E62"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Toolbar Primary Button Style - For important actions -->
-        <Style x:Key="ToolbarPrimaryButtonStyle" TargetType="Button" BasedOn="{StaticResource ToolbarButtonStyle}">
-            <Setter Property="Background" Value="#2D5F7A"/>
-            <Setter Property="BorderBrush" Value="#3A7A9E"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3" Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#3A7A9E"/>
-                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#4A8AAE"/>
+                                <Setter TargetName="border" Property="Background" Value="{StaticResource BackgroundPressedBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -191,11 +168,11 @@
                     <Border CornerRadius="4" Padding="8,4" Background="{StaticResource BackgroundLightBrush}" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
                         <StackPanel Orientation="Horizontal">
                             <Ellipse x:Name="WatcherIndicator" Width="10" Height="10" Fill="{StaticResource TextSecondaryBrush}"
-                                     VerticalAlignment="Center" Margin="0,0,8,0" Stroke="#444" StrokeThickness="1"/>
+                                     VerticalAlignment="Center" Margin="0,0,8,0" Stroke="{StaticResource BorderBrush}" StrokeThickness="1"/>
                             <TextBlock x:Name="PlayerPositionText" Text="Player: --"
                                        Foreground="{StaticResource PlayerCyanBrush}" VerticalAlignment="Center" MinWidth="180" FontSize="12"/>
                             <Button x:Name="WatcherToggleButton" Padding="12,4" Margin="8,0,0,0" Height="26"
-                                    Background="#388E3C" Foreground="White" BorderThickness="0"
+                                    Background="{StaticResource SuccessBrush}" Foreground="White" BorderThickness="0"
                                     FontSize="11" FontWeight="SemiBold" Cursor="Hand"
                                     Click="WatcherToggleButton_Click">
                                 <StackPanel Orientation="Horizontal">
@@ -383,7 +360,7 @@
 
                 <!-- Marker Tooltip -->
                 <Border x:Name="MarkerTooltip" Visibility="Collapsed"
-                        Background="#E0252526" BorderBrush="{StaticResource MarkerExtractBrush}" BorderThickness="1"
+                        Background="{StaticResource OverlayBackgroundBrush}" BorderBrush="{StaticResource MarkerExtractBrush}" BorderThickness="1"
                         CornerRadius="6" Padding="12,10" MaxWidth="280"
                         HorizontalAlignment="Left" VerticalAlignment="Top">
                     <StackPanel>
@@ -407,7 +384,7 @@
                 <!-- Loading Indicator -->
                 <Border x:Name="LoadingIndicator" Visibility="Collapsed"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Background="#E0252525" CornerRadius="8" Padding="24,16">
+                        Background="{StaticResource OverlayBackgroundBrush}" CornerRadius="8" Padding="24,16">
                     <StackPanel Orientation="Horizontal">
                         <ProgressBar IsIndeterminate="True" Width="100" Height="4"
                                      Foreground="{StaticResource AccentBrush}"/>
@@ -427,7 +404,7 @@
                 <!-- Shortcuts Popup -->
                 <Border x:Name="ShortcutsPopup" Visibility="Collapsed"
                         HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Background="#F0252525" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
+                        Background="{StaticResource OverlayDarkBackgroundBrush}" BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
                         CornerRadius="8" Padding="20,16" MinWidth="280">
                     <StackPanel>
                         <Grid Margin="0,0,0,12">
@@ -490,7 +467,7 @@
 
                 <!-- Left: Map Status -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Ellipse x:Name="MapStatusIndicator" Width="8" Height="8" Fill="#4CAF50"
+                    <Ellipse x:Name="MapStatusIndicator" Width="8" Height="8" Fill="{StaticResource MarkerExtractBrush}"
                              VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock x:Name="StatusText" Text="Ready" Foreground="{StaticResource TextSecondaryBrush}"/>
                 </StackPanel>
