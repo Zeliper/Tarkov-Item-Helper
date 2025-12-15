@@ -53,7 +53,7 @@ public partial class MapTrackerPage : UserControl
     // Marker size constraints
     private const double MinMarkerSize = 16.0;  // Minimum marker size in pixels
     private const double MaxMarkerSize = 64.0;  // Maximum marker size in pixels
-    private const double LabelShowZoomThreshold = 0.5;  // Show labels only when zoom >= this value
+    private const double DefaultLabelShowZoomThreshold = 0.5;  // Default: show labels only when zoom >= this value
 
     // Overlapping marker offset
     private const double MarkerOverlapDistance = 30.0;  // Distance threshold to consider markers overlapping
@@ -90,9 +90,14 @@ public partial class MapTrackerPage : UserControl
     private readonly List<MarkerHitRegion> _markerHitRegions = new();
     private MapMarker? _hoveredMarker;
 
-    // Sidebar state
-    private bool _sidebarVisible = true;
-    private const double SidebarWidth = 220;
+    // Settings panel state
+    private bool _settingsPanelOpen = false;
+    private int _currentSettingsTab = 0;
+
+    // Display settings
+    private double _markerScale = 1.0;
+    private double _labelShowZoomThreshold = 0.5;
+    private bool _showMarkerLabels = true;
 
     // Auto-follow state
     private bool _autoFollowEnabled;
@@ -325,9 +330,9 @@ public partial class MapTrackerPage : UserControl
 
         switch (e.Key)
         {
-            // Sidebar toggle (Tab)
+            // Settings panel toggle (Tab)
             case Key.Tab:
-                ToggleSidebar();
+                ToggleSettingsPanel();
                 e.Handled = true;
                 return;
 
@@ -400,28 +405,189 @@ public partial class MapTrackerPage : UserControl
 
     #endregion
 
-    #region Sidebar and View Controls
+    #region Settings Panel
 
-    private void BtnToggleSidebar_Click(object sender, RoutedEventArgs e)
+    private void BtnToggleSettings_Click(object sender, RoutedEventArgs e)
     {
-        ToggleSidebar();
+        ToggleSettingsPanel();
     }
 
-    private void ToggleSidebar()
+    private void BtnCloseSettings_Click(object sender, RoutedEventArgs e)
     {
-        _sidebarVisible = !_sidebarVisible;
+        CloseSettingsPanel();
+    }
 
-        if (_sidebarVisible)
+    private void SettingsOverlay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        CloseSettingsPanel();
+    }
+
+    private void ToggleSettingsPanel()
+    {
+        if (_settingsPanelOpen)
         {
-            SidebarColumn.Width = new GridLength(SidebarWidth);
-            SidebarPanel.Visibility = Visibility.Visible;
+            CloseSettingsPanel();
         }
         else
         {
-            SidebarColumn.Width = new GridLength(0);
-            SidebarPanel.Visibility = Visibility.Collapsed;
+            OpenSettingsPanel();
         }
     }
+
+    private void OpenSettingsPanel()
+    {
+        _settingsPanelOpen = true;
+        SettingsOverlay.Visibility = Visibility.Visible;
+        SettingsPanel.Visibility = Visibility.Visible;
+
+        // Sync settings UI with current state
+        SyncSettingsUI();
+    }
+
+    private void CloseSettingsPanel()
+    {
+        _settingsPanelOpen = false;
+        SettingsOverlay.Visibility = Visibility.Collapsed;
+        SettingsPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void SyncSettingsUI()
+    {
+        // Sync Floor tab
+        if (FloorSelector.Items.Count > 0)
+        {
+            SettingsFloorSelector.Items.Clear();
+            foreach (var item in FloorSelector.Items)
+            {
+                if (item is ComboBoxItem cbItem)
+                {
+                    SettingsFloorSelector.Items.Add(new ComboBoxItem
+                    {
+                        Content = cbItem.Content,
+                        Tag = cbItem.Tag
+                    });
+                }
+            }
+            SettingsFloorSelector.SelectedIndex = FloorSelector.SelectedIndex;
+        }
+        SettingsChkAutoFloor.IsChecked = _autoFloorEnabled;
+
+        // Sync Display tab
+        SliderMarkerSize.Value = _markerScale * 100;
+        ChkShowLabels.IsChecked = _showMarkerLabels;
+        SliderLabelZoom.Value = _labelShowZoomThreshold * 100;
+
+        // Sync Tracker tab
+        SettingsChkAutoFollow.IsChecked = _autoFollowEnabled;
+        SettingsChkAutoFloorTracker.IsChecked = _autoFloorEnabled;
+        UpdateSettingsTrackerStatus();
+    }
+
+    private void UpdateSettingsTrackerStatus()
+    {
+        if (_watcherService.IsWatching)
+        {
+            SettingsWatcherIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x70, 0xA8, 0x00));
+            SettingsWatcherStatus.Text = "Connected";
+            SettingsWatcherStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x70, 0xA8, 0x00));
+        }
+        else
+        {
+            SettingsWatcherIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66));
+            SettingsWatcherStatus.Text = "Disconnected";
+            SettingsWatcherStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
+        }
+
+        var position = _watcherService.CurrentPosition;
+        SettingsPlayerPosition.Text = position != null
+            ? $"X:{position.X:F0}, Z:{position.Z:F0}"
+            : "--";
+    }
+
+    private void SettingsTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton rb && rb.Tag is string tagStr && int.TryParse(tagStr, out int tabIndex))
+        {
+            _currentSettingsTab = tabIndex;
+            UpdateSettingsTabContent();
+        }
+    }
+
+    private void UpdateSettingsTabContent()
+    {
+        TabContentLayers.Visibility = _currentSettingsTab == 0 ? Visibility.Visible : Visibility.Collapsed;
+        TabContentFloor.Visibility = _currentSettingsTab == 1 ? Visibility.Visible : Visibility.Collapsed;
+        TabContentDisplay.Visibility = _currentSettingsTab == 2 ? Visibility.Visible : Visibility.Collapsed;
+        TabContentTracker.Visibility = _currentSettingsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Update tracker status when switching to tracker tab
+        if (_currentSettingsTab == 3)
+        {
+            UpdateSettingsTrackerStatus();
+        }
+    }
+
+    private void SettingsFloorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (SettingsFloorSelector.SelectedIndex >= 0 && SettingsFloorSelector.SelectedIndex < FloorSelector.Items.Count)
+        {
+            FloorSelector.SelectedIndex = SettingsFloorSelector.SelectedIndex;
+        }
+    }
+
+    private void SettingsChkAutoFloor_Changed(object sender, RoutedEventArgs e)
+    {
+        _autoFloorEnabled = SettingsChkAutoFloor.IsChecked == true;
+        ChkAutoFloor.IsChecked = _autoFloorEnabled;
+        SettingsChkAutoFloorTracker.IsChecked = _autoFloorEnabled;
+    }
+
+    private void SliderMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtMarkerSize == null) return;
+        _markerScale = SliderMarkerSize.Value / 100.0;
+        TxtMarkerSize.Text = $"{SliderMarkerSize.Value:F0}%";
+        RedrawMarkers();
+    }
+
+    private void ChkShowLabels_Changed(object sender, RoutedEventArgs e)
+    {
+        _showMarkerLabels = ChkShowLabels.IsChecked == true;
+        RedrawMarkers();
+        RedrawObjectives();
+    }
+
+    private void SliderLabelZoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtLabelZoom == null) return;
+        _labelShowZoomThreshold = SliderLabelZoom.Value / 100.0;
+        TxtLabelZoom.Text = $"{SliderLabelZoom.Value:F0}%";
+        RedrawMarkers();
+        RedrawObjectives();
+    }
+
+    private void SettingsChkAutoFollow_Changed(object sender, RoutedEventArgs e)
+    {
+        _autoFollowEnabled = SettingsChkAutoFollow.IsChecked == true;
+        BtnAutoFollow.IsChecked = _autoFollowEnabled;
+    }
+
+    private void SettingsChkAutoFloorTracker_Changed(object sender, RoutedEventArgs e)
+    {
+        _autoFloorEnabled = SettingsChkAutoFloorTracker.IsChecked == true;
+        ChkAutoFloor.IsChecked = _autoFloorEnabled;
+        SettingsChkAutoFloor.IsChecked = _autoFloorEnabled;
+    }
+
+    private void BtnToggleQuestDrawer_Click(object sender, RoutedEventArgs e)
+    {
+        // Quest Drawer placeholder - future implementation
+        StatusText.Text = "Quest Panel coming soon!";
+    }
+
+    #endregion
+
+    #region View Controls
 
     private void BtnFitView_Click(object sender, RoutedEventArgs e)
     {
@@ -865,8 +1031,8 @@ public partial class MapTrackerPage : UserControl
         var inverseScale = 1.0 / _zoomLevel;
         var hasFloors = _sortedFloors != null && _sortedFloors.Count > 0;
 
-        // Determine if labels should be shown based on zoom level
-        bool showLabels = _zoomLevel >= LabelShowZoomThreshold;
+        // Determine if labels should be shown based on zoom level and user setting
+        bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
 
         var markers = MapMarkerDbService.Instance.GetMarkersForMap(_currentMapConfig.Key);
 
@@ -920,9 +1086,9 @@ public partial class MapTrackerPage : UserControl
             var (r, g, b) = MapMarker.GetMarkerColor(marker.Type);
             var markerColor = Color.FromArgb((byte)(opacity * 255), r, g, b);
 
-            // Calculate marker size with min/max constraints
-            var rawMarkerSize = 48 * inverseScale;
-            var markerSize = Math.Clamp(rawMarkerSize, MinMarkerSize * inverseScale, MaxMarkerSize * inverseScale);
+            // Calculate marker size with min/max constraints and user scale
+            var rawMarkerSize = 48 * inverseScale * _markerScale;
+            var markerSize = Math.Clamp(rawMarkerSize, MinMarkerSize * inverseScale, MaxMarkerSize * inverseScale * _markerScale);
 
             var iconImage = GetMarkerIcon(marker.Type);
 
@@ -1104,7 +1270,7 @@ public partial class MapTrackerPage : UserControl
 
         // Get localized quest name
         var questName = GetLocalizedQuestName(objective);
-        bool showLabels = _zoomLevel >= LabelShowZoomThreshold;
+        bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
 
         if (points.Count == 1)
         {
@@ -1287,7 +1453,7 @@ public partial class MapTrackerPage : UserControl
         // Optional points color - orange (#FF9800)
         var optionalColor = Color.FromRgb(0xFF, 0x98, 0x00);
         var questName = GetLocalizedQuestName(objective);
-        bool showLabels = _zoomLevel >= LabelShowZoomThreshold;
+        bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
 
         for (int i = 0; i < objective.OptionalPoints.Count; i++)
         {
