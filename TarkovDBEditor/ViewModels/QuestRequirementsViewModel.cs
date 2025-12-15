@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using TarkovDBEditor.Models;
 using TarkovDBEditor.Services;
@@ -667,20 +669,95 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// API 마커 좌표를 Objective 좌표계로 변환
+    /// MapPreviewWindow에서 API 마커가 표시되는 것과 동일한 위치에 Objective가 표시되도록 변환
+    /// </summary>
+    private LocationPoint ConvertApiMarkerToObjectiveCoordinates(ApiReferenceMarkerItem apiMarker)
+    {
+        // 맵 설정 로드
+        var mapConfig = LoadMapConfig(apiMarker.MapKey);
+        if (mapConfig == null)
+        {
+            // 맵 설정을 찾을 수 없으면 원본 좌표 그대로 사용
+            System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] Map config not found for {apiMarker.MapKey}");
+            return new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
+        }
+
+        // MapPreviewWindow에서 API 마커 표시 방식:
+        // var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(marker.Z, marker.X);
+        // 즉, marker.Z를 gameX로, marker.X를 gameZ로 사용 (스왑)
+        var playerGameX = apiMarker.Z;
+        var playerGameZ = apiMarker.X;
+
+        // PlayerMarkerTransform으로 화면 좌표 계산
+        var (screenX, screenY) = mapConfig.GameToScreenForPlayer(playerGameX, playerGameZ);
+
+        // CalibratedTransform이 없으면 스왑된 좌표만 반환
+        if (mapConfig.CalibratedTransform == null || mapConfig.CalibratedTransform.Length < 6)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] No CalibratedTransform for {apiMarker.MapKey}, using swapped coords");
+            return new LocationPoint(playerGameX, apiMarker.Y ?? 0, playerGameZ, apiMarker.FloorId);
+        }
+
+        // 화면 좌표를 CalibratedTransform 게임 좌표로 변환
+        var (calibratedGameX, calibratedGameZ) = mapConfig.ScreenToGame(screenX, screenY);
+
+        System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] Map={apiMarker.MapKey}");
+        System.Diagnostics.Debug.WriteLine($"  API raw: X={apiMarker.X:F2}, Z={apiMarker.Z:F2}");
+        System.Diagnostics.Debug.WriteLine($"  Player (swapped): gameX={playerGameX:F2}, gameZ={playerGameZ:F2}");
+        System.Diagnostics.Debug.WriteLine($"  Screen: X={screenX:F2}, Y={screenY:F2}");
+        System.Diagnostics.Debug.WriteLine($"  Calibrated: gameX={calibratedGameX:F2}, gameZ={calibratedGameZ:F2}");
+
+        return new LocationPoint(calibratedGameX, apiMarker.Y ?? 0, calibratedGameZ, apiMarker.FloorId);
+    }
+
+    /// <summary>
+    /// 맵 설정 로드 (캐시됨)
+    /// </summary>
+    private static MapConfigList? _mapConfigCache;
+    private MapConfig? LoadMapConfig(string? mapKey)
+    {
+        if (string.IsNullOrEmpty(mapKey)) return null;
+
+        if (_mapConfigCache == null)
+        {
+            try
+            {
+                var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "Data", "map_configs.json");
+                if (File.Exists(configPath))
+                {
+                    var json = File.ReadAllText(configPath);
+                    _mapConfigCache = JsonSerializer.Deserialize<MapConfigList>(json, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadMapConfig] Error loading map configs: {ex.Message}");
+                return null;
+            }
+        }
+
+        return _mapConfigCache?.FindByMapName(mapKey);
+    }
+
+    /// <summary>
     /// API 마커의 위치를 특정 Objective에 적용
     /// </summary>
     public async Task ApplyApiMarkerLocationToObjectiveAsync(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
     {
         if (apiMarker == null || objective == null) return;
 
-        // LocationPoints에 API 마커 좌표 추가 (기존 포인트에 추가)
-        var newPoint = new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
+        // API 마커 좌표를 Objective 좌표계로 변환
+        var newPoint = ConvertApiMarkerToObjectiveCoordinates(apiMarker);
         objective.LocationPoints.Add(newPoint);
 
         // DB에 저장
         await UpdateObjectiveLocationPointsAsync(objective.Id, objective.LocationPointsJson);
 
-        System.Diagnostics.Debug.WriteLine($"[ApplyApiMarkerLocationToObjectiveAsync] Applied ({apiMarker.X}, {apiMarker.Z}) to Objective {objective.Id}");
+        System.Diagnostics.Debug.WriteLine($"[ApplyApiMarkerLocationToObjectiveAsync] Applied to Objective {objective.Id}");
     }
 
     /// <summary>
@@ -692,13 +769,13 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
 
         // 기존 포인트 삭제 후 API 마커 좌표로 설정
         objective.LocationPoints.Clear();
-        var newPoint = new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
+        var newPoint = ConvertApiMarkerToObjectiveCoordinates(apiMarker);
         objective.LocationPoints.Add(newPoint);
 
         // DB에 저장
         await UpdateObjectiveLocationPointsAsync(objective.Id, objective.LocationPointsJson);
 
-        System.Diagnostics.Debug.WriteLine($"[ReplaceObjectiveLocationWithApiMarkerAsync] Replaced Objective {objective.Id} location with ({apiMarker.X}, {apiMarker.Z})");
+        System.Diagnostics.Debug.WriteLine($"[ReplaceObjectiveLocationWithApiMarkerAsync] Replaced Objective {objective.Id}");
     }
 
     public async Task UpdateRequiredItemApprovalAsync(string requiredItemId, bool isApproved)

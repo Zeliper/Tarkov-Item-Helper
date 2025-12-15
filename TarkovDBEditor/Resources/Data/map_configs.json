@@ -141,7 +141,7 @@
       "svgFileName": "Labs.svg",
       "imageWidth": 5500,
       "imageHeight": 4200,
-      "aliases": ["labs", "LABS", "laboratory", "the-lab", "The Lab", "lab"],
+      "aliases": ["labs", "LABS", "laboratory", "the-lab", "The Lab", "lab", "Lab"],
       "calibratedTransform": [-0.06475489648812036, 15.461642379397855, 18.704109904840276, 0.31533351406309695, 7946.959753722009, 5877.909736136232],
       "playerMarkerTransform": [0, 10, 10, 0, 6100, 4051.5],
       "svgBounds": [-460, -230, -300, -90],

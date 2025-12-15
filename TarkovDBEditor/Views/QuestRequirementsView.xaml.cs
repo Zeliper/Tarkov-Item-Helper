@@ -448,9 +448,9 @@ public partial class QuestRequirementsView : Window
 
     private async Task ApplyMarkerToObjective(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
     {
-        // Check if the objective's map matches the marker's map
+        // Check if the objective's map matches the marker's map (using normalized comparison)
         if (!string.IsNullOrEmpty(objective.EffectiveMapName) &&
-            !string.Equals(objective.EffectiveMapName, apiMarker.MapKey, StringComparison.OrdinalIgnoreCase))
+            !MapConfig.AreMapNamesEqual(objective.EffectiveMapName, apiMarker.MapKey))
         {
             var result = MessageBox.Show(
                 $"The objective's map ({objective.EffectiveMapName}) differs from the marker's map ({apiMarker.MapKey}).\n\nDo you want to apply anyway?",
