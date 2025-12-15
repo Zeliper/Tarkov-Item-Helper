@@ -455,10 +455,11 @@
                         <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,0,0,12"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="70"/>
+                                <ColumnDefinition Width="80"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
+                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
                                 <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
                                 <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
                                 <RowDefinition/><RowDefinition/>
@@ -473,16 +474,24 @@
                             <TextBlock Grid.Row="3" Grid.Column="1" Text="Fit Map to View" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
                             <TextBlock Grid.Row="4" Grid.Column="0" Text="R" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
                             <TextBlock Grid.Row="4" Grid.Column="1" Text="Reset View" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="1-7" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="5" Grid.Column="1" Text="Toggle Layer 1-7" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="0 / 9" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="6" Grid.Column="1" Text="All ON / All OFF" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="7" Grid.Column="0" Text="Tab" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="7" Grid.Column="1" Text="Toggle Context Panel" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="8" Grid.Column="0" Text="/" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="8" Grid.Column="1" Text="Focus Search" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="9" Grid.Column="0" Text="Scroll" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="9" Grid.Column="1" Text="Zoom In/Out" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="+/-" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="5" Grid.Column="1" Text="Zoom In/Out" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" Text="1-7" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="6" Grid.Column="1" Text="Toggle Layer 1-7" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="7" Grid.Column="0" Text="0 / 9" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="7" Grid.Column="1" Text="All ON / All OFF" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="8" Grid.Column="0" Text="Tab" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="8" Grid.Column="1" Text="Toggle Context Panel" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="9" Grid.Column="0" Text="/" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="9" Grid.Column="1" Text="Focus Search" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="10" Grid.Column="0" Text="Esc" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="10" Grid.Column="1" Text="Clear Selection / Close" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="11" Grid.Column="0" Text="C / G" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="11" Grid.Column="1" Text="Copy Coords / Go to Floor" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="12" Grid.Column="0" Text="Scroll" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="12" Grid.Column="1" Text="Zoom (Ctrl = 3x speed)" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
+                            <TextBlock Grid.Row="13" Grid.Column="0" Text=", / F1" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
+                            <TextBlock Grid.Row="13" Grid.Column="1" Text="Settings / Help" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
                         </Grid>
                     </StackPanel>
                 </Border>

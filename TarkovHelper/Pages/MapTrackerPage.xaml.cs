@@ -498,6 +498,52 @@ public partial class MapTrackerPage : UserControl
                 e.Handled = true;
                 return;
 
+            // Zoom in (+/=)
+            case Key.OemPlus:
+            case Key.Add:
+                SetZoom(_zoomLevel * 1.2);
+                e.Handled = true;
+                return;
+
+            // Zoom out (-)
+            case Key.OemMinus:
+            case Key.Subtract:
+                SetZoom(_zoomLevel / 1.2);
+                e.Handled = true;
+                return;
+
+            // Copy coords (C) when marker selected
+            case Key.C:
+                if (_selectedMarker != null)
+                {
+                    BtnCopySelectedCoords_Click(this, new RoutedEventArgs());
+                }
+                e.Handled = true;
+                return;
+
+            // Go to floor (G) when marker selected
+            case Key.G:
+                if (_selectedMarker != null)
+                {
+                    BtnSelectedGoToFloor_Click(this, new RoutedEventArgs());
+                }
+                e.Handled = true;
+                return;
+
+            // Settings panel toggle (,)
+            case Key.OemComma:
+                ToggleSettingsPanel();
+                e.Handled = true;
+                return;
+
+            // Help modal (F1)
+            case Key.F1:
+                ShortcutsPopup.Visibility = ShortcutsPopup.Visibility == Visibility.Visible
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+                e.Handled = true;
+                return;
+
             // All layers ON (0)
             case Key.D0:
             case Key.NumPad0:
@@ -2389,7 +2435,12 @@ public partial class MapTrackerPage : UserControl
     private void MapViewer_MouseWheel(object sender, MouseWheelEventArgs e)
     {
         var mousePos = e.GetPosition(MapViewerGrid);
-        var zoomFactor = e.Delta > 0 ? 1.15 : 0.87;
+
+        // Ctrl+scroll for 3x faster zoom
+        var isCtrlHeld = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control;
+        var baseZoomFactor = e.Delta > 0 ? 1.15 : 0.87;
+        var zoomFactor = isCtrlHeld ? Math.Pow(baseZoomFactor, 3) : baseZoomFactor;
+
         var newZoom = Math.Clamp(_zoomLevel * zoomFactor, MinZoom, MaxZoom);
 
         ZoomToPoint(newZoom, mousePos);
