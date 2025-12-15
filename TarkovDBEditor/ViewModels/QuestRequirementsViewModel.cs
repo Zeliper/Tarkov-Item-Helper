@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using TarkovDBEditor.Models;
 using TarkovDBEditor.Services;
@@ -161,11 +163,12 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         // Migrate OptionalPoints column if not exists
         await MigrateOptionalPointsColumnAsync(connection);
 
-        // Load all quests with MinLevel, MinScavKarma, Location, Faction, KappaRequired, IsApproved
+        // Load all quests with MinLevel, MinScavKarma, Location, Faction, KappaRequired, RequiredEdition, IsApproved
         var questSql = @"SELECT Id, Name, NameEN, NameKO, NameJA, WikiPageLink, Trader, BsgId,
                          MinLevel, MinLevelApproved, MinLevelApprovedAt,
                          MinScavKarma, MinScavKarmaApproved, MinScavKarmaApprovedAt,
-                         Location, Faction, KappaRequired, IsApproved, ApprovedAt
+                         Location, Faction, KappaRequired, RequiredEdition, RequiredEditionApproved, RequiredEditionApprovedAt,
+                         IsApproved, ApprovedAt
                          FROM Quests ORDER BY Name";
         await using var questCmd = new SqliteCommand(questSql, connection);
         await using var questReader = await questCmd.ExecuteReaderAsync();
@@ -192,8 +195,11 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
                 Location = questReader.IsDBNull(14) ? null : questReader.GetString(14),
                 Faction = questReader.IsDBNull(15) ? null : questReader.GetString(15),
                 KappaRequired = !questReader.IsDBNull(16) && questReader.GetInt64(16) != 0,
-                IsApproved = !questReader.IsDBNull(17) && questReader.GetInt64(17) != 0,
-                ApprovedAt = questReader.IsDBNull(18) ? null : DateTime.Parse(questReader.GetString(18))
+                RequiredEdition = questReader.IsDBNull(17) ? null : questReader.GetString(17),
+                RequiredEditionApproved = !questReader.IsDBNull(18) && questReader.GetInt64(18) != 0,
+                RequiredEditionApprovedAt = questReader.IsDBNull(19) ? null : DateTime.Parse(questReader.GetString(19)),
+                IsApproved = !questReader.IsDBNull(20) && questReader.GetInt64(20) != 0,
+                ApprovedAt = questReader.IsDBNull(21) ? null : DateTime.Parse(questReader.GetString(21))
             });
         }
 
@@ -368,7 +374,7 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         ApplyFilter();
     }
 
-    private void ApplyFilter()
+    public void ApplyFilter()
     {
         var filtered = _allQuests.AsEnumerable();
 
@@ -667,20 +673,95 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// API 마커 좌표를 Objective 좌표계로 변환
+    /// MapPreviewWindow에서 API 마커가 표시되는 것과 동일한 위치에 Objective가 표시되도록 변환
+    /// </summary>
+    private LocationPoint ConvertApiMarkerToObjectiveCoordinates(ApiReferenceMarkerItem apiMarker)
+    {
+        // 맵 설정 로드
+        var mapConfig = LoadMapConfig(apiMarker.MapKey);
+        if (mapConfig == null)
+        {
+            // 맵 설정을 찾을 수 없으면 원본 좌표 그대로 사용
+            System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] Map config not found for {apiMarker.MapKey}");
+            return new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
+        }
+
+        // MapPreviewWindow에서 API 마커 표시 방식:
+        // var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(marker.Z, marker.X);
+        // 즉, marker.Z를 gameX로, marker.X를 gameZ로 사용 (스왑)
+        var playerGameX = apiMarker.Z;
+        var playerGameZ = apiMarker.X;
+
+        // PlayerMarkerTransform으로 화면 좌표 계산
+        var (screenX, screenY) = mapConfig.GameToScreenForPlayer(playerGameX, playerGameZ);
+
+        // CalibratedTransform이 없으면 스왑된 좌표만 반환
+        if (mapConfig.CalibratedTransform == null || mapConfig.CalibratedTransform.Length < 6)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] No CalibratedTransform for {apiMarker.MapKey}, using swapped coords");
+            return new LocationPoint(playerGameX, apiMarker.Y ?? 0, playerGameZ, apiMarker.FloorId);
+        }
+
+        // 화면 좌표를 CalibratedTransform 게임 좌표로 변환
+        var (calibratedGameX, calibratedGameZ) = mapConfig.ScreenToGame(screenX, screenY);
+
+        System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] Map={apiMarker.MapKey}");
+        System.Diagnostics.Debug.WriteLine($"  API raw: X={apiMarker.X:F2}, Z={apiMarker.Z:F2}");
+        System.Diagnostics.Debug.WriteLine($"  Player (swapped): gameX={playerGameX:F2}, gameZ={playerGameZ:F2}");
+        System.Diagnostics.Debug.WriteLine($"  Screen: X={screenX:F2}, Y={screenY:F2}");
+        System.Diagnostics.Debug.WriteLine($"  Calibrated: gameX={calibratedGameX:F2}, gameZ={calibratedGameZ:F2}");
+
+        return new LocationPoint(calibratedGameX, apiMarker.Y ?? 0, calibratedGameZ, apiMarker.FloorId);
+    }
+
+    /// <summary>
+    /// 맵 설정 로드 (캐시됨)
+    /// </summary>
+    private static MapConfigList? _mapConfigCache;
+    private MapConfig? LoadMapConfig(string? mapKey)
+    {
+        if (string.IsNullOrEmpty(mapKey)) return null;
+
+        if (_mapConfigCache == null)
+        {
+            try
+            {
+                var configPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Resources", "Data", "map_configs.json");
+                if (File.Exists(configPath))
+                {
+                    var json = File.ReadAllText(configPath);
+                    _mapConfigCache = JsonSerializer.Deserialize<MapConfigList>(json, new JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadMapConfig] Error loading map configs: {ex.Message}");
+                return null;
+            }
+        }
+
+        return _mapConfigCache?.FindByMapName(mapKey);
+    }
+
+    /// <summary>
     /// API 마커의 위치를 특정 Objective에 적용
     /// </summary>
     public async Task ApplyApiMarkerLocationToObjectiveAsync(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
     {
         if (apiMarker == null || objective == null) return;
 
-        // LocationPoints에 API 마커 좌표 추가 (기존 포인트에 추가)
-        var newPoint = new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
+        // API 마커 좌표를 Objective 좌표계로 변환
+        var newPoint = ConvertApiMarkerToObjectiveCoordinates(apiMarker);
         objective.LocationPoints.Add(newPoint);
 
         // DB에 저장
         await UpdateObjectiveLocationPointsAsync(objective.Id, objective.LocationPointsJson);
 
-        System.Diagnostics.Debug.WriteLine($"[ApplyApiMarkerLocationToObjectiveAsync] Applied ({apiMarker.X}, {apiMarker.Z}) to Objective {objective.Id}");
+        System.Diagnostics.Debug.WriteLine($"[ApplyApiMarkerLocationToObjectiveAsync] Applied to Objective {objective.Id}");
     }
 
     /// <summary>
@@ -692,13 +773,13 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
 
         // 기존 포인트 삭제 후 API 마커 좌표로 설정
         objective.LocationPoints.Clear();
-        var newPoint = new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
+        var newPoint = ConvertApiMarkerToObjectiveCoordinates(apiMarker);
         objective.LocationPoints.Add(newPoint);
 
         // DB에 저장
         await UpdateObjectiveLocationPointsAsync(objective.Id, objective.LocationPointsJson);
 
-        System.Diagnostics.Debug.WriteLine($"[ReplaceObjectiveLocationWithApiMarkerAsync] Replaced Objective {objective.Id} location with ({apiMarker.X}, {apiMarker.Z})");
+        System.Diagnostics.Debug.WriteLine($"[ReplaceObjectiveLocationWithApiMarkerAsync] Replaced Objective {objective.Id}");
     }
 
     public async Task UpdateRequiredItemApprovalAsync(string requiredItemId, bool isApproved)
@@ -973,6 +1054,41 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task UpdateRequiredEditionApprovalAsync(string questId, bool isApproved)
+    {
+        if (!_db.IsConnected) return;
+
+        var connectionString = $"Data Source={_db.DatabasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = isApproved
+            ? "UPDATE Quests SET RequiredEditionApproved = 1, RequiredEditionApprovedAt = @ApprovedAt WHERE Id = @Id"
+            : "UPDATE Quests SET RequiredEditionApproved = 0, RequiredEditionApprovedAt = NULL WHERE Id = @Id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@Id", questId);
+        if (isApproved)
+        {
+            cmd.Parameters.AddWithValue("@ApprovedAt", DateTime.UtcNow.ToString("o"));
+        }
+        await cmd.ExecuteNonQueryAsync();
+
+        // Update local quest
+        if (_selectedQuest != null && _selectedQuest.Id == questId)
+        {
+            _selectedQuest.RequiredEditionApproved = isApproved;
+            _selectedQuest.RequiredEditionApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+
+        var questInList = _allQuests.FirstOrDefault(q => q.Id == questId);
+        if (questInList != null)
+        {
+            questInList.RequiredEditionApproved = isApproved;
+            questInList.RequiredEditionApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+    }
+
     /// <summary>
     /// 퀘스트 자체 승인 상태 업데이트
     /// </summary>
@@ -1051,6 +1167,8 @@ public class QuestItem : INotifyPropertyChanged
     private bool _minScavKarmaApproved;
     private bool _kappaRequired;
     private string? _faction;
+    private string? _requiredEdition;
+    private bool _requiredEditionApproved;
     private bool _isApproved;
 
     public string Id { get; set; } = "";
@@ -1127,6 +1245,27 @@ public class QuestItem : INotifyPropertyChanged
     public bool IsUsecOnly => string.Equals(Faction, "Usec", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 게임 에디션 요구사항 (EOD, Unheard 등)
+    /// </summary>
+    public string? RequiredEdition
+    {
+        get => _requiredEdition;
+        set { _requiredEdition = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasRequiredEdition)); OnPropertyChanged(nameof(IsEODOnly)); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(TotalRequirements)); }
+    }
+
+    public bool RequiredEditionApproved
+    {
+        get => _requiredEditionApproved;
+        set { _requiredEditionApproved = value; OnPropertyChanged(); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(ApprovedCount)); }
+    }
+
+    public DateTime? RequiredEditionApprovedAt { get; set; }
+
+    public bool HasRequiredEdition => !string.IsNullOrEmpty(RequiredEdition);
+    public bool IsEODOnly => string.Equals(RequiredEdition, "EOD", StringComparison.OrdinalIgnoreCase);
+    public bool IsUnheardOnly => string.Equals(RequiredEdition, "Unheard", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// 퀘스트 자체 승인 상태
     /// </summary>
     public bool IsApproved
@@ -1140,6 +1279,27 @@ public class QuestItem : INotifyPropertyChanged
     public bool HasMinLevel => MinLevel.HasValue && MinLevel.Value > 0;
     public bool HasMinScavKarma => MinScavKarma.HasValue;
 
+    /// <summary>
+    /// Scav Karma 표시 라벨 - 양수면 "Minimum", 음수면 "Maximum"
+    /// </summary>
+    public string ScavKarmaLabel => MinScavKarma.HasValue && MinScavKarma.Value < 0
+        ? "Maximum Scav Karma"
+        : "Minimum Scav Karma";
+
+    /// <summary>
+    /// Scav Karma 표시 값 - 양수면 "+N", 음수면 "N" (음수 부호 포함)
+    /// </summary>
+    public string ScavKarmaDisplayValue => MinScavKarma.HasValue
+        ? (MinScavKarma.Value >= 0 ? $"+{MinScavKarma.Value}" : MinScavKarma.Value.ToString())
+        : "";
+
+    /// <summary>
+    /// Scav Karma 설명 - 양수면 "at least", 음수면 "at most"
+    /// </summary>
+    public string ScavKarmaDescription => MinScavKarma.HasValue && MinScavKarma.Value < 0
+        ? "Player must have Scav karma at or below this value"
+        : "Player must have Scav karma at or above this value";
+
     public int TotalRequirements
     {
         get
@@ -1147,6 +1307,7 @@ public class QuestItem : INotifyPropertyChanged
             var total = _totalRequirements + _totalObjectives + _totalOptionalQuests + _totalRequiredItems;
             if (HasMinLevel) total++;
             if (HasMinScavKarma) total++;
+            if (HasRequiredEdition) total++;
             // 퀘스트 자체도 1개로 카운트 (항상 포함)
             total++;
             return total;
@@ -1161,6 +1322,7 @@ public class QuestItem : INotifyPropertyChanged
             var count = _approvedCount + _objectiveApprovedCount + _optionalQuestApprovedCount + _requiredItemApprovedCount;
             if (HasMinLevel && MinLevelApproved) count++;
             if (HasMinScavKarma && MinScavKarmaApproved) count++;
+            if (HasRequiredEdition && RequiredEditionApproved) count++;
             // 퀘스트 자체 승인 상태도 카운트
             if (IsApproved) count++;
             return count;

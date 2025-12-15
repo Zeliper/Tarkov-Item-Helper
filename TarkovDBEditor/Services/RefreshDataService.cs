@@ -523,11 +523,12 @@ namespace TarkovDBEditor.Services
                     dbQuest.MinScavKarma = cached.MinScavKarma ?? WikiQuestService.ExtractMinScavKarma(cached.PageContent ?? "");
                 }
 
-                // Wiki 캐시에서 KappaRequired, Faction 파싱
+                // Wiki 캐시에서 KappaRequired, Faction, RequiredEdition 파싱
                 if (cachedQuests.TryGetValue(questName, out var cachedForKappa) && !string.IsNullOrEmpty(cachedForKappa.PageContent))
                 {
                     dbQuest.KappaRequired = WikiQuestService.ExtractKappaRequired(cachedForKappa.PageContent);
                     dbQuest.Faction = cachedForKappa.Faction ?? WikiQuestService.ExtractFaction(cachedForKappa.PageContent);
+                    dbQuest.RequiredEdition = cachedForKappa.RequiredEdition ?? WikiQuestService.ExtractRequiredEdition(cachedForKappa.PageContent);
                 }
 
                 // tarkov.dev 매칭 (캐시된 데이터 사용) - 번역용
@@ -563,11 +564,17 @@ namespace TarkovDBEditor.Services
             System.Diagnostics.Debug.WriteLine($"[RefreshData] Matched {matchedCount}/{dbQuests.Count} quests with tarkov.dev BsgId");
 
             // 퀘스트 선행 조건(requirements) 파싱
+            // NOTE: Collector 퀘스트는 |previous 필드가 자기 자신을 참조하므로 스킵
+            // Collector의 선행 조건은 DB 저장 후 KappaRequired=1인 퀘스트들을 기반으로 별도 추가됨
             progress?.Invoke("Parsing quest requirements...");
             var dbRequirements = new List<DbQuestRequirement>();
 
             foreach (var questName in questPages)
             {
+                // Collector 퀘스트는 |previous 파싱 스킵 (자기 자신 참조 방지)
+                if (questName.Equals("Collector", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 if (!questNameToId.TryGetValue(questName, out var questId))
                     continue;
 
@@ -889,9 +896,10 @@ namespace TarkovDBEditor.Services
                 dbQuest.MinLevel = cached.MinLevel ?? WikiQuestService.ExtractMinLevel(cached.PageContent ?? "");
                 dbQuest.MinScavKarma = cached.MinScavKarma ?? WikiQuestService.ExtractMinScavKarma(cached.PageContent ?? "");
 
-                // Wiki 캐시에서 KappaRequired, Faction 파싱
+                // Wiki 캐시에서 KappaRequired, Faction, RequiredEdition 파싱
                 dbQuest.KappaRequired = WikiQuestService.ExtractKappaRequired(cached.PageContent ?? "");
                 dbQuest.Faction = cached.Faction ?? WikiQuestService.ExtractFaction(cached.PageContent ?? "");
+                dbQuest.RequiredEdition = cached.RequiredEdition ?? WikiQuestService.ExtractRequiredEdition(cached.PageContent ?? "");
 
                 // tarkov.dev 매칭 - 번역용
                 TarkovDevQuestCacheItem? devQuest = null;
@@ -1120,6 +1128,9 @@ namespace TarkovDBEditor.Services
                     logBuilder?.AppendLine($"Inserted: {reqStats.Inserted}, Updated: {reqStats.Updated}, Deleted: {reqStats.Deleted}");
                 }
 
+                // Collector 퀘스트 특별 처리: DB에서 KappaRequired=1인 모든 퀘스트를 Collector의 선행 조건으로 추가
+                await AddCollectorKappaRequirementsAsync(connection, transaction, progress, logBuilder);
+
                 // QuestObjectives 테이블 업데이트
                 if (questObjectives != null && questObjectives.Count > 0)
                 {
@@ -1314,6 +1325,9 @@ namespace TarkovDBEditor.Services
                     MinScavKarmaApprovedAt TEXT,
                     KappaRequired INTEGER NOT NULL DEFAULT 0,
                     Faction TEXT,
+                    RequiredEdition TEXT,
+                    RequiredEditionApproved INTEGER NOT NULL DEFAULT 0,
+                    RequiredEditionApprovedAt TEXT,
                     IsApproved INTEGER NOT NULL DEFAULT 0,
                     ApprovedAt TEXT,
                     UpdatedAt TEXT
@@ -1334,6 +1348,9 @@ namespace TarkovDBEditor.Services
                 "ALTER TABLE Quests ADD COLUMN Location TEXT",
                 "ALTER TABLE Quests ADD COLUMN KappaRequired INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE Quests ADD COLUMN Faction TEXT",
+                "ALTER TABLE Quests ADD COLUMN RequiredEdition TEXT",
+                "ALTER TABLE Quests ADD COLUMN RequiredEditionApproved INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE Quests ADD COLUMN RequiredEditionApprovedAt TEXT",
                 "ALTER TABLE Quests ADD COLUMN IsApproved INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE Quests ADD COLUMN ApprovedAt TEXT"
             };
@@ -2349,8 +2366,8 @@ namespace TarkovDBEditor.Services
                 if (!exists)
                 {
                     var insertSql = @"
-                        INSERT INTO Quests (Id, BsgId, Name, NameEN, NameKO, NameJA, WikiPageLink, Trader, Location, MinLevel, MinScavKarma, KappaRequired, Faction, UpdatedAt)
-                        VALUES (@Id, @BsgId, @Name, @NameEN, @NameKO, @NameJA, @WikiPageLink, @Trader, @Location, @MinLevel, @MinScavKarma, @KappaRequired, @Faction, @UpdatedAt)";
+                        INSERT INTO Quests (Id, BsgId, Name, NameEN, NameKO, NameJA, WikiPageLink, Trader, Location, MinLevel, MinScavKarma, KappaRequired, Faction, RequiredEdition, UpdatedAt)
+                        VALUES (@Id, @BsgId, @Name, @NameEN, @NameKO, @NameJA, @WikiPageLink, @Trader, @Location, @MinLevel, @MinScavKarma, @KappaRequired, @Faction, @RequiredEdition, @UpdatedAt)";
 
                     using var insertCmd = new SqliteCommand(insertSql, connection, transaction);
                     AddQuestParameters(insertCmd, quest, now);
@@ -2364,7 +2381,7 @@ namespace TarkovDBEditor.Services
                     var updateSql = @"
                         UPDATE Quests SET
                             BsgId = @BsgId, Name = @Name, NameEN = @NameEN, NameKO = @NameKO, NameJA = @NameJA,
-                            WikiPageLink = @WikiPageLink, Trader = @Trader, Location = @Location, MinLevel = @MinLevel, MinScavKarma = @MinScavKarma, KappaRequired = @KappaRequired, Faction = @Faction, UpdatedAt = @UpdatedAt
+                            WikiPageLink = @WikiPageLink, Trader = @Trader, Location = @Location, MinLevel = @MinLevel, MinScavKarma = @MinScavKarma, KappaRequired = @KappaRequired, Faction = @Faction, RequiredEdition = @RequiredEdition, UpdatedAt = @UpdatedAt
                         WHERE Id = @Id";
 
                     using var updateCmd = new SqliteCommand(updateSql, connection, transaction);
@@ -2392,6 +2409,7 @@ namespace TarkovDBEditor.Services
             cmd.Parameters.AddWithValue("@MinScavKarma", (object?)quest.MinScavKarma ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@KappaRequired", quest.KappaRequired ? 1 : 0);
             cmd.Parameters.AddWithValue("@Faction", (object?)quest.Faction ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@RequiredEdition", (object?)quest.RequiredEdition ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@UpdatedAt", now);
         }
 
@@ -2512,6 +2530,119 @@ namespace TarkovDBEditor.Services
             cmd.Parameters.AddWithValue("@IsApproved", isApproved ? 1 : 0);
             cmd.Parameters.AddWithValue("@ApprovedAt", (object?)approvedAt ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@UpdatedAt", now);
+        }
+
+        /// <summary>
+        /// Collector 퀘스트에 KappaRequired=1인 모든 퀘스트를 선행 조건으로 추가
+        /// DB에 저장된 후 실행되므로 정확한 KappaRequired 값을 사용할 수 있음
+        /// </summary>
+        private async Task AddCollectorKappaRequirementsAsync(
+            SqliteConnection connection,
+            SqliteTransaction transaction,
+            Action<string>? progress = null,
+            StringBuilder? logBuilder = null)
+        {
+            // 1. Collector 퀘스트 ID 조회
+            string? collectorId = null;
+            using (var cmd = new SqliteCommand(
+                "SELECT Id FROM Quests WHERE Name = 'Collector' OR NameEN = 'Collector' LIMIT 1",
+                connection, transaction))
+            {
+                var result = await cmd.ExecuteScalarAsync();
+                collectorId = result?.ToString();
+            }
+
+            if (string.IsNullOrEmpty(collectorId))
+            {
+                logBuilder?.AppendLine("  Collector quest not found - skipping Kappa requirements");
+                return;
+            }
+
+            // 2. Collector → Collector 자기 참조 요구사항 삭제 (이전 버그로 인해 생성된 데이터 정리)
+            using (var cmd = new SqliteCommand(
+                "DELETE FROM QuestRequirements WHERE QuestId = @CollectorId AND RequiredQuestId = @CollectorId",
+                connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@CollectorId", collectorId);
+                var deleted = await cmd.ExecuteNonQueryAsync();
+                if (deleted > 0)
+                {
+                    logBuilder?.AppendLine($"  Removed self-referencing Collector requirement");
+                }
+            }
+
+            // 3. KappaRequired=1인 모든 퀘스트 ID 조회 (Collector 제외)
+            var kappaQuestIds = new HashSet<string>();
+            using (var cmd = new SqliteCommand(
+                "SELECT Id FROM Quests WHERE KappaRequired = 1 AND Id != @CollectorId",
+                connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@CollectorId", collectorId);
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    kappaQuestIds.Add(reader.GetString(0));
+                }
+            }
+
+            if (kappaQuestIds.Count == 0)
+            {
+                logBuilder?.AppendLine("  No Kappa-required quests found");
+                return;
+            }
+
+            // 4. 기존 Collector 선행 조건 조회 (중복 방지)
+            var existingRequiredIds = new HashSet<string>();
+            using (var cmd = new SqliteCommand(
+                "SELECT RequiredQuestId FROM QuestRequirements WHERE QuestId = @CollectorId",
+                connection, transaction))
+            {
+                cmd.Parameters.AddWithValue("@CollectorId", collectorId);
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    existingRequiredIds.Add(reader.GetString(0));
+                }
+            }
+
+            // 5. 새로운 선행 조건 추가
+            var now = DateTime.UtcNow.ToString("o");
+            var insertedCount = 0;
+
+            foreach (var kappaQuestId in kappaQuestIds)
+            {
+                if (existingRequiredIds.Contains(kappaQuestId))
+                    continue;
+
+                var requirementId = $"{collectorId}_{kappaQuestId}";
+                // ContentHash 계산 (변경 감지용)
+                var hashData = $"{collectorId}|{kappaQuestId}|Complete||0";
+                using var sha = System.Security.Cryptography.SHA256.Create();
+                var hashBytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashData));
+                var contentHash = Convert.ToBase64String(hashBytes).Substring(0, 16);
+
+                using var cmd = new SqliteCommand(@"
+                    INSERT INTO QuestRequirements (Id, QuestId, RequiredQuestId, RequirementType, DelayMinutes, GroupId, ContentHash, IsApproved, ApprovedAt, UpdatedAt)
+                    VALUES (@Id, @QuestId, @RequiredQuestId, @RequirementType, NULL, 0, @ContentHash, 0, NULL, @UpdatedAt)
+                    ON CONFLICT(Id) DO NOTHING", connection, transaction);
+
+                cmd.Parameters.AddWithValue("@Id", requirementId);
+                cmd.Parameters.AddWithValue("@QuestId", collectorId);
+                cmd.Parameters.AddWithValue("@RequiredQuestId", kappaQuestId);
+                cmd.Parameters.AddWithValue("@RequirementType", "Complete");
+                cmd.Parameters.AddWithValue("@ContentHash", contentHash);
+                cmd.Parameters.AddWithValue("@UpdatedAt", now);
+
+                var affected = await cmd.ExecuteNonQueryAsync();
+                if (affected > 0)
+                    insertedCount++;
+            }
+
+            var message = $"Collector: Added {insertedCount} Kappa-required quests as prerequisites (total Kappa quests: {kappaQuestIds.Count})";
+            progress?.Invoke(message);
+            logBuilder?.AppendLine();
+            logBuilder?.AppendLine($"=== Collector Kappa Requirements ===");
+            logBuilder?.AppendLine($"  {message}");
         }
 
         #endregion
@@ -2744,6 +2875,7 @@ namespace TarkovDBEditor.Services
         public int? MinScavKarma { get; set; }
         public bool KappaRequired { get; set; }
         public string? Faction { get; set; }
+        public string? RequiredEdition { get; set; } // EOD, Standard 등 게임 에디션 요구사항
     }
 
     public class DbTrader
