@@ -624,6 +624,26 @@
 
                                     <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,4,0,12"/>
 
+                                    <TextBlock Text="CLUSTERING" Style="{StaticResource SidebarHeaderStyle}" Margin="0,0,0,8"/>
+                                    <CheckBox x:Name="ChkEnableClustering" Content="Enable marker clustering" IsChecked="True"
+                                              Checked="ChkEnableClustering_Changed" Unchecked="ChkEnableClustering_Changed" Margin="0,0,0,8"/>
+
+                                    <TextBlock Text="Cluster at zoom level" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4"/>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="40"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Slider x:Name="SliderClusterZoom" Minimum="10" Maximum="100" Value="50"
+                                                ValueChanged="SliderClusterZoom_ValueChanged"/>
+                                        <TextBlock x:Name="TxtClusterZoom" Grid.Column="1" Text="50%"
+                                                   Foreground="{StaticResource AccentBrush}" TextAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <TextBlock Text="Markers cluster together when zoom is below this level."
+                                               Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+                                    <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,4,0,12"/>
+
                                     <TextBlock Text="KEYBOARD SHORTCUTS" Style="{StaticResource SidebarHeaderStyle}" Margin="0,0,0,8"/>
                                     <Button x:Name="BtnShowShortcuts" Style="{StaticResource SidebarButtonStyle}" Click="BtnShowShortcuts_Click"
                                             HorizontalAlignment="Stretch" HorizontalContentAlignment="Left">

@@ -40,6 +40,44 @@ internal sealed class MarkerHitRegion
 }
 
 /// <summary>
+/// Represents a cluster of markers
+/// </summary>
+internal sealed class MarkerCluster
+{
+    public List<MapMarker> Markers { get; } = new();
+    public double CenterX { get; private set; }
+    public double CenterY { get; private set; }
+    public double ScreenX { get; private set; }
+    public double ScreenY { get; private set; }
+
+    /// <summary>
+    /// Gets the primary marker type for the cluster (used for icon)
+    /// Priority: Boss > Extraction > Transit > Quest > Others
+    /// </summary>
+    public MarkerType PrimaryType
+    {
+        get
+        {
+            if (Markers.Any(m => m.Type is MarkerType.BossSpawn or MarkerType.RaiderSpawn))
+                return MarkerType.BossSpawn;
+            if (Markers.Any(m => m.Type is MarkerType.PmcExtraction or MarkerType.ScavExtraction or MarkerType.SharedExtraction))
+                return MarkerType.PmcExtraction;
+            if (Markers.Any(m => m.Type == MarkerType.Transit))
+                return MarkerType.Transit;
+            return Markers.FirstOrDefault()?.Type ?? MarkerType.PmcSpawn;
+        }
+    }
+
+    public void AddMarker(MapMarker marker, double sx, double sy)
+    {
+        Markers.Add(marker);
+        // Recalculate center
+        ScreenX = Markers.Count == 1 ? sx : (ScreenX * (Markers.Count - 1) + sx) / Markers.Count;
+        ScreenY = Markers.Count == 1 ? sy : (ScreenY * (Markers.Count - 1) + sy) / Markers.Count;
+    }
+}
+
+/// <summary>
 /// Map Tracker Page - displays map with markers and real-time player position tracking
 /// </summary>
 public partial class MapTrackerPage : UserControl
@@ -98,6 +136,11 @@ public partial class MapTrackerPage : UserControl
     private double _markerScale = 1.0;
     private double _labelShowZoomThreshold = 0.5;
     private bool _showMarkerLabels = true;
+
+    // Clustering settings
+    private bool _clusteringEnabled = true;
+    private double _clusterZoomThreshold = 0.5;  // Cluster when zoom < this value
+    private const double ClusterGridSize = 60.0;  // Grid size for clustering in pixels
 
     // Auto-follow state
     private bool _autoFollowEnabled;
@@ -476,6 +519,8 @@ public partial class MapTrackerPage : UserControl
         SliderMarkerSize.Value = _markerScale * 100;
         ChkShowLabels.IsChecked = _showMarkerLabels;
         SliderLabelZoom.Value = _labelShowZoomThreshold * 100;
+        ChkEnableClustering.IsChecked = _clusteringEnabled;
+        SliderClusterZoom.Value = _clusterZoomThreshold * 100;
 
         // Sync Tracker tab
         SettingsChkAutoFollow.IsChecked = _autoFollowEnabled;
@@ -577,6 +622,20 @@ public partial class MapTrackerPage : UserControl
         _autoFloorEnabled = SettingsChkAutoFloorTracker.IsChecked == true;
         ChkAutoFloor.IsChecked = _autoFloorEnabled;
         SettingsChkAutoFloor.IsChecked = _autoFloorEnabled;
+    }
+
+    private void ChkEnableClustering_Changed(object sender, RoutedEventArgs e)
+    {
+        _clusteringEnabled = ChkEnableClustering.IsChecked == true;
+        RedrawMarkers();
+    }
+
+    private void SliderClusterZoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtClusterZoom == null) return;
+        _clusterZoomThreshold = SliderClusterZoom.Value / 100.0;
+        TxtClusterZoom.Text = $"{SliderClusterZoom.Value:F0}%";
+        RedrawMarkers();
     }
 
     private void BtnToggleQuestDrawer_Click(object sender, RoutedEventArgs e)
@@ -1034,6 +1093,9 @@ public partial class MapTrackerPage : UserControl
         // Determine if labels should be shown based on zoom level and user setting
         bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
 
+        // Check if clustering should be active
+        bool shouldCluster = _clusteringEnabled && _zoomLevel < _clusterZoomThreshold;
+
         var markers = MapMarkerDbService.Instance.GetMarkersForMap(_currentMapConfig.Key);
 
         // Pre-calculate screen coordinates for all visible markers
@@ -1047,166 +1109,312 @@ public partial class MapTrackerPage : UserControl
             visibleMarkersWithCoords.Add((marker, sx, sy));
         }
 
-        // Group overlapping markers
-        var overlapGroupSize = MarkerOverlapDistance * inverseScale;
-        var markerGroups = GroupOverlappingMarkers(visibleMarkersWithCoords, overlapGroupSize);
+        int visibleCount = visibleMarkersWithCoords.Count;
 
-        // Calculate offsets for overlapping markers
-        var markerOffsets = new Dictionary<MapMarker, (double offsetX, double offsetY)>();
-        foreach (var group in markerGroups.Values)
+        // Use clustering or individual markers based on zoom level
+        if (shouldCluster && visibleMarkersWithCoords.Count > 1)
         {
-            if (group.Count > 1)
+            // Compute clusters
+            var clusters = ComputeClusters(visibleMarkersWithCoords, ClusterGridSize * inverseScale);
+
+            foreach (var cluster in clusters)
             {
-                var offsetRadius = MarkerOffsetRadius * inverseScale;
-                for (int i = 0; i < group.Count; i++)
+                if (cluster.Markers.Count == 1)
                 {
-                    var (offsetX, offsetY) = CalculateMarkerOffset(i, group.Count, offsetRadius);
-                    markerOffsets[group[i].marker] = (offsetX, offsetY);
+                    // Single marker - draw normally
+                    var marker = cluster.Markers[0];
+                    DrawSingleMarker(marker, cluster.ScreenX, cluster.ScreenY, inverseScale, hasFloors, showLabels);
+                }
+                else
+                {
+                    // Multiple markers - draw cluster
+                    DrawCluster(cluster, inverseScale, hasFloors);
                 }
             }
         }
-
-        int visibleCount = 0;
-        foreach (var (marker, baseSx, baseSy) in visibleMarkersWithCoords)
+        else
         {
-            visibleCount++;
+            // No clustering - draw markers individually with overlap handling
+            // Group overlapping markers
+            var overlapGroupSize = MarkerOverlapDistance * inverseScale;
+            var markerGroups = GroupOverlappingMarkers(visibleMarkersWithCoords, overlapGroupSize);
 
-            // Apply offset for overlapping markers
-            var (offsetX, offsetY) = markerOffsets.TryGetValue(marker, out var offset) ? offset : (0.0, 0.0);
-            var sx = baseSx + offsetX;
-            var sy = baseSy + offsetY;
-
-            // Determine opacity based on floor
-            double opacity = 1.0;
-            if (hasFloors && _currentFloorId != null && marker.FloorId != null)
+            // Calculate offsets for overlapping markers
+            var markerOffsets = new Dictionary<MapMarker, (double offsetX, double offsetY)>();
+            foreach (var group in markerGroups.Values)
             {
-                opacity = string.Equals(marker.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.3;
-            }
-
-            var (r, g, b) = MapMarker.GetMarkerColor(marker.Type);
-            var markerColor = Color.FromArgb((byte)(opacity * 255), r, g, b);
-
-            // Calculate marker size with min/max constraints and user scale
-            var rawMarkerSize = 48 * inverseScale * _markerScale;
-            var markerSize = Math.Clamp(rawMarkerSize, MinMarkerSize * inverseScale, MaxMarkerSize * inverseScale * _markerScale);
-
-            var iconImage = GetMarkerIcon(marker.Type);
-
-            if (iconImage != null)
-            {
-                var image = new Image
+                if (group.Count > 1)
                 {
-                    Source = iconImage,
-                    Width = markerSize,
-                    Height = markerSize,
-                    Opacity = opacity
-                };
-
-                Canvas.SetLeft(image, sx - markerSize / 2);
-                Canvas.SetTop(image, sy - markerSize / 2);
-                MarkersCanvas.Children.Add(image);
-            }
-            else
-            {
-                // Fallback to colored circle
-                var strokeThickness = Math.Max(1, 3 * inverseScale);
-                var circle = new Ellipse
-                {
-                    Width = markerSize,
-                    Height = markerSize,
-                    Fill = new SolidColorBrush(markerColor),
-                    Stroke = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 255, 255, 255)),
-                    StrokeThickness = strokeThickness
-                };
-
-                Canvas.SetLeft(circle, sx - markerSize / 2);
-                Canvas.SetTop(circle, sy - markerSize / 2);
-                MarkersCanvas.Children.Add(circle);
-
-                // Icon text (only if marker is large enough)
-                if (markerSize >= 20 * inverseScale)
-                {
-                    var iconText = marker.Type switch
+                    var offsetRadius = MarkerOffsetRadius * inverseScale;
+                    for (int i = 0; i < group.Count; i++)
                     {
-                        MarkerType.PmcSpawn => "P",
-                        MarkerType.ScavSpawn => "S",
-                        MarkerType.PmcExtraction => "E",
-                        MarkerType.ScavExtraction => "E",
-                        MarkerType.SharedExtraction => "E",
-                        MarkerType.Transit => "T",
-                        MarkerType.BossSpawn => "B",
-                        MarkerType.RaiderSpawn => "R",
-                        MarkerType.Lever => "L",
-                        MarkerType.Keys => "K",
-                        _ => "?"
-                    };
-
-                    var fontSize = Math.Max(8, 24 * inverseScale);
-                    var icon = new TextBlock
-                    {
-                        Text = iconText,
-                        Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 255, 255, 255)),
-                        FontSize = fontSize,
-                        FontWeight = FontWeights.Bold,
-                        TextAlignment = TextAlignment.Center
-                    };
-
-                    icon.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                    Canvas.SetLeft(icon, sx - icon.DesiredSize.Width / 2);
-                    Canvas.SetTop(icon, sy - icon.DesiredSize.Height / 2);
-                    MarkersCanvas.Children.Add(icon);
+                        var (offsetX, offsetY) = CalculateMarkerOffset(i, group.Count, offsetRadius);
+                        markerOffsets[group[i].marker] = (offsetX, offsetY);
+                    }
                 }
             }
 
-            // Register hit region for tooltip (always register for hover detection)
-            _markerHitRegions.Add(new MarkerHitRegion
+            foreach (var (marker, baseSx, baseSy) in visibleMarkersWithCoords)
             {
-                Marker = marker,
-                ScreenX = sx,
-                ScreenY = sy,
-                Radius = markerSize / 2 + 4 * inverseScale // Slightly larger hit area
-            });
+                // Apply offset for overlapping markers
+                var (offsetX, offsetY) = markerOffsets.TryGetValue(marker, out var offset) ? offset : (0.0, 0.0);
+                var sx = baseSx + offsetX;
+                var sy = baseSy + offsetY;
 
-            // Name label (localized) - only show when zoomed in enough
-            if (showLabels)
-            {
-                var fontSize = Math.Max(10, 28 * inverseScale);
-                var nameLabel = new TextBlock
-                {
-                    Text = GetLocalizedMarkerName(marker),
-                    Foreground = new SolidColorBrush(markerColor),
-                    FontSize = fontSize,
-                    FontWeight = FontWeights.SemiBold
-                };
-
-                Canvas.SetLeft(nameLabel, sx + markerSize / 2 + 8 * inverseScale);
-                Canvas.SetTop(nameLabel, sy - fontSize / 2);
-                MarkersCanvas.Children.Add(nameLabel);
-
-                // Floor label (if different floor)
-                if (hasFloors && marker.FloorId != null && opacity < 1.0)
-                {
-                    var floorDisplayName = _sortedFloors?
-                        .FirstOrDefault(f => string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase))
-                        ?.DisplayName ?? marker.FloorId;
-
-                    var floorFontSize = Math.Max(8, 20 * inverseScale);
-                    var floorLabel = new TextBlock
-                    {
-                        Text = $"[{floorDisplayName}]",
-                        Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 200), 154, 136, 102)),
-                        FontSize = floorFontSize,
-                        FontStyle = FontStyles.Italic
-                    };
-
-                    Canvas.SetLeft(floorLabel, sx + markerSize / 2 + 8 * inverseScale);
-                    Canvas.SetTop(floorLabel, sy + fontSize / 2 + 2 * inverseScale);
-                    MarkersCanvas.Children.Add(floorLabel);
-                }
+                DrawSingleMarker(marker, sx, sy, inverseScale, hasFloors, showLabels);
             }
         }
 
         MarkerCountText.Text = visibleCount.ToString();
+    }
+
+    /// <summary>
+    /// Compute clusters using grid-based algorithm
+    /// </summary>
+    private List<MarkerCluster> ComputeClusters(List<(MapMarker marker, double sx, double sy)> markersWithCoords, double gridSize)
+    {
+        var grid = new Dictionary<(int, int), MarkerCluster>();
+
+        foreach (var (marker, sx, sy) in markersWithCoords)
+        {
+            var gridX = (int)(sx / gridSize);
+            var gridY = (int)(sy / gridSize);
+            var key = (gridX, gridY);
+
+            if (!grid.TryGetValue(key, out var cluster))
+            {
+                cluster = new MarkerCluster();
+                grid[key] = cluster;
+            }
+            cluster.AddMarker(marker, sx, sy);
+        }
+
+        return grid.Values.ToList();
+    }
+
+    /// <summary>
+    /// Draw a cluster with count badge
+    /// </summary>
+    private void DrawCluster(MarkerCluster cluster, double inverseScale, bool hasFloors)
+    {
+        var sx = cluster.ScreenX;
+        var sy = cluster.ScreenY;
+
+        // Use primary type for color and icon
+        var primaryType = cluster.PrimaryType;
+        var (r, g, b) = MapMarker.GetMarkerColor(primaryType);
+        var markerColor = Color.FromRgb(r, g, b);
+
+        // Cluster marker size (slightly larger than individual markers)
+        var markerSize = Math.Clamp(56 * inverseScale * _markerScale, MinMarkerSize * inverseScale, MaxMarkerSize * inverseScale * _markerScale);
+
+        var iconImage = GetMarkerIcon(primaryType);
+
+        if (iconImage != null)
+        {
+            var image = new Image
+            {
+                Source = iconImage,
+                Width = markerSize,
+                Height = markerSize,
+                Opacity = 0.9
+            };
+
+            Canvas.SetLeft(image, sx - markerSize / 2);
+            Canvas.SetTop(image, sy - markerSize / 2);
+            MarkersCanvas.Children.Add(image);
+        }
+        else
+        {
+            // Fallback to colored circle
+            var circle = new Ellipse
+            {
+                Width = markerSize,
+                Height = markerSize,
+                Fill = new SolidColorBrush(markerColor),
+                Stroke = Brushes.White,
+                StrokeThickness = Math.Max(1, 3 * inverseScale)
+            };
+
+            Canvas.SetLeft(circle, sx - markerSize / 2);
+            Canvas.SetTop(circle, sy - markerSize / 2);
+            MarkersCanvas.Children.Add(circle);
+        }
+
+        // Draw count badge
+        var badgeSize = Math.Max(16, 24 * inverseScale);
+        var badgeX = sx + markerSize / 2 - badgeSize / 2;
+        var badgeY = sy - markerSize / 2 - badgeSize / 4;
+
+        var badge = new Ellipse
+        {
+            Width = badgeSize,
+            Height = badgeSize,
+            Fill = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
+            Stroke = new SolidColorBrush(markerColor),
+            StrokeThickness = Math.Max(1, 2 * inverseScale)
+        };
+        Canvas.SetLeft(badge, badgeX);
+        Canvas.SetTop(badge, badgeY);
+        MarkersCanvas.Children.Add(badge);
+
+        // Count text
+        var countText = new TextBlock
+        {
+            Text = cluster.Markers.Count.ToString(),
+            Foreground = Brushes.White,
+            FontSize = Math.Max(9, 14 * inverseScale),
+            FontWeight = FontWeights.Bold,
+            TextAlignment = TextAlignment.Center
+        };
+        countText.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        Canvas.SetLeft(countText, badgeX + badgeSize / 2 - countText.DesiredSize.Width / 2);
+        Canvas.SetTop(countText, badgeY + badgeSize / 2 - countText.DesiredSize.Height / 2);
+        MarkersCanvas.Children.Add(countText);
+
+        // Register hit region for the entire cluster (tooltip will show count)
+        _markerHitRegions.Add(new MarkerHitRegion
+        {
+            Marker = cluster.Markers[0], // Use first marker for tooltip
+            ScreenX = sx,
+            ScreenY = sy,
+            Radius = markerSize / 2 + 4 * inverseScale
+        });
+    }
+
+    /// <summary>
+    /// Draw a single marker
+    /// </summary>
+    private void DrawSingleMarker(MapMarker marker, double sx, double sy, double inverseScale, bool hasFloors, bool showLabels)
+    {
+        // Determine opacity based on floor
+        double opacity = 1.0;
+        if (hasFloors && _currentFloorId != null && marker.FloorId != null)
+        {
+            opacity = string.Equals(marker.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.3;
+        }
+
+        var (r, g, b) = MapMarker.GetMarkerColor(marker.Type);
+        var markerColor = Color.FromArgb((byte)(opacity * 255), r, g, b);
+
+        // Calculate marker size with min/max constraints and user scale
+        var rawMarkerSize = 48 * inverseScale * _markerScale;
+        var markerSize = Math.Clamp(rawMarkerSize, MinMarkerSize * inverseScale, MaxMarkerSize * inverseScale * _markerScale);
+
+        var iconImage = GetMarkerIcon(marker.Type);
+
+        if (iconImage != null)
+        {
+            var image = new Image
+            {
+                Source = iconImage,
+                Width = markerSize,
+                Height = markerSize,
+                Opacity = opacity
+            };
+
+            Canvas.SetLeft(image, sx - markerSize / 2);
+            Canvas.SetTop(image, sy - markerSize / 2);
+            MarkersCanvas.Children.Add(image);
+        }
+        else
+        {
+            // Fallback to colored circle
+            var strokeThickness = Math.Max(1, 3 * inverseScale);
+            var circle = new Ellipse
+            {
+                Width = markerSize,
+                Height = markerSize,
+                Fill = new SolidColorBrush(markerColor),
+                Stroke = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 255, 255, 255)),
+                StrokeThickness = strokeThickness
+            };
+
+            Canvas.SetLeft(circle, sx - markerSize / 2);
+            Canvas.SetTop(circle, sy - markerSize / 2);
+            MarkersCanvas.Children.Add(circle);
+
+            // Icon text (only if marker is large enough)
+            if (markerSize >= 20 * inverseScale)
+            {
+                var iconText = marker.Type switch
+                {
+                    MarkerType.PmcSpawn => "P",
+                    MarkerType.ScavSpawn => "S",
+                    MarkerType.PmcExtraction => "E",
+                    MarkerType.ScavExtraction => "E",
+                    MarkerType.SharedExtraction => "E",
+                    MarkerType.Transit => "T",
+                    MarkerType.BossSpawn => "B",
+                    MarkerType.RaiderSpawn => "R",
+                    MarkerType.Lever => "L",
+                    MarkerType.Keys => "K",
+                    _ => "?"
+                };
+
+                var fontSize = Math.Max(8, 24 * inverseScale);
+                var icon = new TextBlock
+                {
+                    Text = iconText,
+                    Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 255, 255, 255)),
+                    FontSize = fontSize,
+                    FontWeight = FontWeights.Bold,
+                    TextAlignment = TextAlignment.Center
+                };
+
+                icon.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                Canvas.SetLeft(icon, sx - icon.DesiredSize.Width / 2);
+                Canvas.SetTop(icon, sy - icon.DesiredSize.Height / 2);
+                MarkersCanvas.Children.Add(icon);
+            }
+        }
+
+        // Register hit region for tooltip
+        _markerHitRegions.Add(new MarkerHitRegion
+        {
+            Marker = marker,
+            ScreenX = sx,
+            ScreenY = sy,
+            Radius = markerSize / 2 + 4 * inverseScale
+        });
+
+        // Name label (localized) - only show when zoomed in enough
+        if (showLabels)
+        {
+            var fontSize = Math.Max(10, 28 * inverseScale);
+            var nameLabel = new TextBlock
+            {
+                Text = GetLocalizedMarkerName(marker),
+                Foreground = new SolidColorBrush(markerColor),
+                FontSize = fontSize,
+                FontWeight = FontWeights.SemiBold
+            };
+
+            Canvas.SetLeft(nameLabel, sx + markerSize / 2 + 8 * inverseScale);
+            Canvas.SetTop(nameLabel, sy - fontSize / 2);
+            MarkersCanvas.Children.Add(nameLabel);
+
+            // Floor label (if different floor)
+            if (hasFloors && marker.FloorId != null && opacity < 1.0)
+            {
+                var floorDisplayName = _sortedFloors?
+                    .FirstOrDefault(f => string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase))
+                    ?.DisplayName ?? marker.FloorId;
+
+                var floorFontSize = Math.Max(8, 20 * inverseScale);
+                var floorLabel = new TextBlock
+                {
+                    Text = $"[{floorDisplayName}]",
+                    Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 200), 154, 136, 102)),
+                    FontSize = floorFontSize,
+                    FontStyle = FontStyles.Italic
+                };
+
+                Canvas.SetLeft(floorLabel, sx + markerSize / 2 + 8 * inverseScale);
+                Canvas.SetTop(floorLabel, sy + fontSize / 2 + 2 * inverseScale);
+                MarkersCanvas.Children.Add(floorLabel);
+            }
+        }
     }
 
     #endregion
