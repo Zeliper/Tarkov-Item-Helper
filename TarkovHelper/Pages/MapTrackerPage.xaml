@@ -115,7 +115,7 @@
                     </Button>
 
                     <!-- Map Selector -->
-                    <TextBlock Text="Map:" Foreground="{StaticResource TextSecondaryBrush}"
+                    <TextBlock x:Name="TxtMapLabel" Text="Map:" Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <ComboBox x:Name="MapSelector" Width="180" Height="28"
                               SelectionChanged="MapSelector_SelectionChanged">

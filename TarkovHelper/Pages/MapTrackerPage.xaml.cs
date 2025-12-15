@@ -163,8 +163,10 @@ public partial class MapTrackerPage : UserControl
     /// </summary>
     private void UpdateUIStrings()
     {
-        // Note: Static text in XAML will be updated via binding or code
-        // This method handles dynamic text updates
+        // Update toolbar labels
+        TxtMapLabel.Text = _loc.MapTrackerMapLabel;
+        TxtFloorLabel.Text = _loc.MapTrackerFloorLabel;
+        ChkAutoFloor.Content = _loc.MapTrackerAutoFloor;
 
         // Redraw markers to update localized names
         RedrawMarkers();

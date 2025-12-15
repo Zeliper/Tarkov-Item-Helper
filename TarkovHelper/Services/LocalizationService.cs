@@ -1652,6 +1652,55 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Player:"
     };
 
+    public string MapTrackerAutoFloor => CurrentLanguage switch
+    {
+        AppLanguage.KO => "자동",
+        AppLanguage.JA => "自動",
+        _ => "Auto"
+    };
+
+    public string MapTrackerAll => CurrentLanguage switch
+    {
+        AppLanguage.KO => "전체",
+        AppLanguage.JA => "全て",
+        _ => "All"
+    };
+
+    public string MapTrackerNone => CurrentLanguage switch
+    {
+        AppLanguage.KO => "없음",
+        AppLanguage.JA => "なし",
+        _ => "None"
+    };
+
+    public string MapTrackerStart => CurrentLanguage switch
+    {
+        AppLanguage.KO => "시작",
+        AppLanguage.JA => "開始",
+        _ => "Start"
+    };
+
+    public string MapTrackerStop => CurrentLanguage switch
+    {
+        AppLanguage.KO => "중지",
+        AppLanguage.JA => "停止",
+        _ => "Stop"
+    };
+
+    public string MapTrackerReady => CurrentLanguage switch
+    {
+        AppLanguage.KO => "준비 완료",
+        AppLanguage.JA => "準備完了",
+        _ => "Ready"
+    };
+
+    public string MapTrackerKeyboardShortcuts => CurrentLanguage switch
+    {
+        AppLanguage.KO => "키보드 단축키",
+        AppLanguage.JA => "キーボードショートカット",
+        _ => "Keyboard Shortcuts"
+    };
+
     // Marker type localization method
     public string GetMarkerTypeName(MarkerType type) => type switch
     {
