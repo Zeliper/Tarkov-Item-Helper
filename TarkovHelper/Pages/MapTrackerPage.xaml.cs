@@ -134,7 +134,6 @@ public partial class MapTrackerPage : UserControl
 
     // Settings panel state
     private bool _settingsPanelOpen = false;
-    private int _currentSettingsTab = 0;
 
     // Display settings
     private double _markerScale = 1.0;
@@ -215,11 +214,6 @@ public partial class MapTrackerPage : UserControl
     /// </summary>
     private void UpdateUIStrings()
     {
-        // Update toolbar labels
-        TxtMapLabel.Text = _loc.MapTrackerMapLabel;
-        TxtFloorLabel.Text = _loc.MapTrackerFloorLabel;
-        ChkAutoFloor.Content = _loc.MapTrackerAutoFloor;
-
         // Redraw markers to update localized names
         RedrawMarkers();
         RedrawObjectives();
@@ -274,12 +268,12 @@ public partial class MapTrackerPage : UserControl
             }
             else
             {
-                StatusText.Text = "Warning: map_configs.json not found";
+                System.Diagnostics.Debug.WriteLine("Warning: map_configs.json not found");
             }
         }
         catch (Exception ex)
         {
-            StatusText.Text = $"Error loading map configs: {ex.Message}";
+            System.Diagnostics.Debug.WriteLine($"Error loading map configs: {ex.Message}");
         }
     }
 
@@ -301,24 +295,22 @@ public partial class MapTrackerPage : UserControl
     private void UpdateFloorSelector(MapConfig config)
     {
         FloorSelector.Items.Clear();
+        StatusFloorSelector.Items.Clear();
         _currentFloorId = null;
         _sortedFloors = null;
 
         var floors = config.Floors;
         if (floors == null || floors.Count == 0)
         {
-            TxtFloorLabel.Visibility = Visibility.Collapsed;
-            ChkAutoFloor.Visibility = Visibility.Collapsed;
             FloorSelector.Visibility = Visibility.Collapsed;
-            TxtFloorHotkeys.Visibility = Visibility.Collapsed;
+            TxtFloorInfo.Visibility = Visibility.Collapsed;
+            StatusFloorSelector.Visibility = Visibility.Collapsed;
             return;
         }
 
-        TxtFloorLabel.Visibility = Visibility.Visible;
-        ChkAutoFloor.Visibility = Visibility.Visible;
-        ChkAutoFloor.IsChecked = _autoFloorEnabled;
         FloorSelector.Visibility = Visibility.Visible;
-        TxtFloorHotkeys.Visibility = Visibility.Visible;
+        TxtFloorInfo.Visibility = Visibility.Visible;
+        StatusFloorSelector.Visibility = Visibility.Visible;
 
         _sortedFloors = floors.OrderBy(f => f.Order).ToList();
 
@@ -327,6 +319,11 @@ public partial class MapTrackerPage : UserControl
         {
             var floor = _sortedFloors[i];
             FloorSelector.Items.Add(new ComboBoxItem
+            {
+                Content = floor.DisplayName,
+                Tag = floor.LayerId
+            });
+            StatusFloorSelector.Items.Add(new ComboBoxItem
             {
                 Content = floor.DisplayName,
                 Tag = floor.LayerId
@@ -341,6 +338,7 @@ public partial class MapTrackerPage : UserControl
         if (FloorSelector.Items.Count > 0)
         {
             FloorSelector.SelectedIndex = defaultIndex;
+            StatusFloorSelector.SelectedIndex = defaultIndex;
             _currentFloorId = _sortedFloors[defaultIndex].LayerId;
         }
     }
@@ -352,6 +350,36 @@ public partial class MapTrackerPage : UserControl
             if (_currentFloorId != floorId)
             {
                 _currentFloorId = floorId;
+
+                // Sync status bar floor selector
+                if (StatusFloorSelector.SelectedIndex != FloorSelector.SelectedIndex)
+                {
+                    StatusFloorSelector.SelectedIndex = FloorSelector.SelectedIndex;
+                }
+
+                if (_currentMapConfig != null)
+                {
+                    LoadMap(_currentMapConfig, resetView: false);
+                    RedrawMarkers();
+                    RedrawObjectives();
+                }
+            }
+        }
+    }
+
+    private void StatusFloorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (StatusFloorSelector.SelectedItem is ComboBoxItem floorItem && floorItem.Tag is string floorId)
+        {
+            if (_currentFloorId != floorId)
+            {
+                _currentFloorId = floorId;
+
+                // Sync context panel floor selector
+                if (FloorSelector.SelectedIndex != StatusFloorSelector.SelectedIndex)
+                {
+                    FloorSelector.SelectedIndex = StatusFloorSelector.SelectedIndex;
+                }
 
                 if (_currentMapConfig != null)
                 {
@@ -377,14 +405,20 @@ public partial class MapTrackerPage : UserControl
 
         switch (e.Key)
         {
-            // Settings panel toggle (Tab)
+            // Context panel toggle (Tab)
             case Key.Tab:
-                ToggleSettingsPanel();
+                ToggleContextPanel();
                 e.Handled = true;
                 return;
 
-            // Center on player (Space)
+            // Start/Stop tracking (Space)
             case Key.Space:
+                WatcherToggleButton_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+
+            // Center on player (P)
+            case Key.P:
                 CenterOnPlayer();
                 e.Handled = true;
                 return;
@@ -407,46 +441,63 @@ public partial class MapTrackerPage : UserControl
                 BtnAutoFollow.IsChecked = !BtnAutoFollow.IsChecked;
                 e.Handled = true;
                 return;
-        }
 
-        // Floor hotkeys (NumPad 0-5)
-        if (_sortedFloors == null || _sortedFloors.Count == 0)
-            return;
+            // Focus search (/)
+            case Key.OemQuestion:
+                TxtSearch.Focus();
+                e.Handled = true;
+                return;
 
-        int floorIndex = -1;
-
-        switch (e.Key)
-        {
-            case Key.NumPad0:
+            // All layers ON (0)
             case Key.D0:
-                floorIndex = 0;
-                break;
-            case Key.NumPad1:
-            case Key.D1:
-                floorIndex = 1;
-                break;
-            case Key.NumPad2:
-            case Key.D2:
-                floorIndex = 2;
-                break;
-            case Key.NumPad3:
-            case Key.D3:
-                floorIndex = 3;
-                break;
-            case Key.NumPad4:
-            case Key.D4:
-                floorIndex = 4;
-                break;
-            case Key.NumPad5:
-            case Key.D5:
-                floorIndex = 5;
-                break;
-        }
+            case Key.NumPad0:
+                BtnAllLayersOn_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
 
-        if (floorIndex >= 0 && floorIndex < _sortedFloors.Count)
-        {
-            FloorSelector.SelectedIndex = floorIndex;
-            e.Handled = true;
+            // All layers OFF (9)
+            case Key.D9:
+            case Key.NumPad9:
+                BtnAllLayersOff_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+
+            // Layer toggles (1-7)
+            case Key.D1:
+            case Key.NumPad1:
+                ChipBoss.IsChecked = !ChipBoss.IsChecked;
+                e.Handled = true;
+                return;
+            case Key.D2:
+            case Key.NumPad2:
+                ChipExtract.IsChecked = !ChipExtract.IsChecked;
+                e.Handled = true;
+                return;
+            case Key.D3:
+            case Key.NumPad3:
+                ChipTransit.IsChecked = !ChipTransit.IsChecked;
+                e.Handled = true;
+                return;
+            case Key.D4:
+            case Key.NumPad4:
+                ChipSpawn.IsChecked = !ChipSpawn.IsChecked;
+                e.Handled = true;
+                return;
+            case Key.D5:
+            case Key.NumPad5:
+                ChipLever.IsChecked = !ChipLever.IsChecked;
+                e.Handled = true;
+                return;
+            case Key.D6:
+            case Key.NumPad6:
+                ChipKeys.IsChecked = !ChipKeys.IsChecked;
+                e.Handled = true;
+                return;
+            case Key.D7:
+            case Key.NumPad7:
+                ChipQuest.IsChecked = !ChipQuest.IsChecked;
+                e.Handled = true;
+                return;
         }
     }
 
@@ -500,95 +551,12 @@ public partial class MapTrackerPage : UserControl
 
     private void SyncSettingsUI()
     {
-        // Sync Floor tab
-        if (FloorSelector.Items.Count > 0)
-        {
-            SettingsFloorSelector.Items.Clear();
-            foreach (var item in FloorSelector.Items)
-            {
-                if (item is ComboBoxItem cbItem)
-                {
-                    SettingsFloorSelector.Items.Add(new ComboBoxItem
-                    {
-                        Content = cbItem.Content,
-                        Tag = cbItem.Tag
-                    });
-                }
-            }
-            SettingsFloorSelector.SelectedIndex = FloorSelector.SelectedIndex;
-        }
-        SettingsChkAutoFloor.IsChecked = _autoFloorEnabled;
-
-        // Sync Display tab
+        // Sync Display settings
         SliderMarkerSize.Value = _markerScale * 100;
         ChkShowLabels.IsChecked = _showMarkerLabels;
-        SliderLabelZoom.Value = _labelShowZoomThreshold * 100;
         ChkEnableClustering.IsChecked = _clusteringEnabled;
         SliderClusterZoom.Value = _clusterZoomThreshold * 100;
-
-        // Sync Tracker tab
-        SettingsChkAutoFollow.IsChecked = _autoFollowEnabled;
-        SettingsChkAutoFloorTracker.IsChecked = _autoFloorEnabled;
-        UpdateSettingsTrackerStatus();
-    }
-
-    private void UpdateSettingsTrackerStatus()
-    {
-        if (_watcherService.IsWatching)
-        {
-            SettingsWatcherIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x70, 0xA8, 0x00));
-            SettingsWatcherStatus.Text = "Connected";
-            SettingsWatcherStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x70, 0xA8, 0x00));
-        }
-        else
-        {
-            SettingsWatcherIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66));
-            SettingsWatcherStatus.Text = "Disconnected";
-            SettingsWatcherStatus.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
-        }
-
-        var position = _watcherService.CurrentPosition;
-        SettingsPlayerPosition.Text = position != null
-            ? $"X:{position.X:F0}, Z:{position.Z:F0}"
-            : "--";
-    }
-
-    private void SettingsTab_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is RadioButton rb && rb.Tag is string tagStr && int.TryParse(tagStr, out int tabIndex))
-        {
-            _currentSettingsTab = tabIndex;
-            UpdateSettingsTabContent();
-        }
-    }
-
-    private void UpdateSettingsTabContent()
-    {
-        TabContentLayers.Visibility = _currentSettingsTab == 0 ? Visibility.Visible : Visibility.Collapsed;
-        TabContentFloor.Visibility = _currentSettingsTab == 1 ? Visibility.Visible : Visibility.Collapsed;
-        TabContentDisplay.Visibility = _currentSettingsTab == 2 ? Visibility.Visible : Visibility.Collapsed;
-        TabContentTracker.Visibility = _currentSettingsTab == 3 ? Visibility.Visible : Visibility.Collapsed;
-
-        // Update tracker status when switching to tracker tab
-        if (_currentSettingsTab == 3)
-        {
-            UpdateSettingsTrackerStatus();
-        }
-    }
-
-    private void SettingsFloorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (SettingsFloorSelector.SelectedIndex >= 0 && SettingsFloorSelector.SelectedIndex < FloorSelector.Items.Count)
-        {
-            FloorSelector.SelectedIndex = SettingsFloorSelector.SelectedIndex;
-        }
-    }
-
-    private void SettingsChkAutoFloor_Changed(object sender, RoutedEventArgs e)
-    {
-        _autoFloorEnabled = SettingsChkAutoFloor.IsChecked == true;
         ChkAutoFloor.IsChecked = _autoFloorEnabled;
-        SettingsChkAutoFloorTracker.IsChecked = _autoFloorEnabled;
     }
 
     private void SliderMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -606,28 +574,6 @@ public partial class MapTrackerPage : UserControl
         RedrawObjectives();
     }
 
-    private void SliderLabelZoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtLabelZoom == null) return;
-        _labelShowZoomThreshold = SliderLabelZoom.Value / 100.0;
-        TxtLabelZoom.Text = $"{SliderLabelZoom.Value:F0}%";
-        RedrawMarkers();
-        RedrawObjectives();
-    }
-
-    private void SettingsChkAutoFollow_Changed(object sender, RoutedEventArgs e)
-    {
-        _autoFollowEnabled = SettingsChkAutoFollow.IsChecked == true;
-        BtnAutoFollow.IsChecked = _autoFollowEnabled;
-    }
-
-    private void SettingsChkAutoFloorTracker_Changed(object sender, RoutedEventArgs e)
-    {
-        _autoFloorEnabled = SettingsChkAutoFloorTracker.IsChecked == true;
-        ChkAutoFloor.IsChecked = _autoFloorEnabled;
-        SettingsChkAutoFloor.IsChecked = _autoFloorEnabled;
-    }
-
     private void ChkEnableClustering_Changed(object sender, RoutedEventArgs e)
     {
         _clusteringEnabled = ChkEnableClustering.IsChecked == true;
@@ -640,12 +586,6 @@ public partial class MapTrackerPage : UserControl
         _clusterZoomThreshold = SliderClusterZoom.Value / 100.0;
         TxtClusterZoom.Text = $"{SliderClusterZoom.Value:F0}%";
         RedrawMarkers();
-    }
-
-    private void BtnToggleQuestDrawer_Click(object sender, RoutedEventArgs e)
-    {
-        // Quest Drawer placeholder - future implementation
-        StatusText.Text = "Quest Panel coming soon!";
     }
 
     #endregion
@@ -694,7 +634,6 @@ public partial class MapTrackerPage : UserControl
         var position = _watcherService.CurrentPosition;
         if (position == null)
         {
-            StatusText.Text = "No player position available";
             return;
         }
 
@@ -707,77 +646,28 @@ public partial class MapTrackerPage : UserControl
 
         MapTranslate.X = viewerWidth / 2 - screenX * _zoomLevel;
         MapTranslate.Y = viewerHeight / 2 - screenY * _zoomLevel;
-
-        StatusText.Text = $"Centered on player at X:{position.X:F0}, Z:{position.Z:F0}";
     }
 
-    private void BtnShowAllLayers_Click(object sender, RoutedEventArgs e)
+    private void BtnAllLayersOn_Click(object sender, RoutedEventArgs e)
     {
-        ChkShowExtractions.IsChecked = true;
-        ChkShowTransits.IsChecked = true;
-        ChkShowSpawns.IsChecked = true;
-        ChkShowBosses.IsChecked = true;
-        ChkShowLevers.IsChecked = true;
-        ChkShowKeys.IsChecked = true;
-        ChkShowObjectives.IsChecked = true;
+        ChipBoss.IsChecked = true;
+        ChipExtract.IsChecked = true;
+        ChipTransit.IsChecked = true;
+        ChipSpawn.IsChecked = true;
+        ChipLever.IsChecked = true;
+        ChipKeys.IsChecked = true;
+        ChipQuest.IsChecked = true;
     }
 
-    private void BtnHideAllLayers_Click(object sender, RoutedEventArgs e)
+    private void BtnAllLayersOff_Click(object sender, RoutedEventArgs e)
     {
-        ChkShowExtractions.IsChecked = false;
-        ChkShowTransits.IsChecked = false;
-        ChkShowSpawns.IsChecked = false;
-        ChkShowBosses.IsChecked = false;
-        ChkShowLevers.IsChecked = false;
-        ChkShowKeys.IsChecked = false;
-        ChkShowObjectives.IsChecked = false;
-    }
-
-    // Category-specific show/hide handlers
-    private void BtnShowAllPOI_Click(object sender, RoutedEventArgs e)
-    {
-        ChkShowExtractions.IsChecked = true;
-        ChkShowTransits.IsChecked = true;
-        ChkShowSpawns.IsChecked = true;
-    }
-
-    private void BtnHideAllPOI_Click(object sender, RoutedEventArgs e)
-    {
-        ChkShowExtractions.IsChecked = false;
-        ChkShowTransits.IsChecked = false;
-        ChkShowSpawns.IsChecked = false;
-    }
-
-    private void BtnShowAllEnemies_Click(object sender, RoutedEventArgs e)
-    {
-        ChkShowBosses.IsChecked = true;
-    }
-
-    private void BtnHideAllEnemies_Click(object sender, RoutedEventArgs e)
-    {
-        ChkShowBosses.IsChecked = false;
-    }
-
-    private void BtnShowAllInteractables_Click(object sender, RoutedEventArgs e)
-    {
-        ChkShowLevers.IsChecked = true;
-        ChkShowKeys.IsChecked = true;
-    }
-
-    private void BtnHideAllInteractables_Click(object sender, RoutedEventArgs e)
-    {
-        ChkShowLevers.IsChecked = false;
-        ChkShowKeys.IsChecked = false;
-    }
-
-    private void BtnShowAllQuests_Click(object sender, RoutedEventArgs e)
-    {
-        ChkShowObjectives.IsChecked = true;
-    }
-
-    private void BtnHideAllQuests_Click(object sender, RoutedEventArgs e)
-    {
-        ChkShowObjectives.IsChecked = false;
+        ChipBoss.IsChecked = false;
+        ChipExtract.IsChecked = false;
+        ChipTransit.IsChecked = false;
+        ChipSpawn.IsChecked = false;
+        ChipLever.IsChecked = false;
+        ChipKeys.IsChecked = false;
+        ChipQuest.IsChecked = false;
     }
 
     private void BtnShowShortcuts_Click(object sender, RoutedEventArgs e)
@@ -797,7 +687,6 @@ public partial class MapTrackerPage : UserControl
         _autoFollowEnabled = true;
         BtnAutoFollow.Background = new SolidColorBrush(Color.FromRgb(0x00, 0xBC, 0xD4));
         BtnAutoFollow.Foreground = Brushes.White;
-        StatusText.Text = "Auto-follow enabled";
 
         // Immediately center on player if position available
         var position = _watcherService.CurrentPosition;
@@ -812,7 +701,253 @@ public partial class MapTrackerPage : UserControl
         _autoFollowEnabled = false;
         BtnAutoFollow.Background = new SolidColorBrush(Color.FromRgb(0x3E, 0x3E, 0x42));
         BtnAutoFollow.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
-        StatusText.Text = "Auto-follow disabled";
+    }
+
+    #endregion
+
+    #region Context Panel
+
+    private bool _contextPanelOpen = true;
+
+    private void ToggleContextPanel()
+    {
+        _contextPanelOpen = !_contextPanelOpen;
+        ContextPanelColumn.Width = _contextPanelOpen ? new GridLength(280) : new GridLength(0);
+        ContextPanel.Visibility = _contextPanelOpen ? Visibility.Visible : Visibility.Collapsed;
+        TxtContextToggle.Text = _contextPanelOpen ? "▶" : "◀";
+    }
+
+    private void BtnToggleContextPanel_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleContextPanel();
+    }
+
+    private void ShowContextDefault()
+    {
+        ContextDefault.Visibility = Visibility.Visible;
+        ContextSelected.Visibility = Visibility.Collapsed;
+        ContextSearch.Visibility = Visibility.Collapsed;
+    }
+
+    private void ShowContextSelected(MapMarker marker)
+    {
+        ContextDefault.Visibility = Visibility.Collapsed;
+        ContextSelected.Visibility = Visibility.Visible;
+        ContextSearch.Visibility = Visibility.Collapsed;
+
+        // Update selected marker info
+        SelectedMarkerName.Text = GetLocalizedMarkerName(marker);
+        SelectedMarkerType.Text = _loc.GetMarkerTypeName(marker.Type);
+        SelectedMarkerCoords.Text = $"X: {marker.X:F1}  Z: {marker.Z:F1}";
+
+        // Set marker icon color
+        var (r, g, b) = MapMarker.GetMarkerColor(marker.Type);
+        SelectedMarkerIcon.Foreground = new SolidColorBrush(Color.FromRgb(r, g, b));
+        SelectedMarkerIcon.Text = GetMarkerIconText(marker.Type);
+
+        // Floor info
+        if (!string.IsNullOrEmpty(marker.FloorId) && _sortedFloors != null)
+        {
+            var floor = _sortedFloors.FirstOrDefault(f =>
+                string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase));
+            SelectedMarkerFloor.Text = floor?.DisplayName ?? marker.FloorId;
+            SelectedMarkerFloorLabel.Visibility = Visibility.Visible;
+            SelectedMarkerFloor.Visibility = Visibility.Visible;
+            BtnSelectedGoToFloor.Visibility =
+                !string.Equals(marker.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase)
+                    ? Visibility.Visible : Visibility.Collapsed;
+        }
+        else
+        {
+            SelectedMarkerFloorLabel.Visibility = Visibility.Collapsed;
+            SelectedMarkerFloor.Visibility = Visibility.Collapsed;
+            BtnSelectedGoToFloor.Visibility = Visibility.Collapsed;
+        }
+
+        _selectedMarker = marker;
+    }
+
+    private MapMarker? _selectedMarker;
+
+    private static string GetMarkerIconText(MarkerType type) => type switch
+    {
+        MarkerType.PmcExtraction => "▲",
+        MarkerType.ScavExtraction => "▲",
+        MarkerType.SharedExtraction => "▲",
+        MarkerType.Transit => "■",
+        MarkerType.PmcSpawn => "●",
+        MarkerType.ScavSpawn => "●",
+        MarkerType.BossSpawn => "☠",
+        MarkerType.RaiderSpawn => "☠",
+        MarkerType.Lever => "⚙",
+        MarkerType.Keys => "🔑",
+        _ => "●"
+    };
+
+    private void ShowContextSearch()
+    {
+        ContextDefault.Visibility = Visibility.Collapsed;
+        ContextSelected.Visibility = Visibility.Collapsed;
+        ContextSearch.Visibility = Visibility.Visible;
+    }
+
+    private void BtnBackToDefault_Click(object sender, RoutedEventArgs e)
+    {
+        ShowContextDefault();
+        _selectedMarker = null;
+    }
+
+    private void BtnCopySelectedCoords_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedMarker == null) return;
+
+        var coordText = $"X: {_selectedMarker.X:F1}, Z: {_selectedMarker.Z:F1}";
+        try
+        {
+            System.Windows.Clipboard.SetText(coordText);
+            BtnCopySelectedCoords.Content = "Copied!";
+            var timer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(1000)
+            };
+            timer.Tick += (_, _) =>
+            {
+                BtnCopySelectedCoords.Content = "Copy";
+                timer.Stop();
+            };
+            timer.Start();
+        }
+        catch
+        {
+            // Clipboard may fail in some scenarios
+        }
+    }
+
+    private void BtnSelectedGoToFloor_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedMarker == null || string.IsNullOrEmpty(_selectedMarker.FloorId) || _sortedFloors == null)
+            return;
+
+        var floor = _sortedFloors.FirstOrDefault(f =>
+            string.Equals(f.LayerId, _selectedMarker.FloorId, StringComparison.OrdinalIgnoreCase));
+
+        if (floor != null)
+        {
+            var floorIndex = _sortedFloors.IndexOf(floor);
+            if (floorIndex >= 0)
+            {
+                FloorSelector.SelectedIndex = floorIndex;
+            }
+        }
+    }
+
+    #endregion
+
+    #region Search
+
+    private List<SearchResult> _searchResults = new();
+
+    private class SearchResult
+    {
+        public string Name { get; set; } = "";
+        public string TypeAndFloor { get; set; } = "";
+        public MapMarker Marker { get; set; } = null!;
+    }
+
+    private void TxtSearch_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var query = TxtSearch.Text.Trim();
+
+        BtnClearSearch.Visibility = string.IsNullOrEmpty(query) ? Visibility.Collapsed : Visibility.Visible;
+
+        if (string.IsNullOrEmpty(query))
+        {
+            ShowContextDefault();
+            return;
+        }
+
+        PerformSearch(query);
+        ShowContextSearch();
+    }
+
+    private void PerformSearch(string query)
+    {
+        if (_currentMapConfig == null)
+        {
+            _searchResults.Clear();
+            SearchResultsList.ItemsSource = null;
+            TxtSearchResultCount.Text = "RESULTS (0)";
+            return;
+        }
+
+        var markers = MapMarkerDbService.Instance.GetMarkersForMap(_currentMapConfig.Key);
+        var lowerQuery = query.ToLowerInvariant();
+
+        _searchResults = markers
+            .Where(m => GetLocalizedMarkerName(m).ToLowerInvariant().Contains(lowerQuery) ||
+                       _loc.GetMarkerTypeName(m.Type).ToLowerInvariant().Contains(lowerQuery))
+            .Take(20)
+            .Select(m =>
+            {
+                var floorInfo = "";
+                if (!string.IsNullOrEmpty(m.FloorId) && _sortedFloors != null)
+                {
+                    var floor = _sortedFloors.FirstOrDefault(f =>
+                        string.Equals(f.LayerId, m.FloorId, StringComparison.OrdinalIgnoreCase));
+                    floorInfo = floor != null ? $" • {floor.DisplayName}" : $" • {m.FloorId}";
+                }
+                return new SearchResult
+                {
+                    Name = GetLocalizedMarkerName(m),
+                    TypeAndFloor = $"{_loc.GetMarkerTypeName(m.Type)}{floorInfo}",
+                    Marker = m
+                };
+            })
+            .ToList();
+
+        SearchResultsList.ItemsSource = _searchResults;
+        TxtSearchResultCount.Text = $"RESULTS ({_searchResults.Count})";
+    }
+
+    private void BtnClearSearch_Click(object sender, RoutedEventArgs e)
+    {
+        TxtSearch.Text = "";
+        ShowContextDefault();
+    }
+
+    private void SearchResult_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is SearchResult result)
+        {
+            // Pan to marker
+            if (_currentMapConfig != null)
+            {
+                var (sx, sy) = _currentMapConfig.GameToScreen(result.Marker.X, result.Marker.Z);
+
+                var viewerWidth = MapViewerGrid.ActualWidth;
+                var viewerHeight = MapViewerGrid.ActualHeight;
+
+                MapTranslate.X = viewerWidth / 2 - sx * _zoomLevel;
+                MapTranslate.Y = viewerHeight / 2 - sy * _zoomLevel;
+
+                // Go to marker's floor if different
+                if (!string.IsNullOrEmpty(result.Marker.FloorId) &&
+                    !string.Equals(result.Marker.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) &&
+                    _sortedFloors != null)
+                {
+                    var floorIndex = _sortedFloors.FindIndex(f =>
+                        string.Equals(f.LayerId, result.Marker.FloorId, StringComparison.OrdinalIgnoreCase));
+                    if (floorIndex >= 0)
+                    {
+                        FloorSelector.SelectedIndex = floorIndex;
+                    }
+                }
+            }
+
+            // Show marker details
+            ShowContextSelected(result.Marker);
+            TxtSearch.Text = "";
+        }
     }
 
     #endregion
@@ -898,8 +1033,8 @@ public partial class MapTrackerPage : UserControl
                 RedrawMarkers();
             }
 
-            var floorInfo = !string.IsNullOrEmpty(_currentFloorId) ? $" [{_currentFloorId}]" : "";
-            StatusText.Text = $"Loaded: {config.DisplayName}{floorInfo}";
+            // Update map title in header
+            TxtMapTitle.Text = config.DisplayName;
         }
         catch (Exception ex)
         {
@@ -911,31 +1046,101 @@ public partial class MapTrackerPage : UserControl
 
     #region Layer Visibility
 
-    private void LayerVisibility_Changed(object sender, RoutedEventArgs e)
+    private void LayerChip_Changed(object sender, RoutedEventArgs e)
     {
+        // Sync layer chips with context panel checkboxes
+        SyncLayerCheckboxes();
+
+        // Update chip status text
+        UpdateChipStatusText();
+
+        // Redraw
         RedrawMarkers();
         RedrawObjectives();
+        UpdateCounts();
+    }
+
+    private void LayerVisibility_Changed(object sender, RoutedEventArgs e)
+    {
+        // Sync context panel checkboxes with layer chips
+        SyncLayerChips();
+
+        // Redraw
+        RedrawMarkers();
+        RedrawObjectives();
+        UpdateCounts();
+    }
+
+    private void SyncLayerCheckboxes()
+    {
+        // Guard against calls during XAML initialization
+        if (ChkShowExtractions == null) return;
+
+        ChkShowBosses.IsChecked = ChipBoss.IsChecked;
+        ChkShowExtractions.IsChecked = ChipExtract.IsChecked;
+        ChkShowTransits.IsChecked = ChipTransit.IsChecked;
+        ChkShowSpawns.IsChecked = ChipSpawn.IsChecked;
+        ChkShowLevers.IsChecked = ChipLever.IsChecked;
+        ChkShowKeys.IsChecked = ChipKeys.IsChecked;
+        ChkShowObjectives.IsChecked = ChipQuest.IsChecked;
+    }
+
+    private void SyncLayerChips()
+    {
+        // Guard against calls during XAML initialization
+        if (ChipBoss == null) return;
+
+        ChipBoss.IsChecked = ChkShowBosses.IsChecked;
+        ChipExtract.IsChecked = ChkShowExtractions.IsChecked;
+        ChipTransit.IsChecked = ChkShowTransits.IsChecked;
+        ChipSpawn.IsChecked = ChkShowSpawns.IsChecked;
+        ChipLever.IsChecked = ChkShowLevers.IsChecked;
+        ChipKeys.IsChecked = ChkShowKeys.IsChecked;
+        ChipQuest.IsChecked = ChkShowObjectives.IsChecked;
+
+        UpdateChipStatusText();
+    }
+
+    private void UpdateChipStatusText()
+    {
+        // Guard against calls during XAML initialization
+        if (ChipBossStatus == null) return;
+
+        ChipBossStatus.Text = ChipBoss.IsChecked == true ? "ON" : "OFF";
+        ChipExtractStatus.Text = ChipExtract.IsChecked == true ? "ON" : "OFF";
+        ChipTransitStatus.Text = ChipTransit.IsChecked == true ? "ON" : "OFF";
+        ChipSpawnStatus.Text = ChipSpawn.IsChecked == true ? "ON" : "OFF";
+        ChipLeverStatus.Text = ChipLever.IsChecked == true ? "ON" : "OFF";
+        ChipKeysStatus.Text = ChipKeys.IsChecked == true ? "ON" : "OFF";
+        ChipQuestStatus.Text = ChipQuest.IsChecked == true ? "ON" : "OFF";
     }
 
     private bool ShouldShowMarkerType(MarkerType type)
     {
         // Guard against calls during XAML initialization
-        if (ChkShowExtractions == null) return true;
+        if (ChipBoss == null) return true;
 
         return type switch
         {
-            MarkerType.PmcExtraction => ChkShowExtractions.IsChecked == true,
-            MarkerType.ScavExtraction => ChkShowExtractions.IsChecked == true,
-            MarkerType.SharedExtraction => ChkShowExtractions.IsChecked == true,
-            MarkerType.Transit => ChkShowTransits.IsChecked == true,
-            MarkerType.PmcSpawn => ChkShowSpawns.IsChecked == true,
-            MarkerType.ScavSpawn => ChkShowSpawns.IsChecked == true,
-            MarkerType.BossSpawn => ChkShowBosses.IsChecked == true,
-            MarkerType.RaiderSpawn => ChkShowBosses.IsChecked == true,
-            MarkerType.Lever => ChkShowLevers.IsChecked == true,
-            MarkerType.Keys => ChkShowKeys.IsChecked == true,
+            MarkerType.PmcExtraction => ChipExtract.IsChecked == true,
+            MarkerType.ScavExtraction => ChipExtract.IsChecked == true,
+            MarkerType.SharedExtraction => ChipExtract.IsChecked == true,
+            MarkerType.Transit => ChipTransit.IsChecked == true,
+            MarkerType.PmcSpawn => ChipSpawn.IsChecked == true,
+            MarkerType.ScavSpawn => ChipSpawn.IsChecked == true,
+            MarkerType.BossSpawn => ChipBoss.IsChecked == true,
+            MarkerType.RaiderSpawn => ChipBoss.IsChecked == true,
+            MarkerType.Lever => ChipLever.IsChecked == true,
+            MarkerType.Keys => ChipKeys.IsChecked == true,
             _ => true
         };
+    }
+
+    private bool ShouldShowQuestObjectives()
+    {
+        // Guard against calls during XAML initialization
+        if (ChipQuest == null) return true;
+        return ChipQuest.IsChecked == true;
     }
 
     #endregion
@@ -986,47 +1191,26 @@ public partial class MapTrackerPage : UserControl
     {
         if (_currentMapConfig == null)
         {
+            TxtMarkerCount.Text = "0";
+            TotalMarkerCountText.Text = "/0";
+            TxtQuestCount.Text = "0";
             MarkerCountText.Text = "0";
-            ObjectiveCountText.Text = "0";
-            ClearLayerCounts();
             return;
         }
 
         var markers = MapMarkerDbService.Instance.GetMarkersForMap(_currentMapConfig.Key);
-
-        // Count by type for sidebar
-        int extractCount = markers.Count(m => m.Type is MarkerType.PmcExtraction or MarkerType.ScavExtraction or MarkerType.SharedExtraction);
-        int transitCount = markers.Count(m => m.Type == MarkerType.Transit);
-        int spawnCount = markers.Count(m => m.Type is MarkerType.PmcSpawn or MarkerType.ScavSpawn);
-        int bossCount = markers.Count(m => m.Type is MarkerType.BossSpawn or MarkerType.RaiderSpawn);
-        int leverCount = markers.Count(m => m.Type == MarkerType.Lever);
-        int keyCount = markers.Count(m => m.Type == MarkerType.Keys);
-
-        // Update sidebar count labels (always show count)
-        TxtExtractCount.Text = $"({extractCount})";
-        TxtTransitCount.Text = $"({transitCount})";
-        TxtSpawnCount.Text = $"({spawnCount})";
-        TxtBossCount.Text = $"({bossCount})";
-        TxtLeverCount.Text = $"({leverCount})";
-        TxtKeyCount.Text = $"({keyCount})";
-
+        var totalCount = markers.Count;
         var visibleCount = markers.Count(m => ShouldShowMarkerType(m.Type));
+
+        // Update context panel
+        TxtMarkerCount.Text = visibleCount.ToString();
+
+        // Update status bar
         MarkerCountText.Text = visibleCount.ToString();
+        TotalMarkerCountText.Text = $"/{totalCount}";
 
         var objectives = QuestObjectiveDbService.Instance.GetObjectivesForMap(_currentMapConfig.Key, _currentMapConfig);
-        ObjectiveCountText.Text = objectives.Count.ToString();
-        TxtQuestCount.Text = $"({objectives.Count})";
-    }
-
-    private void ClearLayerCounts()
-    {
-        TxtExtractCount.Text = "(0)";
-        TxtTransitCount.Text = "(0)";
-        TxtSpawnCount.Text = "(0)";
-        TxtBossCount.Text = "(0)";
-        TxtLeverCount.Text = "(0)";
-        TxtKeyCount.Text = "(0)";
-        TxtQuestCount.Text = "(0)";
+        TxtQuestCount.Text = objectives.Count.ToString();
     }
 
     private BitmapImage? GetMarkerIcon(MarkerType markerType)
@@ -1084,7 +1268,7 @@ public partial class MapTrackerPage : UserControl
     private void RedrawMarkers()
     {
         // Guard against calls during XAML initialization
-        if (MarkersCanvas == null || MarkerCountText == null) return;
+        if (MarkersCanvas == null || TxtMarkerCount == null) return;
 
         MarkersCanvas.Children.Clear();
         _markerHitRegions.Clear();
@@ -1429,12 +1613,12 @@ public partial class MapTrackerPage : UserControl
     private void RedrawObjectives()
     {
         // Guard against calls during XAML initialization
-        if (ObjectivesCanvas == null || ObjectiveCountText == null || ChkShowObjectives == null) return;
+        if (ObjectivesCanvas == null || TxtQuestCount == null) return;
 
         ObjectivesCanvas.Children.Clear();
 
         if (_currentMapConfig == null) return;
-        if (ChkShowObjectives.IsChecked != true) return;
+        if (!ShouldShowQuestObjectives()) return;
 
         var inverseScale = 1.0 / _zoomLevel;
         var hasFloors = _sortedFloors != null && _sortedFloors.Count > 0;
@@ -1459,7 +1643,7 @@ public partial class MapTrackerPage : UserControl
             }
         }
 
-        ObjectiveCountText.Text = count.ToString();
+        TxtQuestCount.Text = count.ToString();
     }
 
     private void DrawObjectiveLocationPoints(QuestObjective objective, double inverseScale, bool hasFloors)
@@ -1825,7 +2009,7 @@ public partial class MapTrackerPage : UserControl
         {
             var canvasPos = e.GetPosition(MapCanvas);
             var (gameX, gameZ) = _currentMapConfig.ScreenToGame(canvasPos.X, canvasPos.Y);
-            GameCoordsText.Text = $"X: {gameX:F1}, Z: {gameZ:F1}";
+            TxtCursorCoords.Text = $"X: {gameX:F1}, Z: {gameZ:F1}";
 
             // Hit test markers for tooltip (only when not dragging)
             if (!_isDragging)
@@ -2138,7 +2322,8 @@ public partial class MapTrackerPage : UserControl
         if (floorIndex >= 0 && floorIndex < FloorSelector.Items.Count)
         {
             FloorSelector.SelectedIndex = floorIndex;
-            StatusText.Text = $"Auto-detected floor: {_sortedFloors[floorIndex].DisplayName}";
+            // Floor auto-detected
+            System.Diagnostics.Debug.WriteLine($"Auto-detected floor: {_sortedFloors[floorIndex].DisplayName}");
         }
     }
 
@@ -2152,14 +2337,16 @@ public partial class MapTrackerPage : UserControl
         if (_watcherService.IsWatching)
         {
             WatcherIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x70, 0xA8, 0x00));
-            WatcherButtonText.Text = "Stop";
-            WatcherToggleButton.Background = new SolidColorBrush(Color.FromRgb(0xD4, 0x1C, 0x00));
+            TxtStartText.Text = "Stop";
+            TxtStartIcon.Text = "■";
+            BtnStartTracking.Background = new SolidColorBrush(Color.FromRgb(0xD4, 0x1C, 0x00));
         }
         else
         {
             WatcherIndicator.Fill = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66));
-            WatcherButtonText.Text = "Start";
-            WatcherToggleButton.Background = new SolidColorBrush(Color.FromRgb(0x38, 0x8E, 0x3C));
+            TxtStartText.Text = "Start";
+            TxtStartIcon.Text = "▶";
+            BtnStartTracking.Background = new SolidColorBrush(Color.FromRgb(0x2E, 0x7D, 0x32));
         }
 
         var position = _watcherService.CurrentPosition;
@@ -2170,14 +2357,14 @@ public partial class MapTrackerPage : UserControl
         }
         else
         {
-            PlayerPositionText.Text = "Player: --";
+            PlayerPositionText.Text = "X: --  Z: --";
         }
     }
 
     private void UpdatePlayerPositionText(EftPosition position)
     {
         var angleStr = position.Angle.HasValue ? $" {position.Angle:F0}°" : "";
-        PlayerPositionText.Text = $"Player: X:{position.X:F0}, Y:{position.Y:F1}, Z:{position.Z:F0}{angleStr}";
+        PlayerPositionText.Text = $"X: {position.X:F0}  Z: {position.Z:F0}{angleStr}";
     }
 
     private void WatcherToggleButton_Click(object sender, RoutedEventArgs e)
