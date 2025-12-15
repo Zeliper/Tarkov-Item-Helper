@@ -6,58 +6,107 @@
              xmlns:svgc="http://sharpvectors.codeplex.com/svgc/"
              mc:Ignorable="d"
              d:DesignHeight="700" d:DesignWidth="1200"
-             Background="{StaticResource BackgroundDarkBrush}"
+             Background="#0D0D0D"
              Loaded="MapTrackerPage_Loaded"
              Unloaded="MapTrackerPage_Unloaded">
 
     <UserControl.Resources>
-        <!-- Map-specific marker colors -->
-        <SolidColorBrush x:Key="MarkerExtractBrush" Color="#4CAF50"/>
-        <SolidColorBrush x:Key="MarkerScavExtractBrush" Color="#81C784"/>
-        <SolidColorBrush x:Key="MarkerSharedExtractBrush" Color="#26A69A"/>
-        <SolidColorBrush x:Key="MarkerTransitBrush" Color="#2196F3"/>
-        <SolidColorBrush x:Key="MarkerSpawnBrush" Color="#FFEE58"/>
-        <SolidColorBrush x:Key="MarkerScavSpawnBrush" Color="#FFF59D"/>
-        <SolidColorBrush x:Key="MarkerBossBrush" Color="#E53935"/>
-        <SolidColorBrush x:Key="MarkerRaiderBrush" Color="#FF7043"/>
-        <SolidColorBrush x:Key="MarkerLeverBrush" Color="#9E9E9E"/>
-        <SolidColorBrush x:Key="MarkerKeyBrush" Color="#FF9800"/>
-        <SolidColorBrush x:Key="PlayerCyanBrush" Color="#00BCD4"/>
+        <!-- ========== NEW COLOR SYSTEM ========== -->
+        <SolidColorBrush x:Key="BgL0" Color="#0D0D0D"/>      <!-- Deepest background -->
+        <SolidColorBrush x:Key="BgL1" Color="#141414"/>      <!-- Map area -->
+        <SolidColorBrush x:Key="BgL2" Color="#1A1A1A"/>      <!-- Panels -->
+        <SolidColorBrush x:Key="BgL3" Color="#242424"/>      <!-- Cards/Elevated -->
+        <SolidColorBrush x:Key="BgHover" Color="#2E2E2E"/>   <!-- Hover state -->
+        <SolidColorBrush x:Key="BorderSubtle" Color="#2A2A2A"/>
+        <SolidColorBrush x:Key="BorderNormal" Color="#3A3A3A"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#E8E8E8"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#888888"/>
+        <SolidColorBrush x:Key="TextMuted" Color="#555555"/>
+        <SolidColorBrush x:Key="Accent" Color="#00B4D8"/>
+        <SolidColorBrush x:Key="AccentHover" Color="#48CAE4"/>
+        <SolidColorBrush x:Key="Success" Color="#10B981"/>
+        <SolidColorBrush x:Key="Warning" Color="#F59E0B"/>
+        <SolidColorBrush x:Key="Danger" Color="#EF4444"/>
 
-        <!-- Quest objective colors -->
-        <SolidColorBrush x:Key="QuestObjectiveBrush" Color="#FFC107"/>
-        <SolidColorBrush x:Key="QuestOptionalBrush" Color="#FF9800"/>
+        <!-- Marker Colors -->
+        <SolidColorBrush x:Key="MarkerExtract" Color="#22C55E"/>
+        <SolidColorBrush x:Key="MarkerScavExtract" Color="#86EFAC"/>
+        <SolidColorBrush x:Key="MarkerSharedExtract" Color="#14B8A6"/>
+        <SolidColorBrush x:Key="MarkerTransit" Color="#3B82F6"/>
+        <SolidColorBrush x:Key="MarkerSpawn" Color="#FACC15"/>
+        <SolidColorBrush x:Key="MarkerBoss" Color="#EF4444"/>
+        <SolidColorBrush x:Key="MarkerLever" Color="#A1A1AA"/>
+        <SolidColorBrush x:Key="MarkerKey" Color="#F97316"/>
+        <SolidColorBrush x:Key="MarkerQuest" Color="#EAB308"/>
+        <SolidColorBrush x:Key="PlayerMarker" Color="#06B6D4"/>
 
-        <!-- Overlay backgrounds -->
-        <SolidColorBrush x:Key="OverlayBackgroundBrush" Color="#E0252525"/>
-        <SolidColorBrush x:Key="OverlayDarkBackgroundBrush" Color="#F0252525"/>
+        <!-- ========== BUTTON STYLES ========== -->
+        <!-- Icon Button (Header/Floating) -->
+        <Style x:Key="IconButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgHover}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgL3}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-        <!-- Layer Chip Style -->
-        <Style x:Key="LayerChipStyle" TargetType="ToggleButton">
-            <Setter Property="Width" Value="64"/>
-            <Setter Property="Height" Value="56"/>
-            <Setter Property="Margin" Value="8,4"/>
+        <!-- Floating Panel Style -->
+        <Style x:Key="FloatingPanelStyle" TargetType="Border">
+            <Setter Property="Background" Value="#F0141414"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderSubtle}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="16" ShadowDepth="2" Opacity="0.4" Color="Black"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Toggle Chip Style (Layer Toggles) -->
+        <Style x:Key="LayerToggleStyle" TargetType="ToggleButton">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="Margin" Value="0,0,6,6"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ToggleButton">
-                        <Border x:Name="ChipBorder" CornerRadius="6" Padding="4"
-                                Background="Transparent" BorderThickness="1.5"
-                                BorderBrush="{StaticResource BorderBrush}">
+                        <Border x:Name="Bd" CornerRadius="14" Padding="{TemplateBinding Padding}"
+                                Background="{StaticResource BgL3}" BorderThickness="1"
+                                BorderBrush="{StaticResource BorderSubtle}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="ChipBorder" Property="Background" Value="#30FFFFFF"/>
-                                <Setter TargetName="ChipBorder" Property="BorderThickness" Value="2"/>
+                                <Setter TargetName="Bd" Property="Background" Value="#30FFFFFF"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Accent}"/>
                             </Trigger>
                             <Trigger Property="IsChecked" Value="False">
-                                <Setter TargetName="ChipBorder" Property="Opacity" Value="0.5"/>
-                                <Setter TargetName="ChipBorder" Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ChipBorder" Property="Opacity" Value="1"/>
-                                <Setter TargetName="ChipBorder" Property="Background" Value="#20FFFFFF"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="1"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource BgHover}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -65,54 +114,23 @@
             </Setter>
         </Style>
 
-        <!-- Floating Bar Button Style -->
-        <Style x:Key="FloatingButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="36"/>
-            <Setter Property="Height" Value="32"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="FontSize" Value="16"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="{TemplateBinding Background}"
-                                CornerRadius="4" Padding="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#40FFFFFF"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#60FFFFFF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Status Bar Button Style -->
-        <Style x:Key="StatusButtonStyle" TargetType="Button">
+        <!-- Status Tracking Button -->
+        <Style x:Key="TrackingButtonStyle" TargetType="Button">
             <Setter Property="Height" Value="28"/>
-            <Setter Property="Padding" Value="12,4"/>
+            <Setter Property="Padding" Value="12,0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
                                 CornerRadius="4" Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Opacity" Value="0.85"/>
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.9"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -120,693 +138,543 @@
             </Setter>
         </Style>
 
-        <!-- Context Panel Section Header -->
-        <Style x:Key="ContextHeaderStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="10"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
-            <Setter Property="Margin" Value="0,12,0,8"/>
+        <!-- Quest Item Style -->
+        <Style x:Key="QuestItemStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource BgL3}"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{StaticResource BgHover}"/>
+                </Trigger>
+            </Style.Triggers>
         </Style>
     </UserControl.Resources>
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="48"/>  <!-- Header -->
-            <RowDefinition Height="*"/>   <!-- Main Content -->
-            <RowDefinition Height="36"/>  <!-- Status Bar -->
+            <RowDefinition Height="40"/>   <!-- Compact Header -->
+            <RowDefinition Height="*"/>    <!-- Map + Floating Elements -->
+            <RowDefinition Height="32"/>   <!-- Compact Status Bar -->
         </Grid.RowDefinitions>
 
-        <!-- ==================== HEADER (48px) ==================== -->
-        <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}">
-            <Grid Margin="12,0">
+        <!-- ==================== COMPACT HEADER (40px) ==================== -->
+        <Border Grid.Row="0" Background="{StaticResource BgL2}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,0,0,1">
+            <Grid Margin="8,0">
                 <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>  <!-- Menu Button -->
                     <ColumnDefinition Width="Auto"/>  <!-- Map Selector -->
-                    <ColumnDefinition Width="*"/>     <!-- Title -->
-                    <ColumnDefinition Width="Auto"/>  <!-- Buttons -->
+                    <ColumnDefinition Width="*"/>     <!-- Spacer -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Search -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Floor -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Actions -->
                 </Grid.ColumnDefinitions>
 
+                <!-- Hamburger Menu -->
+                <Button x:Name="BtnMenu" Grid.Column="0" Style="{StaticResource IconButtonStyle}"
+                        Click="BtnMenu_Click" ToolTip="Layers &amp; Settings (L)">
+                    <TextBlock Text="&#x2630;" FontSize="16"/>
+                </Button>
+
                 <!-- Map Selector -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <ComboBox x:Name="MapSelector" Width="160" Height="28"
-                              SelectionChanged="MapSelector_SelectionChanged">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding DisplayName}"/>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </StackPanel>
+                <ComboBox x:Name="MapSelector" Grid.Column="1" Width="140" Height="28" Margin="8,0"
+                          Background="{StaticResource BgL3}" Foreground="{StaticResource TextPrimary}"
+                          BorderBrush="{StaticResource BorderSubtle}"
+                          SelectionChanged="MapSelector_SelectionChanged">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding DisplayName}"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
 
-                <!-- Map Title -->
-                <TextBlock x:Name="TxtMapTitle" Grid.Column="1" Text=""
-                           FontSize="16" FontWeight="SemiBold"
-                           Foreground="{StaticResource TextPrimaryBrush}"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <!-- Search Box -->
+                <Border Grid.Column="3" Width="180" Height="28" CornerRadius="4"
+                        Background="{StaticResource BgL3}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="&#x1F50D;" FontSize="11" Foreground="{StaticResource TextMuted}"
+                                   VerticalAlignment="Center" Margin="8,0,6,0"/>
+                        <TextBox x:Name="TxtSearch" Grid.Column="1" Background="Transparent" BorderThickness="0"
+                                 Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"
+                                 TextChanged="TxtSearch_TextChanged"/>
+                        <Button x:Name="BtnClearSearch" Grid.Column="2" Width="24" Height="24"
+                                Style="{StaticResource IconButtonStyle}" Visibility="Collapsed"
+                                Click="BtnClearSearch_Click">
+                            <TextBlock Text="&#x2715;" FontSize="10"/>
+                        </Button>
+                    </Grid>
+                </Border>
 
-                <!-- Header Buttons -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="BtnHelp" Width="32" Height="32" ToolTip="Keyboard Shortcuts (F1)"
-                            Background="Transparent" BorderThickness="0" Cursor="Hand"
-                            Click="BtnShowShortcuts_Click">
-                        <TextBlock Text="?" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}"/>
+                <!-- Floor Selector (Compact) -->
+                <Border Grid.Column="4" Margin="8,0" Height="28" CornerRadius="4"
+                        Background="{StaticResource BgL3}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1">
+                    <StackPanel Orientation="Horizontal" Margin="8,0">
+                        <TextBlock Text="Floor:" Foreground="{StaticResource TextSecondary}" FontSize="11"
+                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox x:Name="FloorSelector" Width="90" Height="24"
+                                  Background="Transparent" BorderThickness="0"
+                                  Foreground="{StaticResource TextPrimary}"
+                                  SelectionChanged="FloorSelector_SelectionChanged"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Action Buttons -->
+                <StackPanel Grid.Column="5" Orientation="Horizontal">
+                    <Button x:Name="BtnHelp" Style="{StaticResource IconButtonStyle}"
+                            Click="BtnShowShortcuts_Click" ToolTip="Shortcuts (F1)">
+                        <TextBlock Text="?" FontSize="14" FontWeight="SemiBold"/>
                     </Button>
-                    <Button x:Name="BtnToggleSettings" Width="32" Height="32" ToolTip="Advanced Settings (,)"
-                            Background="Transparent" BorderThickness="0" Cursor="Hand" Margin="4,0,0,0"
-                            Click="BtnToggleSettings_Click">
-                        <TextBlock Text="⚙" FontSize="16" Foreground="{StaticResource TextSecondaryBrush}"/>
+                    <Button x:Name="BtnSettings" Style="{StaticResource IconButtonStyle}"
+                            Click="BtnToggleSettings_Click" ToolTip="Settings (,)">
+                        <TextBlock Text="&#x2699;" FontSize="14"/>
                     </Button>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- ==================== MAIN CONTENT ==================== -->
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="80"/>   <!-- Layer Chips -->
-                <ColumnDefinition Width="*"/>    <!-- Map Canvas -->
-                <ColumnDefinition x:Name="ContextPanelColumn" Width="280"/>  <!-- Context Panel -->
-            </Grid.ColumnDefinitions>
+        <!-- ==================== MAIN MAP AREA ==================== -->
+        <Grid Grid.Row="1" x:Name="MapViewerGrid" Background="{StaticResource BgL1}"
+              ClipToBounds="True"
+              MouseLeftButtonDown="MapViewer_MouseLeftButtonDown"
+              MouseLeftButtonUp="MapViewer_MouseLeftButtonUp"
+              MouseMove="MapViewer_MouseMove"
+              MouseWheel="MapViewer_MouseWheel">
 
-            <!-- ========== LAYER CHIPS (Left 80px) ========== -->
-            <Border Grid.Column="0" Background="{StaticResource BackgroundMediumBrush}"
-                    BorderBrush="{StaticResource BackgroundLightBrush}" BorderThickness="0,0,1,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-                    <StackPanel x:Name="LayerChipsPanel" Margin="0,8">
-                        <!-- Boss Chip -->
-                        <ToggleButton x:Name="ChipBoss" Style="{StaticResource LayerChipStyle}"
-                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed"
-                                      ToolTip="Boss Spawns (1)">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="&#x1F480;" FontSize="20" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource MarkerBossBrush}"/>
-                                <TextBlock Text="Boss" FontSize="9" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="ChipBossStatus" Text="ON" FontSize="8" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+            <!-- Map Canvas -->
+            <Canvas x:Name="MapCanvas" RenderTransformOrigin="0,0">
+                <Canvas.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="MapScale" ScaleX="1" ScaleY="1"/>
+                        <TranslateTransform x:Name="MapTranslate" X="0" Y="0"/>
+                    </TransformGroup>
+                </Canvas.RenderTransform>
+                <svgc:SvgViewbox x:Name="MapSvg" Stretch="None" Canvas.Left="0" Canvas.Top="0"/>
+                <Canvas x:Name="MarkersCanvas"/>
+                <Canvas x:Name="ObjectivesCanvas"/>
+                <Canvas x:Name="PlayerCanvas"/>
+            </Canvas>
+
+            <!-- ===== FLOATING: Layer Menu Popup ===== -->
+            <Border x:Name="LayerMenuPopup" Visibility="Collapsed"
+                    Style="{StaticResource FloatingPanelStyle}"
+                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Margin="8,8,0,0" Padding="12" MinWidth="280">
+                <StackPanel>
+                    <TextBlock Text="LAYERS" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"/>
+                    <WrapPanel>
+                        <ToggleButton x:Name="ChipBoss" Style="{StaticResource LayerToggleStyle}"
+                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#x1F480;" FontSize="12" Foreground="{StaticResource MarkerBoss}" Margin="0,0,6,0"/>
+                                <TextBlock Text="Boss" FontSize="11" Foreground="{StaticResource TextPrimary}"/>
                             </StackPanel>
                         </ToggleButton>
-
-                        <!-- Extract Chip -->
-                        <ToggleButton x:Name="ChipExtract" Style="{StaticResource LayerChipStyle}"
-                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed"
-                                      ToolTip="Extractions (2)">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="&#x25B2;" FontSize="18" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource MarkerExtractBrush}"/>
-                                <TextBlock Text="Exit" FontSize="9" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="ChipExtractStatus" Text="ON" FontSize="8" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ToggleButton x:Name="ChipExtract" Style="{StaticResource LayerToggleStyle}"
+                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#x25B2;" FontSize="12" Foreground="{StaticResource MarkerExtract}" Margin="0,0,6,0"/>
+                                <TextBlock Text="Extract" FontSize="11" Foreground="{StaticResource TextPrimary}"/>
                             </StackPanel>
                         </ToggleButton>
-
-                        <!-- Transit Chip -->
-                        <ToggleButton x:Name="ChipTransit" Style="{StaticResource LayerChipStyle}"
-                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed"
-                                      ToolTip="Transits (3)">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="&#x25A0;" FontSize="18" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource MarkerTransitBrush}"/>
-                                <TextBlock Text="Trans" FontSize="9" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="ChipTransitStatus" Text="ON" FontSize="8" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ToggleButton x:Name="ChipTransit" Style="{StaticResource LayerToggleStyle}"
+                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#x25A0;" FontSize="12" Foreground="{StaticResource MarkerTransit}" Margin="0,0,6,0"/>
+                                <TextBlock Text="Transit" FontSize="11" Foreground="{StaticResource TextPrimary}"/>
                             </StackPanel>
                         </ToggleButton>
-
-                        <!-- Spawn Chip -->
-                        <ToggleButton x:Name="ChipSpawn" Style="{StaticResource LayerChipStyle}"
-                                      IsChecked="False" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed"
-                                      ToolTip="Spawns (4)">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="&#x25CF;" FontSize="18" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource MarkerSpawnBrush}"/>
-                                <TextBlock Text="Spawn" FontSize="9" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="ChipSpawnStatus" Text="OFF" FontSize="8" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ToggleButton x:Name="ChipSpawn" Style="{StaticResource LayerToggleStyle}"
+                                      IsChecked="False" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#x25CF;" FontSize="12" Foreground="{StaticResource MarkerSpawn}" Margin="0,0,6,0"/>
+                                <TextBlock Text="Spawn" FontSize="11" Foreground="{StaticResource TextPrimary}"/>
                             </StackPanel>
                         </ToggleButton>
-
-                        <!-- Lever Chip -->
-                        <ToggleButton x:Name="ChipLever" Style="{StaticResource LayerChipStyle}"
-                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed"
-                                      ToolTip="Levers (5)">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="&#x2699;" FontSize="18" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource MarkerLeverBrush}"/>
-                                <TextBlock Text="Lever" FontSize="9" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="ChipLeverStatus" Text="ON" FontSize="8" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ToggleButton x:Name="ChipLever" Style="{StaticResource LayerToggleStyle}"
+                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#x2699;" FontSize="12" Foreground="{StaticResource MarkerLever}" Margin="0,0,6,0"/>
+                                <TextBlock Text="Lever" FontSize="11" Foreground="{StaticResource TextPrimary}"/>
                             </StackPanel>
                         </ToggleButton>
-
-                        <!-- Keys Chip -->
-                        <ToggleButton x:Name="ChipKeys" Style="{StaticResource LayerChipStyle}"
-                                      IsChecked="False" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed"
-                                      ToolTip="Keys (6)">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="&#x1F511;" FontSize="18" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource MarkerKeyBrush}"/>
-                                <TextBlock Text="Keys" FontSize="9" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="ChipKeysStatus" Text="OFF" FontSize="8" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ToggleButton x:Name="ChipKeys" Style="{StaticResource LayerToggleStyle}"
+                                      IsChecked="False" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#x1F511;" FontSize="12" Foreground="{StaticResource MarkerKey}" Margin="0,0,6,0"/>
+                                <TextBlock Text="Keys" FontSize="11" Foreground="{StaticResource TextPrimary}"/>
                             </StackPanel>
                         </ToggleButton>
-
-                        <!-- Quest Chip -->
-                        <ToggleButton x:Name="ChipQuest" Style="{StaticResource LayerChipStyle}"
-                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed"
-                                      ToolTip="Quest Objectives (7)">
-                            <StackPanel HorizontalAlignment="Center">
-                                <TextBlock Text="&#x25C6;" FontSize="18" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource QuestObjectiveBrush}"/>
-                                <TextBlock Text="Quest" FontSize="9" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                                <TextBlock x:Name="ChipQuestStatus" Text="ON" FontSize="8" HorizontalAlignment="Center"
-                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                        <ToggleButton x:Name="ChipQuest" Style="{StaticResource LayerToggleStyle}"
+                                      IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="&#x25C6;" FontSize="12" Foreground="{StaticResource MarkerQuest}" Margin="0,0,6,0"/>
+                                <TextBlock Text="Quest" FontSize="11" Foreground="{StaticResource TextPrimary}"/>
                             </StackPanel>
                         </ToggleButton>
-
-                        <!-- Separator -->
-                        <Separator Background="{StaticResource BackgroundLightBrush}" Margin="8,8"/>
-
-                        <!-- All ON -->
-                        <Button Width="64" Height="24" Margin="8,2" Click="BtnAllLayersOn_Click"
-                                Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                ToolTip="All Layers ON (0)">
-                            <TextBlock Text="All" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
-                        </Button>
-
-                        <!-- All OFF -->
-                        <Button Width="64" Height="24" Margin="8,2" Click="BtnAllLayersOff_Click"
-                                Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                ToolTip="All Layers OFF (9)">
-                            <TextBlock Text="None" FontSize="10" Foreground="{StaticResource TextSecondaryBrush}"/>
-                        </Button>
+                    </WrapPanel>
+                    <Separator Background="{StaticResource BorderSubtle}" Margin="0,10"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Button Content="All ON" Padding="12,4" Margin="0,0,8,0"
+                                Background="{StaticResource BgL3}" Foreground="{StaticResource TextPrimary}"
+                                BorderThickness="0" Cursor="Hand" Click="BtnAllLayersOn_Click"/>
+                        <Button Content="All OFF" Padding="12,4"
+                                Background="{StaticResource BgL3}" Foreground="{StaticResource TextPrimary}"
+                                BorderThickness="0" Cursor="Hand" Click="BtnAllLayersOff_Click"/>
                     </StackPanel>
-                </ScrollViewer>
+                    <Separator Background="{StaticResource BorderSubtle}" Margin="0,10"/>
+                    <TextBlock Text="DISPLAY" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8"/>
+                    <Grid Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="36"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Marker Size" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+                        <Slider x:Name="SliderMarkerSize" Grid.Column="1" Minimum="50" Maximum="200" Value="100"
+                                VerticalAlignment="Center" ValueChanged="SliderMarkerSize_ValueChanged"/>
+                        <TextBlock x:Name="TxtMarkerSize" Grid.Column="2" Text="100%" FontSize="10"
+                                   Foreground="{StaticResource Accent}" TextAlignment="Right" VerticalAlignment="Center"/>
+                    </Grid>
+                    <CheckBox x:Name="ChkEnableClustering" Content="Clustering" IsChecked="True" Margin="0,4"
+                              Foreground="{StaticResource TextPrimary}"
+                              Checked="ChkEnableClustering_Changed" Unchecked="ChkEnableClustering_Changed"/>
+                    <CheckBox x:Name="ChkAutoFloor" Content="Auto Floor Detection" IsChecked="True" Margin="0,4"
+                              Foreground="{StaticResource TextPrimary}"
+                              Checked="ChkAutoFloor_CheckedChanged" Unchecked="ChkAutoFloor_CheckedChanged"/>
+                </StackPanel>
             </Border>
 
-            <!-- ========== MAP CANVAS (Center) ========== -->
-            <Grid Grid.Column="1" x:Name="MapViewerGrid" Background="{StaticResource BackgroundDarkBrush}"
-                  ClipToBounds="True"
-                  MouseLeftButtonDown="MapViewer_MouseLeftButtonDown"
-                  MouseLeftButtonUp="MapViewer_MouseLeftButtonUp"
-                  MouseMove="MapViewer_MouseMove"
-                  MouseWheel="MapViewer_MouseWheel">
-
-                <Canvas x:Name="MapCanvas" RenderTransformOrigin="0,0">
-                    <Canvas.RenderTransform>
-                        <TransformGroup>
-                            <ScaleTransform x:Name="MapScale" ScaleX="1" ScaleY="1"/>
-                            <TranslateTransform x:Name="MapTranslate" X="0" Y="0"/>
-                        </TransformGroup>
-                    </Canvas.RenderTransform>
-
-                    <!-- SVG Map Background -->
-                    <svgc:SvgViewbox x:Name="MapSvg" Stretch="None" Canvas.Left="0" Canvas.Top="0"/>
-
-                    <!-- Markers Layer -->
-                    <Canvas x:Name="MarkersCanvas"/>
-
-                    <!-- Quest Objectives Layer -->
-                    <Canvas x:Name="ObjectivesCanvas"/>
-
-                    <!-- Player Position Layer -->
-                    <Canvas x:Name="PlayerCanvas"/>
-                </Canvas>
-
-                <!-- ===== FLOATING BAR (Map Controls) ===== -->
-                <Border x:Name="FloatingToolbar"
-                        HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                        Margin="0,0,0,20"
-                        Background="#CC1E1E1E" CornerRadius="8" Padding="4">
-                    <StackPanel Orientation="Horizontal">
-                        <Button x:Name="BtnPanToPlayer" Style="{StaticResource FloatingButtonStyle}"
-                                Click="BtnCenterPlayer_Click" ToolTip="Center on Player (P)">
-                            <TextBlock Text="&#x1F3AF;" FontSize="14"/>
-                        </Button>
-                        <Rectangle Width="1" Height="20" Fill="{StaticResource BorderBrush}" Margin="4,0"/>
-                        <Button x:Name="BtnZoomIn" Style="{StaticResource FloatingButtonStyle}"
-                                Click="BtnZoomIn_Click" ToolTip="Zoom In (+)">
-                            <TextBlock Text="+" FontSize="18" FontWeight="Bold"/>
-                        </Button>
-                        <TextBlock x:Name="ZoomText" Text="100%" Width="50" TextAlignment="Center"
-                                   Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="SemiBold"
-                                   VerticalAlignment="Center"/>
-                        <Button x:Name="BtnZoomOut" Style="{StaticResource FloatingButtonStyle}"
-                                Click="BtnZoomOut_Click" ToolTip="Zoom Out (-)">
-                            <TextBlock Text="-" FontSize="18" FontWeight="Bold"/>
-                        </Button>
-                        <Rectangle Width="1" Height="20" Fill="{StaticResource BorderBrush}" Margin="4,0"/>
-                        <Button x:Name="BtnResetView" Style="{StaticResource FloatingButtonStyle}"
-                                Click="BtnResetView_Click" ToolTip="Reset View (R)">
-                            <TextBlock Text="&#x21BB;" FontSize="16"/>
-                        </Button>
-                        <Button x:Name="BtnFitView" Style="{StaticResource FloatingButtonStyle}"
-                                Click="BtnFitView_Click" ToolTip="Fit Map (F)">
-                            <TextBlock Text="&#x26F6;" FontSize="14"/>
-                        </Button>
-                    </StackPanel>
-                </Border>
-
-                <!-- Marker Tooltip -->
-                <Border x:Name="MarkerTooltip" Visibility="Collapsed"
-                        Background="{StaticResource OverlayBackgroundBrush}"
-                        BorderBrush="{StaticResource MarkerExtractBrush}" BorderThickness="1"
-                        CornerRadius="6" Padding="12,10" MaxWidth="300" MinWidth="200"
-                        HorizontalAlignment="Left" VerticalAlignment="Top">
-                    <StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <Image x:Name="TooltipIcon" Width="28" Height="28" Margin="0,0,10,0"/>
-                            <StackPanel VerticalAlignment="Center">
-                                <TextBlock x:Name="TooltipTitle" Text="Marker Name"
-                                           Foreground="{StaticResource TextPrimaryBrush}" FontSize="14" FontWeight="SemiBold"/>
-                                <TextBlock x:Name="TooltipType" Text="PMC Extraction"
-                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,2,0,0"/>
-                            </StackPanel>
-                        </StackPanel>
-                        <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,4,0,8"/>
-                        <TextBlock x:Name="TooltipDetails" Text="" Visibility="Collapsed"
-                                   Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap"/>
-                        <StackPanel x:Name="TooltipClusterInfo" Visibility="Collapsed" Margin="0,0,0,8">
-                            <TextBlock x:Name="TooltipClusterCount" Text="5 markers in this area"
-                                       Foreground="{StaticResource AccentBrush}" FontSize="12" FontWeight="SemiBold"/>
-                            <TextBlock x:Name="TooltipClusterTypes" Text=""
-                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" Margin="0,4,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                        <Grid Margin="0,0,0,8">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock x:Name="TooltipCoords" Text="X: 0, Z: 0"
-                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="10" VerticalAlignment="Center"/>
-                            <Button x:Name="BtnCopyCoords" Grid.Column="1" Content="Copy"
-                                    FontSize="10" Padding="8,2" Cursor="Hand"
-                                    Background="Transparent" Foreground="{StaticResource AccentBrush}"
-                                    BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
-                                    Click="BtnCopyCoords_Click"/>
-                        </Grid>
-                        <StackPanel x:Name="TooltipActions" Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button x:Name="BtnGoToFloor" Content="Go to Floor" Visibility="Collapsed"
-                                    FontSize="10" Padding="10,4" Cursor="Hand"
-                                    Background="{StaticResource BackgroundLightBrush}"
-                                    Foreground="{StaticResource TextPrimaryBrush}" BorderThickness="0"
-                                    Click="BtnGoToFloor_Click"/>
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <!-- Loading Indicator -->
-                <Border x:Name="LoadingIndicator" Visibility="Collapsed"
-                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Background="{StaticResource OverlayBackgroundBrush}" CornerRadius="8" Padding="24,16">
-                    <StackPanel Orientation="Horizontal">
-                        <ProgressBar IsIndeterminate="True" Width="100" Height="4"
-                                     Foreground="{StaticResource AccentBrush}"/>
-                        <TextBlock x:Name="LoadingText" Text="Loading map..." Margin="12,0,0,0"
-                                   Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- No Map Selected Message -->
-                <TextBlock x:Name="NoMapMessage" Text="Select a map from the dropdown above"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="16" Visibility="Visible"/>
-
-                <!-- Shortcuts Popup -->
-                <Border x:Name="ShortcutsPopup" Visibility="Collapsed"
-                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Background="{StaticResource OverlayDarkBackgroundBrush}"
-                        BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
-                        CornerRadius="8" Padding="20,16" MinWidth="320">
-                    <StackPanel>
-                        <Grid Margin="0,0,0,12">
-                            <TextBlock Text="Keyboard Shortcuts" FontSize="14" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}"/>
-                            <Button x:Name="BtnCloseShortcuts" Content="&#x2715;" Click="BtnCloseShortcuts_Click"
-                                    HorizontalAlignment="Right" Background="Transparent" BorderThickness="0"
-                                    Foreground="{StaticResource TextSecondaryBrush}" Cursor="Hand"/>
-                        </Grid>
-                        <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,0,0,12"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="80"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                                <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
-                                <RowDefinition/><RowDefinition/>
-                            </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Space" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Start/Stop Tracking" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="A" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Toggle Auto-follow" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="P" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Pan to Player" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="F" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" Text="Fit Map to View" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="R" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="4" Grid.Column="1" Text="Reset View" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="+/-" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="5" Grid.Column="1" Text="Zoom In/Out" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="6" Grid.Column="0" Text="1-7" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="6" Grid.Column="1" Text="Toggle Layer 1-7" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="7" Grid.Column="0" Text="0 / 9" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="7" Grid.Column="1" Text="All ON / All OFF" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="8" Grid.Column="0" Text="Tab" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="8" Grid.Column="1" Text="Toggle Context Panel" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="9" Grid.Column="0" Text="/" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="9" Grid.Column="1" Text="Focus Search" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="10" Grid.Column="0" Text="Esc" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="10" Grid.Column="1" Text="Clear Selection / Close" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="11" Grid.Column="0" Text="C / G" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="11" Grid.Column="1" Text="Copy Coords / Go to Floor" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="12" Grid.Column="0" Text="Scroll" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="12" Grid.Column="1" Text="Zoom (Ctrl = 3x speed)" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                            <TextBlock Grid.Row="13" Grid.Column="0" Text=", / F1" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" Margin="0,2"/>
-                            <TextBlock Grid.Row="13" Grid.Column="1" Text="Settings / Help" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,2"/>
-                        </Grid>
-                    </StackPanel>
-                </Border>
-
-                <!-- Settings Panel Overlay -->
-                <Border x:Name="SettingsOverlay" Visibility="Collapsed" Background="#80000000"
-                        MouseLeftButtonDown="SettingsOverlay_MouseLeftButtonDown"/>
-
-                <!-- Advanced Settings Panel (Slide-out) -->
-                <Border x:Name="SettingsPanel" Visibility="Collapsed" Width="280"
-                        HorizontalAlignment="Right" VerticalAlignment="Stretch"
-                        Background="{StaticResource BackgroundMediumBrush}"
-                        BorderBrush="{StaticResource BackgroundLightBrush}" BorderThickness="1,0,0,0">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-                        <Border Grid.Row="0" Background="{StaticResource BackgroundLightBrush}" Padding="12,10">
-                            <Grid>
-                                <TextBlock Text="Advanced Settings" FontSize="14" FontWeight="SemiBold"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-                                <Button x:Name="BtnCloseSettings" Content="&#x2715;" Click="BtnCloseSettings_Click"
-                                        HorizontalAlignment="Right" Background="Transparent" BorderThickness="0"
-                                        Foreground="{StaticResource TextSecondaryBrush}" Cursor="Hand"/>
-                            </Grid>
-                        </Border>
-                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="12,8">
-                            <StackPanel>
-                                <!-- Display Settings -->
-                                <TextBlock Text="DISPLAY" Style="{StaticResource ContextHeaderStyle}"/>
-                                <TextBlock Text="Marker Size" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4"/>
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="40"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Slider x:Name="SliderMarkerSize" Minimum="50" Maximum="200" Value="100"
-                                            ValueChanged="SliderMarkerSize_ValueChanged"/>
-                                    <TextBlock x:Name="TxtMarkerSize" Grid.Column="1" Text="100%"
-                                               Foreground="{StaticResource AccentBrush}" TextAlignment="Right" VerticalAlignment="Center"/>
-                                </Grid>
-                                <CheckBox x:Name="ChkShowLabels" Content="Show marker labels" IsChecked="True"
-                                          Checked="ChkShowLabels_Changed" Unchecked="ChkShowLabels_Changed" Margin="0,0,0,8"/>
-
-                                <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,8"/>
-
-                                <!-- Clustering -->
-                                <TextBlock Text="CLUSTERING" Style="{StaticResource ContextHeaderStyle}"/>
-                                <CheckBox x:Name="ChkEnableClustering" Content="Enable marker clustering" IsChecked="True"
-                                          Checked="ChkEnableClustering_Changed" Unchecked="ChkEnableClustering_Changed" Margin="0,0,0,8"/>
-                                <TextBlock Text="Cluster zoom threshold" Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,4"/>
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="40"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Slider x:Name="SliderClusterZoom" Minimum="10" Maximum="100" Value="50"
-                                            ValueChanged="SliderClusterZoom_ValueChanged"/>
-                                    <TextBlock x:Name="TxtClusterZoom" Grid.Column="1" Text="50%"
-                                               Foreground="{StaticResource AccentBrush}" TextAlignment="Right" VerticalAlignment="Center"/>
-                                </Grid>
-
-                                <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,8"/>
-
-                                <!-- Floor Detection -->
-                                <TextBlock Text="FLOOR DETECTION" Style="{StaticResource ContextHeaderStyle}"/>
-                                <CheckBox x:Name="ChkAutoFloor" Content="Auto-detect floor from player Y"
-                                          Checked="ChkAutoFloor_CheckedChanged" Unchecked="ChkAutoFloor_CheckedChanged" Margin="0,0,0,8"/>
-                            </StackPanel>
-                        </ScrollViewer>
-                    </Grid>
-                </Border>
-            </Grid>
-
-            <!-- ========== CONTEXT PANEL (Right 280px) ========== -->
-            <Border Grid.Column="2" x:Name="ContextPanel"
-                    Background="{StaticResource BackgroundMediumBrush}"
-                    BorderBrush="{StaticResource BackgroundLightBrush}" BorderThickness="1,0,0,0">
+            <!-- ===== FLOATING: Quest Panel (Left) ===== -->
+            <Border x:Name="QuestPanel" Style="{StaticResource FloatingPanelStyle}"
+                    HorizontalAlignment="Left" VerticalAlignment="Stretch"
+                    Margin="8" Width="260" MaxHeight="500">
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>  <!-- Search Bar -->
-                        <RowDefinition Height="*"/>     <!-- Content -->
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Search Bar -->
-                    <Border Grid.Row="0" Padding="12,10" Background="{StaticResource BackgroundLightBrush}">
+                    <!-- Quest Panel Header -->
+                    <Grid Grid.Row="0" Margin="12,10,12,8">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="&#x1F4CB;" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="QUESTS" FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtQuestCount" Text="(0)" FontSize="12"
+                                       Foreground="{StaticResource Accent}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Button x:Name="BtnCollapseQuests" HorizontalAlignment="Right"
+                                Style="{StaticResource IconButtonStyle}" Width="28" Height="28"
+                                Click="BtnCollapseQuests_Click">
+                            <TextBlock x:Name="TxtQuestCollapseIcon" Text="&#x25BC;" FontSize="10"/>
+                        </Button>
+                    </Grid>
+
+                    <!-- Quest Filters -->
+                    <StackPanel x:Name="QuestFilters" Grid.Row="1" Margin="12,0,12,8">
+                        <CheckBox x:Name="ChkIncompleteOnly" Content="Incomplete only" IsChecked="False"
+                                  Foreground="{StaticResource TextSecondary}" FontSize="11"
+                                  Checked="QuestFilter_Changed" Unchecked="QuestFilter_Changed"/>
+                        <CheckBox x:Name="ChkCurrentMapOnly" Content="This map only" IsChecked="True"
+                                  Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,4,0,0"
+                                  Checked="QuestFilter_Changed" Unchecked="QuestFilter_Changed"/>
+                    </StackPanel>
+
+                    <!-- Quest List -->
+                    <ScrollViewer x:Name="QuestListScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="8,0">
+                        <ItemsControl x:Name="QuestList">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Style="{StaticResource QuestItemStyle}"
+                                            MouseLeftButtonDown="QuestItem_Click" Tag="{Binding}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding QuestName}" FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="{StaticResource TextPrimary}" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding ObjectiveDescription}" FontSize="10"
+                                                           Foreground="{StaticResource TextSecondary}" TextTrimming="CharacterEllipsis"
+                                                           Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            <Button Grid.Column="1" Width="24" Height="24"
+                                                    Style="{StaticResource IconButtonStyle}"
+                                                    Click="BtnFocusQuest_Click" Tag="{Binding}"
+                                                    ToolTip="Focus on map">
+                                                <TextBlock Text="&#x1F3AF;" FontSize="11"/>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- ===== FLOATING: Zoom Controls (Bottom Right) ===== -->
+            <Border Style="{StaticResource FloatingPanelStyle}"
+                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                    Margin="0,0,16,16" Padding="4">
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="BtnPanToPlayer" Style="{StaticResource IconButtonStyle}" Width="32" Height="32"
+                            Click="BtnCenterPlayer_Click" ToolTip="Center on Player (P)">
+                        <TextBlock Text="&#x1F3AF;" FontSize="13"/>
+                    </Button>
+                    <Rectangle Width="1" Height="20" Fill="{StaticResource BorderSubtle}" Margin="2,0"/>
+                    <Button Style="{StaticResource IconButtonStyle}" Width="32" Height="32"
+                            Click="BtnZoomIn_Click" ToolTip="Zoom In (+)">
+                        <TextBlock Text="+" FontSize="16" FontWeight="Bold"/>
+                    </Button>
+                    <TextBlock x:Name="ZoomText" Text="100%" Width="44" TextAlignment="Center"
+                               Foreground="{StaticResource Accent}" FontSize="11" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                    <Button Style="{StaticResource IconButtonStyle}" Width="32" Height="32"
+                            Click="BtnZoomOut_Click" ToolTip="Zoom Out (-)">
+                        <TextBlock Text="-" FontSize="16" FontWeight="Bold"/>
+                    </Button>
+                    <Rectangle Width="1" Height="20" Fill="{StaticResource BorderSubtle}" Margin="2,0"/>
+                    <Button Style="{StaticResource IconButtonStyle}" Width="32" Height="32"
+                            Click="BtnResetView_Click" ToolTip="Reset (R)">
+                        <TextBlock Text="&#x21BB;" FontSize="14"/>
+                    </Button>
+                    <Button Style="{StaticResource IconButtonStyle}" Width="32" Height="32"
+                            Click="BtnFitView_Click" ToolTip="Fit (F)">
+                        <TextBlock Text="&#x26F6;" FontSize="12"/>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- ===== FLOATING: Minimap (Top Right) ===== -->
+            <Border x:Name="MinimapPanel" Style="{StaticResource FloatingPanelStyle}"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,8,16,0" Width="140" Height="140" Visibility="Collapsed">
+                <Grid>
+                    <Canvas x:Name="MinimapCanvas" ClipToBounds="True"/>
+                    <Border x:Name="MinimapViewport" BorderBrush="{StaticResource Accent}" BorderThickness="1"
+                            HorizontalAlignment="Left" VerticalAlignment="Top" Width="40" Height="30"/>
+                    <Button HorizontalAlignment="Right" VerticalAlignment="Top"
+                            Style="{StaticResource IconButtonStyle}" Width="24" Height="24"
+                            Click="BtnToggleMinimap_Click">
+                        <TextBlock Text="&#x2715;" FontSize="10"/>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- ===== Marker Tooltip ===== -->
+            <Border x:Name="MarkerTooltip" Visibility="Collapsed"
+                    Style="{StaticResource FloatingPanelStyle}"
+                    HorizontalAlignment="Left" VerticalAlignment="Top"
+                    Padding="12,10" MaxWidth="280" MinWidth="180">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <Border x:Name="TooltipIconBorder" Width="32" Height="32" CornerRadius="6"
+                                Background="{StaticResource BgL3}">
+                            <TextBlock x:Name="TooltipIcon" Text="&#x25B2;" FontSize="16"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{StaticResource MarkerExtract}"/>
+                        </Border>
+                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="TooltipTitle" Text="Marker Name" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <TextBlock x:Name="TooltipType" Text="PMC Extraction" FontSize="10"
+                                       Foreground="{StaticResource TextSecondary}"/>
+                        </StackPanel>
+                    </StackPanel>
+                    <Separator Background="{StaticResource BorderSubtle}" Margin="0,0,0,8"/>
+                    <TextBlock x:Name="TooltipDetails" Text="" Visibility="Collapsed"
+                               Foreground="{StaticResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                    <StackPanel x:Name="TooltipClusterInfo" Visibility="Collapsed" Margin="0,0,0,8">
+                        <TextBlock x:Name="TooltipClusterCount" Text="5 markers" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Accent}"/>
+                        <TextBlock x:Name="TooltipClusterTypes" Text="" FontSize="10"
+                                   Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Grid>
+                        <TextBlock x:Name="TooltipCoords" Text="X: 0, Z: 0" FontSize="10"
+                                   Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
+                        <Button x:Name="BtnCopyCoords" Content="Copy" HorizontalAlignment="Right"
+                                FontSize="10" Padding="8,3" Cursor="Hand"
+                                Background="Transparent" Foreground="{StaticResource Accent}"
+                                BorderBrush="{StaticResource Accent}" BorderThickness="1"
+                                Click="BtnCopyCoords_Click"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Loading Indicator -->
+            <Border x:Name="LoadingIndicator" Visibility="Collapsed"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Style="{StaticResource FloatingPanelStyle}" Padding="20,12">
+                <StackPanel Orientation="Horizontal">
+                    <ProgressBar IsIndeterminate="True" Width="80" Height="3" Foreground="{StaticResource Accent}"/>
+                    <TextBlock x:Name="LoadingText" Text="Loading..." Margin="12,0,0,0"
+                               Foreground="{StaticResource TextSecondary}" FontSize="11" VerticalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+
+            <!-- No Map Message -->
+            <TextBlock x:Name="NoMapMessage" Text="Select a map" Visibility="Visible"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                       Foreground="{StaticResource TextMuted}" FontSize="14"/>
+
+            <!-- Shortcuts Popup -->
+            <Border x:Name="ShortcutsPopup" Visibility="Collapsed"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Style="{StaticResource FloatingPanelStyle}" Padding="20,16" MinWidth="300">
+                <StackPanel>
+                    <Grid Margin="0,0,0,12">
+                        <TextBlock Text="Keyboard Shortcuts" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimary}"/>
+                        <Button x:Name="BtnCloseShortcuts" Content="&#x2715;" Click="BtnCloseShortcuts_Click"
+                                HorizontalAlignment="Right" Style="{StaticResource IconButtonStyle}" Width="28" Height="28"/>
+                    </Grid>
+                    <Separator Background="{StaticResource BorderSubtle}" Margin="0,0,0,12"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            <RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/>
+                            <RowDefinition/><RowDefinition/>
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Space" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="Start/Stop Tracking" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="A" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="Toggle Auto-follow" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="P / F" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="Pan to Player / Fit" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="L" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="Toggle Layer Menu" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Q" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="Toggle Quest Panel" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="5" Grid.Column="0" Text="+/-" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" Text="Zoom In/Out" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="6" Grid.Column="0" Text="0-9" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="6" Grid.Column="1" Text="Toggle Layers / Floors" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="7" Grid.Column="0" Text="R" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="7" Grid.Column="1" Text="Reset View" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="8" Grid.Column="0" Text="/" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="8" Grid.Column="1" Text="Focus Search" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                        <TextBlock Grid.Row="9" Grid.Column="0" Text="Esc" Foreground="{StaticResource Accent}" FontWeight="SemiBold" Margin="0,2"/>
+                        <TextBlock Grid.Row="9" Grid.Column="1" Text="Close Popups" Foreground="{StaticResource TextSecondary}" Margin="0,2"/>
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Settings Panel (Slide-out) -->
+            <Border x:Name="SettingsOverlay" Visibility="Collapsed" Background="#60000000"
+                    MouseLeftButtonDown="SettingsOverlay_MouseLeftButtonDown"/>
+            <Border x:Name="SettingsPanel" Visibility="Collapsed" Width="280"
+                    HorizontalAlignment="Right" VerticalAlignment="Stretch"
+                    Background="{StaticResource BgL2}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1,0,0,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Border Grid.Row="0" Background="{StaticResource BgL3}" Padding="12,10">
                         <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtSearch" Height="28" Padding="8,4"
-                                     Background="{StaticResource BackgroundDarkBrush}"
-                                     Foreground="{StaticResource TextPrimaryBrush}"
-                                     BorderBrush="{StaticResource BorderBrush}"
-                                     TextChanged="TxtSearch_TextChanged">
-                                <TextBox.Style>
-                                    <Style TargetType="TextBox">
-                                        <Setter Property="Tag" Value="Search markers..."/>
-                                    </Style>
-                                </TextBox.Style>
-                            </TextBox>
-                            <Button x:Name="BtnClearSearch" Grid.Column="1" Content="&#x2715;" Width="28" Height="28"
-                                    Margin="4,0,0,0" Visibility="Collapsed"
-                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                    Foreground="{StaticResource TextSecondaryBrush}"
-                                    Click="BtnClearSearch_Click"/>
+                            <TextBlock Text="Settings" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}"/>
+                            <Button x:Name="BtnCloseSettings" Content="&#x2715;" Click="BtnCloseSettings_Click"
+                                    HorizontalAlignment="Right" Style="{StaticResource IconButtonStyle}" Width="28" Height="28"/>
                         </Grid>
                     </Border>
-
-                    <!-- Context Content (Mode-based) -->
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="12,8">
-                        <Grid>
-                            <!-- Default Mode -->
-                            <StackPanel x:Name="ContextDefault" Visibility="Visible">
-                                <!-- Layer Details -->
-                                <TextBlock Text="LAYERS" Style="{StaticResource ContextHeaderStyle}" Margin="0,4,0,8"/>
-                                <CheckBox x:Name="ChkShowExtractions" Content="Extractions" IsChecked="True"
-                                          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed" Margin="0,2"/>
-                                <CheckBox x:Name="ChkShowTransits" Content="Transits" IsChecked="True"
-                                          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed" Margin="0,2"/>
-                                <CheckBox x:Name="ChkShowSpawns" Content="Spawns" IsChecked="False"
-                                          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed" Margin="0,2"/>
-                                <CheckBox x:Name="ChkShowBosses" Content="Bosses" IsChecked="True"
-                                          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed" Margin="0,2"/>
-                                <CheckBox x:Name="ChkShowLevers" Content="Levers" IsChecked="True"
-                                          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed" Margin="0,2"/>
-                                <CheckBox x:Name="ChkShowKeys" Content="Keys" IsChecked="False"
-                                          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed" Margin="0,2"/>
-                                <CheckBox x:Name="ChkShowObjectives" Content="Quest Objectives" IsChecked="True"
-                                          Checked="LayerVisibility_Changed" Unchecked="LayerVisibility_Changed" Margin="0,2"/>
-
-                                <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,12"/>
-
-                                <!-- Floor Selection -->
-                                <TextBlock Text="FLOOR" Style="{StaticResource ContextHeaderStyle}"/>
-                                <ComboBox x:Name="FloorSelector" Height="28" Margin="0,0,0,8"
-                                          SelectionChanged="FloorSelector_SelectionChanged"/>
-                                <TextBlock x:Name="TxtFloorInfo" Text="Use 0-5 keys for quick selection"
-                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="10"/>
-
-                                <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,12"/>
-
-                                <!-- Quick Stats -->
-                                <TextBlock Text="MAP INFO" Style="{StaticResource ContextHeaderStyle}"/>
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition/><RowDefinition/><RowDefinition/>
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Markers:" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock x:Name="TxtMarkerCount" Grid.Row="0" Grid.Column="1" Text="0" Foreground="{StaticResource AccentBrush}"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Quest Objectives:" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock x:Name="TxtQuestCount" Grid.Row="1" Grid.Column="1" Text="0" Foreground="{StaticResource QuestObjectiveBrush}"/>
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Cursor:" Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    <TextBlock x:Name="TxtCursorCoords" Grid.Row="2" Grid.Column="1" Text="--" Foreground="{StaticResource TextPrimaryBrush}"/>
-                                </Grid>
-                            </StackPanel>
-
-                            <!-- Selected Mode (Hidden by default) -->
-                            <StackPanel x:Name="ContextSelected" Visibility="Collapsed">
-                                <Button x:Name="BtnBackToDefault" Content="&#x2190; Back" HorizontalAlignment="Left"
-                                        Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                        Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,12"
-                                        Click="BtnBackToDefault_Click"/>
-
-                                <!-- Marker Icon & Name -->
-                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                    <Border x:Name="SelectedMarkerIconBorder" Width="48" Height="48" CornerRadius="8"
-                                            Background="{StaticResource BackgroundLightBrush}">
-                                        <TextBlock x:Name="SelectedMarkerIcon" Text="&#x25B2;" FontSize="24"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource MarkerExtractBrush}"/>
-                                    </Border>
-                                    <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
-                                        <TextBlock x:Name="SelectedMarkerName" Text="ZB-014" FontSize="16" FontWeight="SemiBold"
-                                                   Foreground="{StaticResource TextPrimaryBrush}"/>
-                                        <TextBlock x:Name="SelectedMarkerType" Text="PMC Extraction" FontSize="12"
-                                                   Foreground="{StaticResource TextSecondaryBrush}"/>
-                                    </StackPanel>
-                                </StackPanel>
-
-                                <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,0,0,12"/>
-
-                                <!-- Coordinates -->
-                                <TextBlock Text="COORDINATES" Style="{StaticResource ContextHeaderStyle}" Margin="0,0,0,4"/>
-                                <Grid Margin="0,0,0,12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock x:Name="SelectedMarkerCoords" Text="X: -123.4  Z: 456.7"
-                                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                                    <Button x:Name="BtnCopySelectedCoords" Grid.Column="1" Content="Copy"
-                                            FontSize="10" Padding="8,2" Cursor="Hand"
-                                            Background="Transparent" Foreground="{StaticResource AccentBrush}"
-                                            BorderBrush="{StaticResource AccentBrush}" BorderThickness="1"
-                                            Click="BtnCopySelectedCoords_Click"/>
-                                </Grid>
-
-                                <!-- Floor -->
-                                <TextBlock x:Name="SelectedMarkerFloorLabel" Text="FLOOR" Style="{StaticResource ContextHeaderStyle}" Margin="0,0,0,4"/>
-                                <TextBlock x:Name="SelectedMarkerFloor" Text="Underground" Margin="0,0,0,12"
-                                           Foreground="{StaticResource TextPrimaryBrush}"/>
-
-                                <!-- Actions -->
-                                <Separator Background="{StaticResource BackgroundLightBrush}" Margin="0,0,0,12"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button x:Name="BtnSelectedGoToFloor" Content="Go to Floor" Padding="12,6"
-                                            Background="{StaticResource BackgroundLightBrush}"
-                                            Foreground="{StaticResource TextPrimaryBrush}" BorderThickness="0"
-                                            Cursor="Hand" Click="BtnSelectedGoToFloor_Click"/>
-                                </StackPanel>
-                            </StackPanel>
-
-                            <!-- Search Results Mode (Hidden by default) -->
-                            <StackPanel x:Name="ContextSearch" Visibility="Collapsed">
-                                <TextBlock x:Name="TxtSearchResultCount" Text="RESULTS (0)"
-                                           Style="{StaticResource ContextHeaderStyle}" Margin="0,4,0,8"/>
-                                <ItemsControl x:Name="SearchResultsList">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Padding="8,6" Margin="0,2" Cursor="Hand"
-                                                    Background="{StaticResource BackgroundLightBrush}" CornerRadius="4"
-                                                    MouseLeftButtonDown="SearchResult_Click">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
-                                                               Foreground="{StaticResource TextPrimaryBrush}"/>
-                                                    <TextBlock Text="{Binding TypeAndFloor}" FontSize="11"
-                                                               Foreground="{StaticResource TextSecondaryBrush}"/>
-                                                </StackPanel>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </StackPanel>
-                        </Grid>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="CLUSTERING" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8"/>
+                            <TextBlock Text="Zoom threshold" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,4"/>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="36"/>
+                                </Grid.ColumnDefinitions>
+                                <Slider x:Name="SliderClusterZoom" Minimum="10" Maximum="100" Value="50"
+                                        ValueChanged="SliderClusterZoom_ValueChanged"/>
+                                <TextBlock x:Name="TxtClusterZoom" Grid.Column="1" Text="50%"
+                                           Foreground="{StaticResource Accent}" FontSize="10" TextAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Separator Background="{StaticResource BorderSubtle}" Margin="0,8"/>
+                            <TextBlock Text="DISPLAY" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,12,0,8"/>
+                            <CheckBox x:Name="ChkShowLabels" Content="Show marker labels" IsChecked="False"
+                                      Foreground="{StaticResource TextPrimary}"
+                                      Checked="ChkShowLabels_Changed" Unchecked="ChkShowLabels_Changed"/>
+                        </StackPanel>
                     </ScrollViewer>
                 </Grid>
             </Border>
         </Grid>
 
-        <!-- ==================== STATUS BAR (36px) ==================== -->
-        <Border Grid.Row="2" Background="{StaticResource BackgroundMediumBrush}">
+        <!-- ==================== COMPACT STATUS BAR (32px) ==================== -->
+        <Border Grid.Row="2" Background="{StaticResource BgL2}" BorderBrush="{StaticResource BorderSubtle}" BorderThickness="0,1,0,0">
             <Grid Margin="12,0">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>   <!-- Tracking Controls -->
-                    <ColumnDefinition Width="Auto"/>   <!-- Separator -->
-                    <ColumnDefinition Width="*"/>      <!-- Player Coords -->
-                    <ColumnDefinition Width="Auto"/>   <!-- Separator -->
-                    <ColumnDefinition Width="Auto"/>   <!-- Floor -->
-                    <ColumnDefinition Width="Auto"/>   <!-- Separator -->
-                    <ColumnDefinition Width="Auto"/>   <!-- Marker Count -->
-                    <ColumnDefinition Width="Auto"/>   <!-- Panel Toggle -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Tracking -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Sep -->
+                    <ColumnDefinition Width="*"/>     <!-- Coords -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Sep -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Markers -->
+                    <ColumnDefinition Width="Auto"/>  <!-- Toggle -->
                 </Grid.ColumnDefinitions>
 
-                <!-- Tracking Controls -->
+                <!-- Tracking Button -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="BtnStartTracking" Style="{StaticResource StatusButtonStyle}"
-                            Background="#2E7D32" Foreground="White" BorderThickness="0"
-                            Click="WatcherToggleButton_Click" ToolTip="Start/Stop Tracking (Space)">
+                    <Button x:Name="BtnStartTracking" Style="{StaticResource TrackingButtonStyle}"
+                            Background="{StaticResource Success}" Foreground="White"
+                            Click="WatcherToggleButton_Click" ToolTip="Space">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock x:Name="TxtStartIcon" Text="&#x25B6;" FontSize="10" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <TextBlock x:Name="TxtStartText" Text="Start"/>
+                            <TextBlock x:Name="TxtStartIcon" Text="&#x25B6;" FontSize="9" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock x:Name="TxtStartText" Text="Start" FontSize="11"/>
                         </StackPanel>
                     </Button>
-                    <ToggleButton x:Name="BtnAutoFollow" Width="56" Height="28" Margin="8,0,0,0"
-                                  Checked="BtnAutoFollow_Checked" Unchecked="BtnAutoFollow_Unchecked"
-                                  ToolTip="Auto-follow Player (A)" Cursor="Hand"
-                                  Background="{StaticResource BackgroundLightBrush}"
-                                  Foreground="{StaticResource TextSecondaryBrush}"
-                                  BorderBrush="{StaticResource BorderBrush}" BorderThickness="1">
-                        <TextBlock Text="Auto" FontSize="11"/>
+                    <ToggleButton x:Name="BtnAutoFollow" Width="48" Height="24" Margin="8,0,0,0" Cursor="Hand"
+                                  Background="{StaticResource BgL3}" Foreground="{StaticResource TextSecondary}"
+                                  BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1"
+                                  Checked="BtnAutoFollow_Checked" Unchecked="BtnAutoFollow_Unchecked" ToolTip="A">
+                        <TextBlock Text="Auto" FontSize="10"/>
                     </ToggleButton>
                 </StackPanel>
 
-                <Rectangle Grid.Column="1" Width="1" Height="20" Fill="{StaticResource BorderBrush}" Margin="16,0"/>
+                <Rectangle Grid.Column="1" Width="1" Height="18" Fill="{StaticResource BorderSubtle}" Margin="12,0"/>
 
-                <!-- Player Coordinates -->
+                <!-- Player Coords -->
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <Ellipse x:Name="WatcherIndicator" Width="8" Height="8"
-                             Fill="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0"/>
-                    <TextBlock Text="&#x1F9ED;" FontSize="12" Margin="0,0,6,0"/>
+                    <Ellipse x:Name="WatcherIndicator" Width="6" Height="6" Fill="{StaticResource TextMuted}" Margin="0,0,8,0"/>
+                    <TextBlock Text="&#x1F4CD;" FontSize="11" Margin="0,0,6,0"/>
                     <TextBlock x:Name="PlayerPositionText" Text="X: --  Z: --"
-                               Foreground="{StaticResource PlayerCyanBrush}" FontSize="12" MinWidth="150"/>
+                               Foreground="{StaticResource PlayerMarker}" FontSize="11" FontFamily="Consolas"/>
                 </StackPanel>
 
-                <Rectangle Grid.Column="3" Width="1" Height="20" Fill="{StaticResource BorderBrush}" Margin="16,0"/>
+                <Rectangle Grid.Column="3" Width="1" Height="18" Fill="{StaticResource BorderSubtle}" Margin="12,0"/>
 
-                <!-- Floor -->
+                <!-- Visible Markers -->
                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="Floor:" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <ComboBox x:Name="StatusFloorSelector" Width="100" Height="24"
-                              SelectionChanged="StatusFloorSelector_SelectionChanged"/>
+                    <TextBlock Text="&#x1F441;" FontSize="11" Margin="0,0,6,0"/>
+                    <TextBlock x:Name="MarkerCountText" Text="0" Foreground="{StaticResource Accent}" FontWeight="SemiBold" FontSize="11"/>
+                    <TextBlock x:Name="TotalMarkerCountText" Text="/0" Foreground="{StaticResource TextMuted}" FontSize="11"/>
                 </StackPanel>
 
-                <Rectangle Grid.Column="5" Width="1" Height="20" Fill="{StaticResource BorderBrush}" Margin="16,0"/>
-
-                <!-- Marker Count -->
-                <StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="&#x1F441;" FontSize="12" Margin="0,0,6,0"/>
-                    <TextBlock x:Name="MarkerCountText" Text="0" Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold"/>
-                    <TextBlock x:Name="TotalMarkerCountText" Text="/0" Foreground="{StaticResource TextSecondaryBrush}"/>
-                </StackPanel>
-
-                <!-- Context Panel Toggle -->
-                <Button Grid.Column="7" x:Name="BtnToggleContextPanel" Width="32" Height="28" Margin="16,0,0,0"
-                        Background="Transparent" BorderThickness="0" Cursor="Hand"
-                        Click="BtnToggleContextPanel_Click" ToolTip="Toggle Panel (Tab)">
-                    <TextBlock x:Name="TxtContextToggle" Text="&#x25B6;" FontSize="12"
-                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                <!-- Quest Panel Toggle -->
+                <Button Grid.Column="5" x:Name="BtnToggleQuestPanel" Width="28" Height="24" Margin="12,0,0,0"
+                        Style="{StaticResource IconButtonStyle}" Click="BtnToggleQuestPanel_Click" ToolTip="Q">
+                    <TextBlock x:Name="TxtQuestPanelToggle" Text="&#x25C0;" FontSize="10"/>
                 </Button>
             </Grid>
         </Border>

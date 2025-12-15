@@ -58,6 +58,11 @@ public class SettingsService
     private const string KeyMapShowSpawns = "map.showSpawns";
     private const string KeyMapShowLevers = "map.showLevers";
     private const string KeyMapShowKeys = "map.showKeys";
+    private const string KeyMapLeftPanelExpanded = "map.leftPanelExpanded";
+    private const string KeyExpanderLayersExpanded = "map.expanderLayers";
+    private const string KeyExpanderFloorExpanded = "map.expanderFloor";
+    private const string KeyExpanderMapInfoExpanded = "map.expanderMapInfo";
+    private const string KeyQuestPanelVisible = "map.questPanelVisible";
 
     private bool _settingsLoaded;
     private string? _detectionMethod;
@@ -961,6 +966,99 @@ public class SettingsService
         }
     }
 
+    private bool? _mapLeftPanelExpanded;
+    /// <summary>
+    /// Left panel expanded state (true=80px with labels, false=48px icon only)
+    /// </summary>
+    public bool LeftPanelExpanded
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapLeftPanelExpanded ?? false;  // Default: collapsed
+        }
+        set
+        {
+            if (_mapLeftPanelExpanded != value)
+            {
+                _mapLeftPanelExpanded = value;
+                SaveSetting(KeyMapLeftPanelExpanded, value.ToString());
+            }
+        }
+    }
+
+    private bool? _expanderLayersExpanded;
+    public bool ExpanderLayersExpanded
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _expanderLayersExpanded ?? false;  // Default: collapsed
+        }
+        set
+        {
+            if (_expanderLayersExpanded != value)
+            {
+                _expanderLayersExpanded = value;
+                SaveSetting(KeyExpanderLayersExpanded, value.ToString());
+            }
+        }
+    }
+
+    private bool? _expanderFloorExpanded;
+    public bool ExpanderFloorExpanded
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _expanderFloorExpanded ?? false;  // Default: collapsed
+        }
+        set
+        {
+            if (_expanderFloorExpanded != value)
+            {
+                _expanderFloorExpanded = value;
+                SaveSetting(KeyExpanderFloorExpanded, value.ToString());
+            }
+        }
+    }
+
+    private bool? _expanderMapInfoExpanded;
+    public bool ExpanderMapInfoExpanded
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _expanderMapInfoExpanded ?? false;  // Default: collapsed
+        }
+        set
+        {
+            if (_expanderMapInfoExpanded != value)
+            {
+                _expanderMapInfoExpanded = value;
+                SaveSetting(KeyExpanderMapInfoExpanded, value.ToString());
+            }
+        }
+    }
+
+    private bool? _questPanelVisible;
+    public bool QuestPanelVisible
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _questPanelVisible ?? true;  // Default: visible
+        }
+        set
+        {
+            if (_questPanelVisible != value)
+            {
+                _questPanelVisible = value;
+                SaveSetting(KeyQuestPanelVisible, value.ToString());
+            }
+        }
+    }
+
     /// <summary>
     /// Add a quest to hidden list
     /// </summary>
@@ -1381,6 +1479,22 @@ public class SettingsService
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowKeys), out var showKeys))
                 _mapShowKeys = showKeys;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapLeftPanelExpanded), out var leftPanelExpanded))
+                _mapLeftPanelExpanded = leftPanelExpanded;
+
+            // Load Expander states
+            if (bool.TryParse(_userDataDb.GetSetting(KeyExpanderLayersExpanded), out var expanderLayersExpanded))
+                _expanderLayersExpanded = expanderLayersExpanded;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyExpanderFloorExpanded), out var expanderFloorExpanded))
+                _expanderFloorExpanded = expanderFloorExpanded;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyExpanderMapInfoExpanded), out var expanderMapInfoExpanded))
+                _expanderMapInfoExpanded = expanderMapInfoExpanded;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyQuestPanelVisible), out var questPanelVisible))
+                _questPanelVisible = questPanelVisible;
         }
         catch (Exception ex)
         {
