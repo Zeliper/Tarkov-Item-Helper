@@ -20,6 +20,10 @@
         <SolidColorBrush x:Key="MarkerKeyBrush" Color="#FFC107"/>
         <SolidColorBrush x:Key="PlayerCyanBrush" Color="#00BCD4"/>
 
+        <!-- Quest objective colors -->
+        <SolidColorBrush x:Key="QuestObjectiveBrush" Color="#FFC107"/>
+        <SolidColorBrush x:Key="QuestOptionalBrush" Color="#FF9800"/>
+
         <!-- Overlay backgrounds with transparency -->
         <SolidColorBrush x:Key="OverlayBackgroundBrush" Color="#E0252525"/>
         <SolidColorBrush x:Key="OverlayDarkBackgroundBrush" Color="#F0252525"/>
