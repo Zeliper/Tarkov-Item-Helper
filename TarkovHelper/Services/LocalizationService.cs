@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Text.Json;
 using TarkovHelper.Debug;
+using TarkovHelper.Models;
 
 namespace TarkovHelper.Services;
 
@@ -1472,6 +1473,249 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "전체 접기",
         AppLanguage.JA => "すべて折りたたむ",
         _ => "Collapse All"
+    };
+
+    #endregion
+
+    #region MapTrackerPage
+
+    // Sidebar section headers
+    public string MapTrackerLayers => CurrentLanguage switch
+    {
+        AppLanguage.KO => "레이어",
+        AppLanguage.JA => "レイヤー",
+        _ => "LAYERS"
+    };
+
+    public string MapTrackerPointsOfInterest => CurrentLanguage switch
+    {
+        AppLanguage.KO => "관심 지점",
+        AppLanguage.JA => "注目ポイント",
+        _ => "Points of Interest"
+    };
+
+    public string MapTrackerEnemies => CurrentLanguage switch
+    {
+        AppLanguage.KO => "적",
+        AppLanguage.JA => "敵",
+        _ => "Enemies"
+    };
+
+    public string MapTrackerInteractables => CurrentLanguage switch
+    {
+        AppLanguage.KO => "상호작용",
+        AppLanguage.JA => "インタラクト",
+        _ => "Interactables"
+    };
+
+    public string MapTrackerQuests => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트",
+        AppLanguage.JA => "クエスト",
+        _ => "Quests"
+    };
+
+    public string MapTrackerQuickActions => CurrentLanguage switch
+    {
+        AppLanguage.KO => "빠른 실행",
+        AppLanguage.JA => "クイックアクション",
+        _ => "QUICK ACTIONS"
+    };
+
+    public string MapTrackerShortcuts => CurrentLanguage switch
+    {
+        AppLanguage.KO => "단축키",
+        AppLanguage.JA => "ショートカット",
+        _ => "SHORTCUTS"
+    };
+
+    // Layer names
+    public string MapTrackerExtractions => CurrentLanguage switch
+    {
+        AppLanguage.KO => "탈출구",
+        AppLanguage.JA => "脱出口",
+        _ => "Extractions"
+    };
+
+    public string MapTrackerTransits => CurrentLanguage switch
+    {
+        AppLanguage.KO => "환승",
+        AppLanguage.JA => "乗り換え",
+        _ => "Transits"
+    };
+
+    public string MapTrackerSpawns => CurrentLanguage switch
+    {
+        AppLanguage.KO => "스폰",
+        AppLanguage.JA => "スポーン",
+        _ => "Spawns"
+    };
+
+    public string MapTrackerBosses => CurrentLanguage switch
+    {
+        AppLanguage.KO => "보스",
+        AppLanguage.JA => "ボス",
+        _ => "Bosses"
+    };
+
+    public string MapTrackerLevers => CurrentLanguage switch
+    {
+        AppLanguage.KO => "레버",
+        AppLanguage.JA => "レバー",
+        _ => "Levers"
+    };
+
+    public string MapTrackerKeys => CurrentLanguage switch
+    {
+        AppLanguage.KO => "열쇠",
+        AppLanguage.JA => "鍵",
+        _ => "Keys"
+    };
+
+    public string MapTrackerQuestObjectives => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트 목표",
+        AppLanguage.JA => "クエスト目標",
+        _ => "Quest Objectives"
+    };
+
+    // Quick actions
+    public string MapTrackerShowAllLayers => CurrentLanguage switch
+    {
+        AppLanguage.KO => "모든 레이어 표시",
+        AppLanguage.JA => "すべてのレイヤーを表示",
+        _ => "Show All Layers"
+    };
+
+    public string MapTrackerHideAllLayers => CurrentLanguage switch
+    {
+        AppLanguage.KO => "모든 레이어 숨기기",
+        AppLanguage.JA => "すべてのレイヤーを非表示",
+        _ => "Hide All Layers"
+    };
+
+    // Status bar
+    public string MapTrackerMarkersLabel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "마커:",
+        AppLanguage.JA => "マーカー:",
+        _ => "Markers:"
+    };
+
+    public string MapTrackerQuestsLabel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "퀘스트:",
+        AppLanguage.JA => "クエスト:",
+        _ => "Quests:"
+    };
+
+    public string MapTrackerCursorLabel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "커서:",
+        AppLanguage.JA => "カーソル:",
+        _ => "Cursor:"
+    };
+
+    public string MapTrackerSelectMapMessage => CurrentLanguage switch
+    {
+        AppLanguage.KO => "위 드롭다운에서 맵을 선택하세요",
+        AppLanguage.JA => "上のドロップダウンからマップを選択してください",
+        _ => "Select a map from the dropdown above"
+    };
+
+    public string MapTrackerLoadingMap => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵 로딩 중...",
+        AppLanguage.JA => "マップを読み込み中...",
+        _ => "Loading map..."
+    };
+
+    // Top bar
+    public string MapTrackerMapLabel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "맵:",
+        AppLanguage.JA => "マップ:",
+        _ => "Map:"
+    };
+
+    public string MapTrackerFloorLabel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "층:",
+        AppLanguage.JA => "フロア:",
+        _ => "Floor:"
+    };
+
+    public string MapTrackerPlayerLabel => CurrentLanguage switch
+    {
+        AppLanguage.KO => "플레이어:",
+        AppLanguage.JA => "プレイヤー:",
+        _ => "Player:"
+    };
+
+    // Marker type localization method
+    public string GetMarkerTypeName(MarkerType type) => type switch
+    {
+        MarkerType.PmcExtraction => CurrentLanguage switch
+        {
+            AppLanguage.KO => "PMC 탈출구",
+            AppLanguage.JA => "PMC脱出口",
+            _ => "PMC Extraction"
+        },
+        MarkerType.ScavExtraction => CurrentLanguage switch
+        {
+            AppLanguage.KO => "스캐브 탈출구",
+            AppLanguage.JA => "Scav脱出口",
+            _ => "Scav Extraction"
+        },
+        MarkerType.SharedExtraction => CurrentLanguage switch
+        {
+            AppLanguage.KO => "공유 탈출구",
+            AppLanguage.JA => "共有脱出口",
+            _ => "Shared Extraction"
+        },
+        MarkerType.Transit => CurrentLanguage switch
+        {
+            AppLanguage.KO => "환승 지점",
+            AppLanguage.JA => "乗り換え地点",
+            _ => "Transit Point"
+        },
+        MarkerType.PmcSpawn => CurrentLanguage switch
+        {
+            AppLanguage.KO => "PMC 스폰",
+            AppLanguage.JA => "PMCスポーン",
+            _ => "PMC Spawn"
+        },
+        MarkerType.ScavSpawn => CurrentLanguage switch
+        {
+            AppLanguage.KO => "스캐브 스폰",
+            AppLanguage.JA => "Scavスポーン",
+            _ => "Scav Spawn"
+        },
+        MarkerType.BossSpawn => CurrentLanguage switch
+        {
+            AppLanguage.KO => "보스 스폰",
+            AppLanguage.JA => "ボススポーン",
+            _ => "Boss Spawn"
+        },
+        MarkerType.RaiderSpawn => CurrentLanguage switch
+        {
+            AppLanguage.KO => "레이더 스폰",
+            AppLanguage.JA => "レイダースポーン",
+            _ => "Raider Spawn"
+        },
+        MarkerType.Lever => CurrentLanguage switch
+        {
+            AppLanguage.KO => "레버/스위치",
+            AppLanguage.JA => "レバー/スイッチ",
+            _ => "Lever/Switch"
+        },
+        MarkerType.Keys => CurrentLanguage switch
+        {
+            AppLanguage.KO => "열쇠 위치",
+            AppLanguage.JA => "鍵の場所",
+            _ => "Key Location"
+        },
+        _ => "Unknown"
     };
 
     #endregion

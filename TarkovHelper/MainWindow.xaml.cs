@@ -26,6 +26,7 @@ public partial class MainWindow : Window
     private HideoutPage? _hideoutPage;
     private ItemsPage? _itemsPage;
     private CollectorPage? _collectorPage;
+    private MapTrackerPage? _mapTrackerPage;
     private List<HideoutModule>? _hideoutModules;
     private ObservableCollection<QuestChangeInfo>? _pendingSyncChanges;
     private bool _isFullScreen;
@@ -315,6 +316,11 @@ public partial class MainWindow : Window
         else if (sender == TabCollector && _collectorPage != null)
         {
             PageContent.Content = _collectorPage;
+        }
+        else if (sender == TabMap)
+        {
+            _mapTrackerPage ??= new MapTrackerPage();
+            PageContent.Content = _mapTrackerPage;
         }
     }
 
