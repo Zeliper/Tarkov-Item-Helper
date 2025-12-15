@@ -1262,7 +1262,7 @@ public partial class MapTrackerPage : UserControl
     private void SaveLayerSettings()
     {
         // Guard against calls during XAML initialization
-        if (ChipBoss == null) return;
+        if (ChipBoss == null || _settings == null) return;
 
         _settings.MapShowBosses = ChipBoss.IsChecked == true;
         _settings.MapShowExtracts = ChipExtract.IsChecked == true;
