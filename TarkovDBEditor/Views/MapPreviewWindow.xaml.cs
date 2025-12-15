@@ -492,7 +492,7 @@ public partial class MapPreviewWindow : Window
 
         var markerCount = _mapMarkers.Count(m => m.MapKey == _currentMapConfig.Key);
         var objectiveCount = _questObjectives.Count(o => _currentMapConfig.MatchesMapName(o.EffectiveMapName));
-        var apiMarkerCount = _apiMarkers.Count(m => string.Equals(m.MapKey, _currentMapConfig.Key, StringComparison.OrdinalIgnoreCase));
+        var apiMarkerCount = _apiMarkers.Count(m => _currentMapConfig.MatchesMapName(m.MapKey));
 
         MarkerCountText.Text = markerCount.ToString();
         ObjectiveCountText.Text = objectiveCount.ToString();
@@ -1062,7 +1062,7 @@ public partial class MapPreviewWindow : Window
         var apiMarkerColor = Color.FromRgb(230, 81, 0); // #E65100
 
         var apiMarkersForMap = _apiMarkers
-            .Where(m => string.Equals(m.MapKey, _currentMapConfig.Key, StringComparison.OrdinalIgnoreCase))
+            .Where(m => _currentMapConfig.MatchesMapName(m.MapKey))
             .ToList();
 
         foreach (var marker in apiMarkersForMap)

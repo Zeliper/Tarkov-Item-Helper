@@ -35,6 +35,55 @@ public class MapFloorConfig
 public class MapConfig
 {
     /// <summary>
+    /// 맵 이름 별칭 매핑 (다양한 이름을 표준 이름으로 변환)
+    /// Key: 정규화된 별칭, Value: 표준 맵 이름
+    /// </summary>
+    private static readonly Dictionary<string, string> MapNameAliases = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Labs / Lab 변형
+        { "lab", "labs" },
+        { "thelabs", "labs" },
+        { "thelab", "labs" },
+        // Labyrinth 변형
+        { "thelabyrinth", "labyrinth" },
+        // Streets 변형
+        { "streets", "streetsoftarkov" },
+        { "tarkovstreets", "streetsoftarkov" },
+        // Ground Zero 변형
+        { "groundzero", "groundzero" },
+        { "gz", "groundzero" },
+    };
+
+    /// <summary>
+    /// 맵 이름 정규화 (공백, 하이픈 제거 및 소문자 변환 후 별칭 적용)
+    /// </summary>
+    public static string NormalizeMapName(string? mapName)
+    {
+        if (string.IsNullOrEmpty(mapName))
+            return string.Empty;
+
+        var normalized = mapName.ToLowerInvariant().Replace(" ", "").Replace("-", "");
+
+        // 별칭 매핑 적용
+        if (MapNameAliases.TryGetValue(normalized, out var standardName))
+            return standardName;
+
+        return normalized;
+    }
+
+    /// <summary>
+    /// 두 맵 이름이 동일한 맵을 가리키는지 확인 (정규화 후 비교)
+    /// </summary>
+    public static bool AreMapNamesEqual(string? mapName1, string? mapName2)
+    {
+        if (string.IsNullOrEmpty(mapName1) && string.IsNullOrEmpty(mapName2))
+            return true;
+        if (string.IsNullOrEmpty(mapName1) || string.IsNullOrEmpty(mapName2))
+            return false;
+        return NormalizeMapName(mapName1) == NormalizeMapName(mapName2);
+    }
+
+    /// <summary>
     /// 맵 식별 키 (예: "Woods", "Customs")
     /// </summary>
     public string Key { get; set; } = string.Empty;
