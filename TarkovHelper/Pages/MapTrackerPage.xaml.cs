@@ -85,6 +85,7 @@ internal sealed class MarkerCluster
 /// </summary>
 internal sealed class QuestObjectiveDisplay
 {
+    public string QuestId { get; set; } = "";
     public string QuestName { get; set; } = "";
     public string ObjectiveDescription { get; set; } = "";
     public double X { get; set; }
@@ -207,6 +208,10 @@ public partial class MapTrackerPage : UserControl
     private QuestHitRegion? _hoveredQuestRegion;
     private const double QuestClusterDistance = 40.0;  // Screen pixels to cluster quests
 
+    // Quest panel data
+    private List<QuestObjectiveDisplay> _questPanelItems = new();
+    private QuestObjectiveDisplay? _highlightedQuestItem;  // Currently highlighted quest item
+
     // Settings panel state
     private bool _settingsPanelOpen = false;
 
@@ -222,7 +227,7 @@ public partial class MapTrackerPage : UserControl
     // Display settings
     private double _markerScale = 1.0;
     private double _labelScale = 1.0;  // Label size scale (0.5 to 1.5)
-    private double _labelShowZoomThreshold = 0.5;
+    private double _labelShowZoomThreshold = 0.7;
     private bool _showMarkerLabels = true;
 
     // Quest display settings
@@ -490,6 +495,7 @@ public partial class MapTrackerPage : UserControl
             UpdateCounts();
             RedrawMarkers();
             RedrawObjectives();
+            RefreshQuestList();
 
             // Save last selected map
             _settings.MapLastSelectedMap = config.Key;
@@ -554,6 +560,17 @@ public partial class MapTrackerPage : UserControl
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Select floor by index (for NumPad shortcuts)
+    /// </summary>
+    private void SelectFloorByIndex(int index)
+    {
+        if (_sortedFloors == null || _sortedFloors.Count == 0) return;
+        if (index < 0 || index >= _sortedFloors.Count) return;
+
+        FloorSelector.SelectedIndex = index;
     }
 
     private void ChkAutoFloor_CheckedChanged(object sender, RoutedEventArgs e)
@@ -659,15 +676,35 @@ public partial class MapTrackerPage : UserControl
 
             // All layers ON (0)
             case Key.D0:
-            case Key.NumPad0:
                 BtnAllLayersOn_Click(this, new RoutedEventArgs());
                 e.Handled = true;
                 return;
 
             // All layers OFF (9)
             case Key.D9:
-            case Key.NumPad9:
                 BtnAllLayersOff_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+                return;
+
+            // NumPad 0-4: Floor selection
+            case Key.NumPad0:
+                SelectFloorByIndex(0);
+                e.Handled = true;
+                return;
+            case Key.NumPad1:
+                SelectFloorByIndex(1);
+                e.Handled = true;
+                return;
+            case Key.NumPad2:
+                SelectFloorByIndex(2);
+                e.Handled = true;
+                return;
+            case Key.NumPad3:
+                SelectFloorByIndex(3);
+                e.Handled = true;
+                return;
+            case Key.NumPad4:
+                SelectFloorByIndex(4);
                 e.Handled = true;
                 return;
 
@@ -696,39 +733,32 @@ public partial class MapTrackerPage : UserControl
                 e.Handled = true;
                 return;
 
-            // Layer toggles (1-7)
+            // Layer toggles (1-7) - regular number keys only
             case Key.D1:
-            case Key.NumPad1:
                 ChipBoss.IsChecked = !ChipBoss.IsChecked;
                 e.Handled = true;
                 return;
             case Key.D2:
-            case Key.NumPad2:
                 ChipExtract.IsChecked = !ChipExtract.IsChecked;
                 e.Handled = true;
                 return;
             case Key.D3:
-            case Key.NumPad3:
                 ChipTransit.IsChecked = !ChipTransit.IsChecked;
                 e.Handled = true;
                 return;
             case Key.D4:
-            case Key.NumPad4:
                 ChipSpawn.IsChecked = !ChipSpawn.IsChecked;
                 e.Handled = true;
                 return;
             case Key.D5:
-            case Key.NumPad5:
                 ChipLever.IsChecked = !ChipLever.IsChecked;
                 e.Handled = true;
                 return;
             case Key.D6:
-            case Key.NumPad6:
                 ChipKeys.IsChecked = !ChipKeys.IsChecked;
                 e.Handled = true;
                 return;
             case Key.D7:
-            case Key.NumPad7:
                 ChipQuest.IsChecked = !ChipQuest.IsChecked;
                 e.Handled = true;
                 return;
@@ -861,6 +891,7 @@ public partial class MapTrackerPage : UserControl
         if (_isInitialized) _settings.MapHideCompletedQuests = _hideCompletedQuests;
         RedrawObjectives();
         UpdateCounts();
+        RefreshQuestList();
     }
 
     private void ChkShowActiveOnly_Changed(object sender, RoutedEventArgs e)
@@ -869,6 +900,7 @@ public partial class MapTrackerPage : UserControl
         if (_isInitialized) _settings.MapShowActiveOnly = _showActiveQuestsOnly;
         RedrawObjectives();
         UpdateCounts();
+        RefreshQuestList();
     }
 
     private void ChkShowKappaHighlight_Changed(object sender, RoutedEventArgs e)
@@ -886,6 +918,7 @@ public partial class MapTrackerPage : UserControl
             if (_isInitialized) _settings.MapTraderFilter = _traderFilter;
             RedrawObjectives();
             UpdateCounts();
+            RefreshQuestList();
         }
     }
 
@@ -1088,8 +1121,153 @@ public partial class MapTrackerPage : UserControl
 
     private void RefreshQuestList()
     {
-        // This will be implemented to filter and display quest objectives
-        // For now, keep the list as is
+        _questPanelItems.Clear();
+
+        if (_currentMapConfig == null)
+        {
+            QuestList.ItemsSource = null;
+            return;
+        }
+
+        var objectives = QuestObjectiveDbService.Instance.GetObjectivesForMap(_currentMapConfig.Key, _currentMapConfig);
+
+        foreach (var objective in objectives)
+        {
+            // Apply quest status filtering based on panel checkboxes
+            var questStatus = GetQuestStatusForObjective(objective);
+
+            // "Incomplete only" filter
+            if (ChkIncompleteOnly.IsChecked == true && questStatus == QuestStatus.Done)
+                continue;
+
+            // "This map only" is already applied by GetObjectivesForMap
+
+            // Apply trader filter
+            if (!string.IsNullOrEmpty(_traderFilter) && !MatchesTraderFilter(objective))
+                continue;
+
+            // Apply other filters
+            if (_hideCompletedQuests && questStatus == QuestStatus.Done)
+                continue;
+            if (_showActiveQuestsOnly && questStatus != QuestStatus.Active)
+                continue;
+
+            // Get coordinates from first location point if available
+            double x = 0, z = 0;
+            string? floorId = null;
+            if (objective.HasCoordinates && objective.LocationPoints.Count > 0)
+            {
+                x = objective.LocationPoints[0].X;
+                z = objective.LocationPoints[0].Z;
+                floorId = objective.LocationPoints[0].FloorId;
+            }
+
+            var display = new QuestObjectiveDisplay
+            {
+                QuestId = objective.QuestId,
+                QuestName = GetLocalizedQuestName(objective),
+                ObjectiveDescription = objective.Description ?? "",
+                X = x,
+                Z = z,
+                FloorId = floorId,
+                SourceObjective = objective
+            };
+            _questPanelItems.Add(display);
+        }
+
+        // Sort by quest name
+        _questPanelItems = _questPanelItems.OrderBy(q => q.QuestName).ToList();
+        QuestList.ItemsSource = _questPanelItems;
+    }
+
+    /// <summary>
+    /// Highlight a quest in the panel by scrolling to it and applying visual highlight
+    /// </summary>
+    private void HighlightQuestInPanel(string questId, string? objectiveDescription = null)
+    {
+        // Ensure quest panel is visible
+        if (!_questPanelVisible)
+        {
+            ToggleQuestPanel();
+        }
+
+        // Find the quest in the panel
+        var questItem = _questPanelItems.FirstOrDefault(q =>
+            q.QuestId == questId &&
+            (objectiveDescription == null || q.ObjectiveDescription == objectiveDescription));
+
+        if (questItem == null)
+        {
+            // Fallback: find by quest ID only
+            questItem = _questPanelItems.FirstOrDefault(q => q.QuestId == questId);
+        }
+
+        if (questItem == null) return;
+
+        // Clear previous highlight
+        ClearQuestHighlight();
+
+        // Set new highlight
+        _highlightedQuestItem = questItem;
+
+        // Find the container in the ItemsControl
+        var index = _questPanelItems.IndexOf(questItem);
+        if (index >= 0)
+        {
+            // Scroll to the item
+            QuestList.UpdateLayout();
+            var container = QuestList.ItemContainerGenerator.ContainerFromIndex(index) as FrameworkElement;
+            if (container != null)
+            {
+                container.BringIntoView();
+
+                // Apply highlight animation using a DispatcherTimer to ensure visual update
+                if (container is ContentPresenter presenter)
+                {
+                    var border = FindVisualChild<Border>(presenter);
+                    if (border != null)
+                    {
+                        var originalBrush = border.Background;
+                        border.Background = new SolidColorBrush(Color.FromArgb(255, 0, 180, 216)); // Accent color
+
+                        // Fade back to normal after 1.5 seconds
+                        var timer = new System.Windows.Threading.DispatcherTimer
+                        {
+                            Interval = TimeSpan.FromMilliseconds(1500)
+                        };
+                        timer.Tick += (s, e) =>
+                        {
+                            timer.Stop();
+                            border.Background = originalBrush;
+                        };
+                        timer.Start();
+                    }
+                }
+            }
+        }
+    }
+
+    private void ClearQuestHighlight()
+    {
+        _highlightedQuestItem = null;
+    }
+
+    /// <summary>
+    /// Find a child element of a specific type in the visual tree
+    /// </summary>
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T typedChild)
+                return typedChild;
+
+            var result = FindVisualChild<T>(child);
+            if (result != null)
+                return result;
+        }
+        return null;
     }
 
     #endregion
@@ -2536,6 +2714,19 @@ public partial class MapTrackerPage : UserControl
                 }
             }
 
+            // Check if we clicked on a quest marker
+            foreach (var questRegion in _questHitRegions)
+            {
+                if (questRegion.Contains(canvasPos.X, canvasPos.Y))
+                {
+                    // Highlight the quest in the panel
+                    var questId = questRegion.Objective.QuestId;
+                    var description = questRegion.Objective.Description;
+                    HighlightQuestInPanel(questId, description);
+                    return;
+                }
+            }
+
             // Clicked empty space - clear selection
             if (_selectedMarker != null)
             {
@@ -2563,6 +2754,23 @@ public partial class MapTrackerPage : UserControl
         MapTranslate.X = _dragStartTranslateX + deltaX;
         MapTranslate.Y = _dragStartTranslateY + deltaY;
         MapCanvas.Cursor = Cursors.ScrollAll;
+    }
+
+    /// <summary>
+    /// Convert canvas coordinates to MapViewerGrid coordinates (accounting for zoom/pan)
+    /// Canvas coords → Apply ScaleTransform → Apply TranslateTransform → Viewer coords
+    /// </summary>
+    private Point CanvasToViewerCoordinates(double canvasX, double canvasY)
+    {
+        // Apply scale transform (zoom)
+        var scaledX = canvasX * MapScale.ScaleX;
+        var scaledY = canvasY * MapScale.ScaleY;
+
+        // Apply translate transform (pan)
+        var viewerX = scaledX + MapTranslate.X;
+        var viewerY = scaledY + MapTranslate.Y;
+
+        return new Point(viewerX, viewerY);
     }
 
     private void UpdateMarkerTooltip(Point canvasPos, Point viewerPos)
@@ -2597,16 +2805,19 @@ public partial class MapTrackerPage : UserControl
             // Hide quest tooltip if showing
             _hoveredQuestRegion = null;
 
+            // Convert marker's canvas position to viewer coordinates for tooltip placement
+            var markerViewerPos = CanvasToViewerCoordinates(foundRegion.ScreenX, foundRegion.ScreenY);
+
             if (_hoveredMarker != foundRegion.Marker || _currentTooltipHitRegion != foundRegion)
             {
                 _hoveredMarker = foundRegion.Marker;
                 _currentTooltipHitRegion = foundRegion;
-                ShowMarkerTooltip(foundRegion, viewerPos);
+                ShowMarkerTooltip(foundRegion, markerViewerPos);
             }
             else
             {
                 // Update tooltip position
-                PositionTooltip(viewerPos);
+                PositionTooltip(markerViewerPos);
             }
             MapCanvas.Cursor = Cursors.Hand;
         }
@@ -2616,15 +2827,18 @@ public partial class MapTrackerPage : UserControl
             _hoveredMarker = null;
             _currentTooltipHitRegion = null;
 
+            // Convert quest marker's canvas position to viewer coordinates for tooltip placement
+            var questViewerPos = CanvasToViewerCoordinates(foundQuestRegion.ScreenX, foundQuestRegion.ScreenY);
+
             if (_hoveredQuestRegion != foundQuestRegion)
             {
                 _hoveredQuestRegion = foundQuestRegion;
-                ShowQuestTooltip(foundQuestRegion, viewerPos);
+                ShowQuestTooltip(foundQuestRegion, questViewerPos);
             }
             else
             {
                 // Update tooltip position
-                PositionTooltip(viewerPos);
+                PositionTooltip(questViewerPos);
             }
             MapCanvas.Cursor = Cursors.Hand;
         }
@@ -2713,9 +2927,8 @@ public partial class MapTrackerPage : UserControl
         // Set border color to quest amber
         MarkerTooltip.BorderBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0xA6, 0x23));
 
-        // Position and show tooltip
+        // Position and show tooltip (PositionTooltip handles visibility)
         PositionTooltip(viewerPos);
-        MarkerTooltip.Visibility = Visibility.Visible;
     }
 
     private void ShowMarkerTooltip(MarkerHitRegion hitRegion, Point viewerPos)
@@ -2794,9 +3007,8 @@ public partial class MapTrackerPage : UserControl
         var (r, g, b) = MapMarker.GetMarkerColor(displayType);
         MarkerTooltip.BorderBrush = new SolidColorBrush(Color.FromRgb(r, g, b));
 
-        // Position and show tooltip
+        // Position and show tooltip (PositionTooltip handles visibility)
         PositionTooltip(viewerPos);
-        MarkerTooltip.Visibility = Visibility.Visible;
     }
 
     /// <summary>
@@ -2817,72 +3029,21 @@ public partial class MapTrackerPage : UserControl
         _ => 0
     };
 
-    private void PositionTooltip(Point viewerPos)
+    private void PositionTooltip(Point markerViewerPos)
     {
-        // Position tooltip near cursor but ensure it stays within bounds
-        double tooltipX = viewerPos.X + 20;
-        double tooltipY = viewerPos.Y + 20;
+        // Make tooltip visible
+        MarkerTooltip.Visibility = Visibility.Visible;
 
-        // Get actual tooltip size (may not be measured yet)
-        MarkerTooltip.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var tooltipWidth = MarkerTooltip.DesiredSize.Width;
-        var tooltipHeight = MarkerTooltip.DesiredSize.Height;
+        // Position tooltip to bottom-right of marker (fixed offset)
+        const double offset = 15;
+        double tooltipX = markerViewerPos.X + offset;
+        double tooltipY = markerViewerPos.Y + offset;
 
-        // Ensure tooltip stays within viewer bounds
-        if (tooltipX + tooltipWidth > MapViewerGrid.ActualWidth - 10)
-        {
-            tooltipX = viewerPos.X - tooltipWidth - 10;
-        }
-        if (tooltipY + tooltipHeight > MapViewerGrid.ActualHeight - 10)
-        {
-            tooltipY = viewerPos.Y - tooltipHeight - 10;
-        }
-
-        // Ensure not negative
-        tooltipX = Math.Max(10, tooltipX);
-        tooltipY = Math.Max(10, tooltipY);
+        // Safety check for NaN or invalid values
+        if (double.IsNaN(tooltipX) || double.IsInfinity(tooltipX)) tooltipX = 10;
+        if (double.IsNaN(tooltipY) || double.IsInfinity(tooltipY)) tooltipY = 10;
 
         MarkerTooltip.Margin = new Thickness(tooltipX, tooltipY, 0, 0);
-    }
-
-    private void BtnCopyCoords_Click(object sender, RoutedEventArgs e)
-    {
-        if (_currentTooltipHitRegion == null) return;
-
-        string coordText;
-        if (_currentTooltipHitRegion.IsCluster && _currentTooltipHitRegion.ClusterMarkers != null)
-        {
-            // Copy center coordinates for cluster
-            var avgX = _currentTooltipHitRegion.ClusterMarkers.Average(m => m.X);
-            var avgZ = _currentTooltipHitRegion.ClusterMarkers.Average(m => m.Z);
-            coordText = $"X: {avgX:F1}, Z: {avgZ:F1}";
-        }
-        else
-        {
-            var marker = _currentTooltipHitRegion.Marker;
-            coordText = $"X: {marker.X:F1}, Z: {marker.Z:F1}";
-        }
-
-        try
-        {
-            System.Windows.Clipboard.SetText(coordText);
-            // Brief visual feedback - change button text temporarily
-            BtnCopyCoords.Content = "Copied!";
-            var timer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromMilliseconds(1000)
-            };
-            timer.Tick += (_, _) =>
-            {
-                BtnCopyCoords.Content = "Copy";
-                timer.Stop();
-            };
-            timer.Start();
-        }
-        catch
-        {
-            // Clipboard may fail in some scenarios
-        }
     }
 
     private void BtnGoToFloor_Click(object sender, RoutedEventArgs e)

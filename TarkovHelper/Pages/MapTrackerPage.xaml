@@ -443,7 +443,8 @@
             <Border x:Name="MarkerTooltip" Visibility="Collapsed"
                     Style="{StaticResource FloatingPanelStyle}"
                     HorizontalAlignment="Left" VerticalAlignment="Top"
-                    Padding="12,10" MaxWidth="300" MinWidth="200">
+                    Padding="12,10" MaxWidth="300" MinWidth="200"
+                    IsHitTestVisible="False">
                 <StackPanel>
                     <!-- Header with Icon -->
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
@@ -487,15 +488,8 @@
                     </StackPanel>
 
                     <!-- Coordinates -->
-                    <Grid>
-                        <TextBlock x:Name="TooltipCoords" Text="X: 0, Z: 0" FontSize="10"
-                                   Foreground="{StaticResource TextMuted}" VerticalAlignment="Center"/>
-                        <Button x:Name="BtnCopyCoords" Content="Copy" HorizontalAlignment="Right"
-                                FontSize="9" Padding="8,2" Cursor="Hand"
-                                Background="Transparent" Foreground="{StaticResource Accent}"
-                                BorderBrush="{StaticResource Accent}" BorderThickness="1"
-                                Click="BtnCopyCoords_Click"/>
-                    </Grid>
+                    <TextBlock x:Name="TooltipCoords" Text="X: 0, Z: 0" FontSize="10"
+                               Foreground="{StaticResource TextMuted}"/>
                 </StackPanel>
             </Border>
 
