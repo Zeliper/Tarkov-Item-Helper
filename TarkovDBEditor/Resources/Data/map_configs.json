@@ -69,7 +69,7 @@
       "imageHeight": 3000,
       "aliases": ["reserve", "RESERVE", "RezervBase"],
       "calibratedTransform": [-4.659551818591078, 1.4968674164044333, 1.4130686420734615, 6.194225988393516, 1605.6973392433374, 1531.5214718745203],
-      "playerMarkerTransform": [-2, 0, 0, -6, 1523, 311.5],
+      "playerMarkerTransform": [-1.932, 0.518, 0.517, 1.932, 1600.02, 1520.08],
       "svgBounds": [-280, 230, -280, 295],
       "floors": [
         {"layerId": "bunker", "displayName": "Bunker", "order": -1, "isDefault": false},

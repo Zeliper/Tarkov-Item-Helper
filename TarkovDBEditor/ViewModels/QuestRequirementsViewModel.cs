@@ -163,11 +163,12 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         // Migrate OptionalPoints column if not exists
         await MigrateOptionalPointsColumnAsync(connection);
 
-        // Load all quests with MinLevel, MinScavKarma, Location, Faction, KappaRequired, IsApproved
+        // Load all quests with MinLevel, MinScavKarma, Location, Faction, KappaRequired, RequiredEdition, IsApproved
         var questSql = @"SELECT Id, Name, NameEN, NameKO, NameJA, WikiPageLink, Trader, BsgId,
                          MinLevel, MinLevelApproved, MinLevelApprovedAt,
                          MinScavKarma, MinScavKarmaApproved, MinScavKarmaApprovedAt,
-                         Location, Faction, KappaRequired, IsApproved, ApprovedAt
+                         Location, Faction, KappaRequired, RequiredEdition, RequiredEditionApproved, RequiredEditionApprovedAt,
+                         IsApproved, ApprovedAt
                          FROM Quests ORDER BY Name";
         await using var questCmd = new SqliteCommand(questSql, connection);
         await using var questReader = await questCmd.ExecuteReaderAsync();
@@ -194,8 +195,11 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
                 Location = questReader.IsDBNull(14) ? null : questReader.GetString(14),
                 Faction = questReader.IsDBNull(15) ? null : questReader.GetString(15),
                 KappaRequired = !questReader.IsDBNull(16) && questReader.GetInt64(16) != 0,
-                IsApproved = !questReader.IsDBNull(17) && questReader.GetInt64(17) != 0,
-                ApprovedAt = questReader.IsDBNull(18) ? null : DateTime.Parse(questReader.GetString(18))
+                RequiredEdition = questReader.IsDBNull(17) ? null : questReader.GetString(17),
+                RequiredEditionApproved = !questReader.IsDBNull(18) && questReader.GetInt64(18) != 0,
+                RequiredEditionApprovedAt = questReader.IsDBNull(19) ? null : DateTime.Parse(questReader.GetString(19)),
+                IsApproved = !questReader.IsDBNull(20) && questReader.GetInt64(20) != 0,
+                ApprovedAt = questReader.IsDBNull(21) ? null : DateTime.Parse(questReader.GetString(21))
             });
         }
 
@@ -370,7 +374,7 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         ApplyFilter();
     }
 
-    private void ApplyFilter()
+    public void ApplyFilter()
     {
         var filtered = _allQuests.AsEnumerable();
 
@@ -1050,6 +1054,41 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task UpdateRequiredEditionApprovalAsync(string questId, bool isApproved)
+    {
+        if (!_db.IsConnected) return;
+
+        var connectionString = $"Data Source={_db.DatabasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = isApproved
+            ? "UPDATE Quests SET RequiredEditionApproved = 1, RequiredEditionApprovedAt = @ApprovedAt WHERE Id = @Id"
+            : "UPDATE Quests SET RequiredEditionApproved = 0, RequiredEditionApprovedAt = NULL WHERE Id = @Id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@Id", questId);
+        if (isApproved)
+        {
+            cmd.Parameters.AddWithValue("@ApprovedAt", DateTime.UtcNow.ToString("o"));
+        }
+        await cmd.ExecuteNonQueryAsync();
+
+        // Update local quest
+        if (_selectedQuest != null && _selectedQuest.Id == questId)
+        {
+            _selectedQuest.RequiredEditionApproved = isApproved;
+            _selectedQuest.RequiredEditionApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+
+        var questInList = _allQuests.FirstOrDefault(q => q.Id == questId);
+        if (questInList != null)
+        {
+            questInList.RequiredEditionApproved = isApproved;
+            questInList.RequiredEditionApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+    }
+
     /// <summary>
     /// 퀘스트 자체 승인 상태 업데이트
     /// </summary>
@@ -1128,6 +1167,8 @@ public class QuestItem : INotifyPropertyChanged
     private bool _minScavKarmaApproved;
     private bool _kappaRequired;
     private string? _faction;
+    private string? _requiredEdition;
+    private bool _requiredEditionApproved;
     private bool _isApproved;
 
     public string Id { get; set; } = "";
@@ -1204,6 +1245,27 @@ public class QuestItem : INotifyPropertyChanged
     public bool IsUsecOnly => string.Equals(Faction, "Usec", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 게임 에디션 요구사항 (EOD, Unheard 등)
+    /// </summary>
+    public string? RequiredEdition
+    {
+        get => _requiredEdition;
+        set { _requiredEdition = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasRequiredEdition)); OnPropertyChanged(nameof(IsEODOnly)); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(TotalRequirements)); }
+    }
+
+    public bool RequiredEditionApproved
+    {
+        get => _requiredEditionApproved;
+        set { _requiredEditionApproved = value; OnPropertyChanged(); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(ApprovedCount)); }
+    }
+
+    public DateTime? RequiredEditionApprovedAt { get; set; }
+
+    public bool HasRequiredEdition => !string.IsNullOrEmpty(RequiredEdition);
+    public bool IsEODOnly => string.Equals(RequiredEdition, "EOD", StringComparison.OrdinalIgnoreCase);
+    public bool IsUnheardOnly => string.Equals(RequiredEdition, "Unheard", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// 퀘스트 자체 승인 상태
     /// </summary>
     public bool IsApproved
@@ -1217,6 +1279,27 @@ public class QuestItem : INotifyPropertyChanged
     public bool HasMinLevel => MinLevel.HasValue && MinLevel.Value > 0;
     public bool HasMinScavKarma => MinScavKarma.HasValue;
 
+    /// <summary>
+    /// Scav Karma 표시 라벨 - 양수면 "Minimum", 음수면 "Maximum"
+    /// </summary>
+    public string ScavKarmaLabel => MinScavKarma.HasValue && MinScavKarma.Value < 0
+        ? "Maximum Scav Karma"
+        : "Minimum Scav Karma";
+
+    /// <summary>
+    /// Scav Karma 표시 값 - 양수면 "+N", 음수면 "N" (음수 부호 포함)
+    /// </summary>
+    public string ScavKarmaDisplayValue => MinScavKarma.HasValue
+        ? (MinScavKarma.Value >= 0 ? $"+{MinScavKarma.Value}" : MinScavKarma.Value.ToString())
+        : "";
+
+    /// <summary>
+    /// Scav Karma 설명 - 양수면 "at least", 음수면 "at most"
+    /// </summary>
+    public string ScavKarmaDescription => MinScavKarma.HasValue && MinScavKarma.Value < 0
+        ? "Player must have Scav karma at or below this value"
+        : "Player must have Scav karma at or above this value";
+
     public int TotalRequirements
     {
         get
@@ -1224,6 +1307,7 @@ public class QuestItem : INotifyPropertyChanged
             var total = _totalRequirements + _totalObjectives + _totalOptionalQuests + _totalRequiredItems;
             if (HasMinLevel) total++;
             if (HasMinScavKarma) total++;
+            if (HasRequiredEdition) total++;
             // 퀘스트 자체도 1개로 카운트 (항상 포함)
             total++;
             return total;
@@ -1238,6 +1322,7 @@ public class QuestItem : INotifyPropertyChanged
             var count = _approvedCount + _objectiveApprovedCount + _optionalQuestApprovedCount + _requiredItemApprovedCount;
             if (HasMinLevel && MinLevelApproved) count++;
             if (HasMinScavKarma && MinScavKarmaApproved) count++;
+            if (HasRequiredEdition && RequiredEditionApproved) count++;
             // 퀘스트 자체 승인 상태도 카운트
             if (IsApproved) count++;
             return count;
