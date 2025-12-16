@@ -35,6 +35,8 @@ public class SettingsService
     private const string KeyMapDrawerOpen = "map.drawerOpen";
     private const string KeyMapDrawerWidth = "map.drawerWidth";
     private const string KeyMapShowExtracts = "map.showExtracts";
+    private const string KeyMapShowPmcExtracts = "map.showPmcExtracts";
+    private const string KeyMapShowScavExtracts = "map.showScavExtracts";
     private const string KeyMapShowTransits = "map.showTransits";
     private const string KeyMapShowQuests = "map.showQuests";
     private const string KeyMapIncompleteOnly = "map.incompleteOnly";
@@ -73,6 +75,7 @@ public class SettingsService
     private const string KeyExpanderFloorExpanded = "map.expanderFloor";
     private const string KeyExpanderMapInfoExpanded = "map.expanderMapInfo";
     private const string KeyQuestPanelVisible = "map.questPanelVisible";
+    private const string KeyMapScreenshotPath = "map.screenshotPath";
 
     private bool _settingsLoaded;
     private string? _detectionMethod;
@@ -95,6 +98,8 @@ public class SettingsService
     private bool? _mapDrawerOpen;
     private double? _mapDrawerWidth;
     private bool? _mapShowExtracts;
+    private bool? _mapShowPmcExtracts;
+    private bool? _mapShowScavExtracts;
     private bool? _mapShowTransits;
     private bool? _mapShowQuests;
     private bool? _mapIncompleteOnly;
@@ -128,6 +133,7 @@ public class SettingsService
     private bool? _mapShowSpawns;
     private bool? _mapShowLevers;
     private bool? _mapShowKeys;
+    private string? _mapScreenshotPath;
 
     public event EventHandler<string?>? LogFolderChanged;
     public event EventHandler<int>? PlayerLevelChanged;
@@ -536,6 +542,46 @@ public class SettingsService
             {
                 _mapShowExtracts = value;
                 SaveSetting(KeyMapShowExtracts, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show PMC extraction markers on map
+    /// </summary>
+    public bool MapShowPmcExtracts
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowPmcExtracts ?? true;
+        }
+        set
+        {
+            if (_mapShowPmcExtracts != value)
+            {
+                _mapShowPmcExtracts = value;
+                SaveSetting(KeyMapShowPmcExtracts, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show Scav extraction markers on map
+    /// </summary>
+    public bool MapShowScavExtracts
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowScavExtracts ?? true;
+        }
+        set
+        {
+            if (_mapShowScavExtracts != value)
+            {
+                _mapShowScavExtracts = value;
+                SaveSetting(KeyMapShowScavExtracts, value.ToString());
             }
         }
     }
@@ -1295,6 +1341,26 @@ public class SettingsService
     }
 
     /// <summary>
+    /// Custom screenshot folder path for map tracking (user-set, empty = auto-detect)
+    /// </summary>
+    public string? MapScreenshotPath
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return string.IsNullOrEmpty(_mapScreenshotPath) ? null : _mapScreenshotPath;
+        }
+        set
+        {
+            if (_mapScreenshotPath != value)
+            {
+                _mapScreenshotPath = value;
+                SaveSetting(KeyMapScreenshotPath, value ?? "");
+            }
+        }
+    }
+
+    /// <summary>
     /// Add a quest to hidden list
     /// </summary>
     public void AddHiddenQuest(string questId)
@@ -1620,6 +1686,12 @@ public class SettingsService
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowExtracts), out var showExtracts))
                 _mapShowExtracts = showExtracts;
 
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowPmcExtracts), out var showPmcExtracts))
+                _mapShowPmcExtracts = showPmcExtracts;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowScavExtracts), out var showScavExtracts))
+                _mapShowScavExtracts = showScavExtracts;
+
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowTransits), out var showTransits))
                 _mapShowTransits = showTransits;
 
@@ -1739,6 +1811,9 @@ public class SettingsService
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyQuestPanelVisible), out var questPanelVisible))
                 _questPanelVisible = questPanelVisible;
+
+            _mapScreenshotPath = _userDataDb.GetSetting(KeyMapScreenshotPath);
+            if (string.IsNullOrEmpty(_mapScreenshotPath)) _mapScreenshotPath = null;
 
             // Load quest display settings
             if (double.TryParse(_userDataDb.GetSetting(KeyMapLabelScale), out var labelScale))

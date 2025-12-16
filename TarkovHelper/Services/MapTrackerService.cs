@@ -38,10 +38,10 @@ public sealed class MapTrackerService : IDisposable
 
     /// <summary>
     /// Default pattern for EFT screenshot filenames.
-    /// Format: "2025-12-04[00-40]_95.77, 2.44, -134.02_-0.02395, -0.85891, 0.03920, -0.51007_16.74 (0).png"
+    /// Format: "2025-12-0309-35_-123.42_2.40_114.27_-0.09544_-0.29115_0.02904_-0.95146_7.17_0.png"
     /// </summary>
     public const string DefaultPattern =
-        @"\d{4}-\d{2}-\d{2}\[\d{2}-\d{2}\]_(?<x>-?\d+\.?\d*),\s*(?<y>-?\d+\.?\d*),\s*(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*),\s*(?<qy>-?\d+\.?\d*),\s*(?<qz>-?\d+\.?\d*),\s*(?<qw>-?\d+\.?\d*)_";
+        @"\d{4}-\d{2}-\d{2}\d{2}-\d{2}_(?<x>-?\d+\.?\d*)_(?<y>-?\d+\.?\d*)_(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*)_(?<qy>-?\d+\.?\d*)_(?<qz>-?\d+\.?\d*)_(?<qw>-?\d+\.?\d*)_";
 
     /// <summary>
     /// Debounce delay in milliseconds

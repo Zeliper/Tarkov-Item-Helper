@@ -757,64 +757,67 @@
             <Border x:Name="MarkerTooltip" Visibility="Collapsed"
                     Style="{StaticResource FloatingPanelStyle}"
                     HorizontalAlignment="Left" VerticalAlignment="Top"
-                    Padding="12,10" MaxWidth="300" MinWidth="200"
+                    Padding="14,12" MaxWidth="340" MinWidth="220"
                     IsHitTestVisible="False">
                 <StackPanel>
                     <!-- Header with Icon -->
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                        <Border x:Name="TooltipIconBorder" Width="28" Height="28" CornerRadius="14"
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <Border x:Name="TooltipIconBorder" Width="36" Height="36" CornerRadius="18"
                                 Background="{StaticResource BgL3}" BorderThickness="2" BorderBrush="{StaticResource MarkerExtract}">
-                            <TextBlock x:Name="TooltipIcon" Text="&#x25B2;" FontSize="12"
+                            <TextBlock x:Name="TooltipIcon" Text="&#x25B2;" FontSize="16"
                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                        Foreground="{StaticResource MarkerExtract}"/>
                         </Border>
-                        <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                            <TextBlock x:Name="TooltipTitle" Text="Marker Name" FontSize="12" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" MaxWidth="220"/>
-                            <TextBlock x:Name="TooltipType" Text="PMC Extraction" FontSize="10"
-                                       Foreground="{StaticResource TextSecondary}"/>
+                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="TooltipTitle" Text="Marker Name" FontSize="14" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" TextWrapping="Wrap" MaxWidth="260"/>
+                            <TextBlock x:Name="TooltipType" Text="PMC Extraction" FontSize="11"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,2,0,0"/>
                         </StackPanel>
                     </StackPanel>
 
-                    <Separator Background="{StaticResource BorderSubtle}" Margin="0,0,0,8"/>
+                    <Separator Background="{StaticResource BorderSubtle}" Margin="0,0,0,10"/>
 
                     <!-- Details -->
                     <TextBlock x:Name="TooltipDetails" Text="" Visibility="Collapsed"
-                               Foreground="{StaticResource TextSecondary}" FontSize="10" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                               Foreground="{StaticResource TextSecondary}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,10"/>
 
-                    <!-- Cluster Info (Multiple quests at same location) -->
-                    <StackPanel x:Name="TooltipClusterInfo" Visibility="Collapsed" Margin="0,0,0,8">
-                        <TextBlock x:Name="TooltipClusterCount" Text="3 Quests at this location" FontSize="11" FontWeight="SemiBold"
-                                   Foreground="{StaticResource Accent}" Margin="0,0,0,6"/>
-                        <ItemsControl x:Name="TooltipClusterList">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Background="Transparent" Cursor="Hand" Margin="0,2"
-                                            MouseLeftButtonDown="TooltipQuestItem_Click" Tag="{Binding}">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Style.Triggers>
-                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                        <Setter Property="Background" Value="#30FFFFFF"/>
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <StackPanel Orientation="Horizontal" Margin="4,2">
-                                            <Ellipse Width="6" Height="6" Fill="{Binding TypeColorBrush}" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding QuestName}" FontSize="10" Foreground="{StaticResource TextPrimary}"
-                                                       TextTrimming="CharacterEllipsis" MaxWidth="200"/>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock x:Name="TooltipClusterTypes" Text="" FontSize="9"
-                                   Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,4,0,0"/>
+                    <!-- Cluster Info (Multiple quests/markers at same location) -->
+                    <StackPanel x:Name="TooltipClusterInfo" Visibility="Collapsed" Margin="0,0,0,10">
+                        <TextBlock x:Name="TooltipClusterCount" Text="3 Quests at this location" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Accent}" Margin="0,0,0,8"/>
+                        <Border Background="#15FFFFFF" CornerRadius="6" Padding="8,6" Margin="0,0,0,6">
+                            <ItemsControl x:Name="TooltipClusterList" MaxHeight="200">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="Transparent" Cursor="Hand" Margin="0,3"
+                                                CornerRadius="4" Padding="6,4"
+                                                MouseLeftButtonDown="TooltipQuestItem_Click" Tag="{Binding}">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#25FFFFFF"/>
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Ellipse Width="8" Height="8" Fill="{Binding TypeColorBrush}" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding QuestName}" FontSize="12" Foreground="{StaticResource TextPrimary}"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="240" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Border>
+                        <TextBlock x:Name="TooltipClusterTypes" Text="" FontSize="10"
+                                   Foreground="{StaticResource TextMuted}" TextWrapping="Wrap" Margin="0,2,0,0"/>
                     </StackPanel>
 
                     <!-- Coordinates -->
-                    <TextBlock x:Name="TooltipCoords" Text="X: 0, Z: 0" FontSize="10"
+                    <TextBlock x:Name="TooltipCoords" Text="X: 0, Z: 0" FontSize="11"
                                Foreground="{StaticResource TextMuted}"/>
                 </StackPanel>
             </Border>
@@ -904,6 +907,48 @@
                                       Checked="ChkHideCompletedObjectives_Changed" Unchecked="ChkHideCompletedObjectives_Changed"/>
                             <TextBlock Text="Completed objectives will be hidden from the map"
                                        FontSize="10" Foreground="{StaticResource TextMuted}" Margin="20,4,0,0" TextWrapping="Wrap"/>
+
+                            <!-- Extract Markers Section -->
+                            <Rectangle Height="1" Fill="{StaticResource BorderSubtle}" Margin="0,16,0,12"/>
+                            <TextBlock Text="EXTRACT MARKERS" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,12"/>
+                            <CheckBox x:Name="ChkShowPmcExtracts" Content="Show PMC Extracts" IsChecked="True" Margin="0,4"
+                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
+                                      Checked="ChkShowPmcExtracts_Changed" Unchecked="ChkShowPmcExtracts_Changed"/>
+                            <CheckBox x:Name="ChkShowScavExtracts" Content="Show Scav Extracts" IsChecked="True" Margin="0,4"
+                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
+                                      Checked="ChkShowScavExtracts_Changed" Unchecked="ChkShowScavExtracts_Changed"/>
+                            <TextBlock Text="Shared extracts are always visible when either option is enabled"
+                                       FontSize="10" Foreground="{StaticResource TextMuted}" Margin="20,4,0,0" TextWrapping="Wrap"/>
+
+                            <!-- Screenshot Path Section -->
+                            <Rectangle Height="1" Fill="{StaticResource BorderSubtle}" Margin="0,16,0,12"/>
+                            <TextBlock Text="SCREENSHOT TRACKING" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,12"/>
+                            <TextBlock Text="Screenshot folder path"
+                                       FontSize="11" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,6"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtScreenshotPath" Grid.Column="0"
+                                         FontSize="10" Padding="6,4" IsReadOnly="True"
+                                         Background="{StaticResource BgL1}" Foreground="{StaticResource TextSecondary}"
+                                         BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1"
+                                         VerticalContentAlignment="Center"/>
+                                <Button x:Name="BtnBrowseScreenshotPath" Grid.Column="1" Content="..." Width="28" Height="24" Margin="4,0,0,0"
+                                        Click="BtnBrowseScreenshotPath_Click"
+                                        Background="{StaticResource BgL3}" Foreground="{StaticResource TextPrimary}"
+                                        BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1"/>
+                            </Grid>
+                            <TextBlock Text="Leave empty for auto-detection (Documents\Escape from Tarkov\Screenshots)"
+                                       FontSize="9" Foreground="{StaticResource TextMuted}" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                            <Button x:Name="BtnResetScreenshotPath" Content="Reset to Auto-Detect" Margin="0,8,0,0"
+                                    Click="BtnResetScreenshotPath_Click" HorizontalAlignment="Left"
+                                    Padding="8,4" FontSize="10"
+                                    Background="{StaticResource BgL3}" Foreground="{StaticResource TextSecondary}"
+                                    BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

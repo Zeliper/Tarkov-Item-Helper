@@ -337,6 +337,53 @@ internal sealed class QuestObjectiveItem
 }
 
 /// <summary>
+/// Display model for items in tooltip cluster list
+/// </summary>
+internal sealed class TooltipClusterItem
+{
+    public string QuestName { get; set; } = "";
+    public SolidColorBrush TypeColorBrush { get; set; } = new SolidColorBrush(Colors.Gray);
+    public string TypeName { get; set; } = "";
+    public QuestObjective? SourceObjective { get; set; }
+    public MapMarker? SourceMarker { get; set; }
+
+    public static TooltipClusterItem FromQuestObjective(QuestObjective objective, string questName)
+    {
+        var color = objective.ObjectiveType switch
+        {
+            QuestObjectiveType.Mark => Color.FromRgb(0x4E, 0xC9, 0xB0),
+            QuestObjectiveType.Visit => Color.FromRgb(0x56, 0x9C, 0xD6),
+            QuestObjectiveType.Stash => Color.FromRgb(0xDC, 0xDC, 0xAA),
+            QuestObjectiveType.Kill => Color.FromRgb(0xE5, 0x39, 0x35),
+            QuestObjectiveType.Survive => Color.FromRgb(0xB5, 0xCE, 0xA8),
+            QuestObjectiveType.HandOver => Color.FromRgb(0xC5, 0x86, 0xC0),
+            QuestObjectiveType.Collect => Color.FromRgb(0xFF, 0xA5, 0x00),
+            _ => Color.FromRgb(0x80, 0x80, 0x80)
+        };
+
+        return new TooltipClusterItem
+        {
+            QuestName = questName,
+            TypeColorBrush = new SolidColorBrush(color),
+            TypeName = objective.ObjectiveType.ToString(),
+            SourceObjective = objective
+        };
+    }
+
+    public static TooltipClusterItem FromMapMarker(MapMarker marker, string localizedName)
+    {
+        var (r, g, b) = MapMarker.GetMarkerColor(marker.Type);
+        return new TooltipClusterItem
+        {
+            QuestName = localizedName,
+            TypeColorBrush = new SolidColorBrush(Color.FromRgb(r, g, b)),
+            TypeName = marker.Type.ToString(),
+            SourceMarker = marker
+        };
+    }
+}
+
+/// <summary>
 /// Map Tracker Page - displays map with markers and real-time player position tracking
 /// </summary>
 public partial class MapTrackerPage : UserControl
@@ -391,6 +438,9 @@ public partial class MapTrackerPage : UserControl
     private MapMarker? _hoveredMarker;
     private MarkerHitRegion? _currentTooltipHitRegion;  // For tooltip actions
 
+    // Label collision detection
+    private readonly List<Rect> _placedLabelRects = new();
+
     // Quest objective hit regions for tooltip
     private readonly List<QuestHitRegion> _questHitRegions = new();
     private QuestHitRegion? _hoveredQuestRegion;
@@ -431,6 +481,8 @@ public partial class MapTrackerPage : UserControl
     private bool _showKappaHighlight = true;        // Highlight Kappa-required quests
     private string _traderFilter = "";              // Trader filter (empty = all)
     private bool _hideCompletedObjectives = false;  // Hide individually completed objectives
+    private bool _showPmcExtracts = true;           // Show PMC extraction markers
+    private bool _showScavExtracts = true;          // Show Scav extraction markers
 
     // LOD thresholds
     private const double LOD_CLUSTER_ONLY_THRESHOLD = 0.3;
@@ -548,6 +600,18 @@ public partial class MapTrackerPage : UserControl
         _watcherService.StateChanged += OnWatcherStateChanged;
         UpdateWatcherStatus();
 
+        // Auto-start screenshot watching
+        if (!_watcherService.IsWatching)
+        {
+            var customPath = _settings.MapScreenshotPath;
+            var path = !string.IsNullOrEmpty(customPath) ? customPath : _watcherService.DetectDefaultScreenshotFolder();
+            if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
+            {
+                _watcherService.StartWatching(path);
+                UpdateWatcherStatus();
+            }
+        }
+
         // Subscribe to keyboard events for floor hotkeys
         var window = Window.GetWindow(this);
         if (window != null)
@@ -576,6 +640,12 @@ public partial class MapTrackerPage : UserControl
         _hideCompletedObjectives = _settings.MapHideCompletedObjectives;
         _showKappaHighlight = _settings.MapShowKappaHighlight;
         _traderFilter = _settings.MapTraderFilter;
+
+        // Extract visibility settings
+        _showPmcExtracts = _settings.MapShowPmcExtracts;
+        _showScavExtracts = _settings.MapShowScavExtracts;
+        ChkShowPmcExtracts.IsChecked = _showPmcExtracts;
+        ChkShowScavExtracts.IsChecked = _showScavExtracts;
 
         // Layer visibility - apply to chips
         ChipBoss.IsChecked = _settings.MapShowBosses;
@@ -1025,6 +1095,76 @@ public partial class MapTrackerPage : UserControl
     {
         // Sync Settings panel UI
         ChkHideCompletedObjectives.IsChecked = _hideCompletedObjectives;
+
+        // Sync screenshot path UI
+        var customPath = _settings.MapScreenshotPath;
+        if (!string.IsNullOrEmpty(customPath))
+        {
+            TxtScreenshotPath.Text = customPath;
+        }
+        else
+        {
+            var detectedPath = _watcherService.DetectDefaultScreenshotFolder();
+            TxtScreenshotPath.Text = detectedPath ?? "(Auto-detect)";
+        }
+    }
+
+    private void BtnBrowseScreenshotPath_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = _loc.CurrentLanguage switch
+            {
+                AppLanguage.KO => "스크린샷 폴더 선택",
+                AppLanguage.JA => "スクリーンショットフォルダを選択",
+                _ => "Select Screenshot Folder"
+            }
+        };
+
+        // Set initial directory to current path if exists
+        var currentPath = _settings.MapScreenshotPath;
+        if (!string.IsNullOrEmpty(currentPath) && Directory.Exists(currentPath))
+        {
+            dialog.InitialDirectory = currentPath;
+        }
+        else
+        {
+            var detectedPath = _watcherService.DetectDefaultScreenshotFolder();
+            if (!string.IsNullOrEmpty(detectedPath) && Directory.Exists(detectedPath))
+            {
+                dialog.InitialDirectory = detectedPath;
+            }
+        }
+
+        if (dialog.ShowDialog() == true)
+        {
+            var selectedPath = dialog.FolderName;
+            _settings.MapScreenshotPath = selectedPath;
+            TxtScreenshotPath.Text = selectedPath;
+
+            // If currently watching, restart with new path
+            if (_watcherService.IsWatching)
+            {
+                _watcherService.StopWatching();
+                _watcherService.StartWatching(selectedPath);
+                UpdateWatcherStatus();
+            }
+        }
+    }
+
+    private void BtnResetScreenshotPath_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.MapScreenshotPath = null;
+        var detectedPath = _watcherService.DetectDefaultScreenshotFolder();
+        TxtScreenshotPath.Text = detectedPath ?? "(Auto-detect)";
+
+        // If currently watching, restart with auto-detected path
+        if (_watcherService.IsWatching && !string.IsNullOrEmpty(detectedPath))
+        {
+            _watcherService.StopWatching();
+            _watcherService.StartWatching(detectedPath);
+            UpdateWatcherStatus();
+        }
     }
 
     private void ChkHideCompletedObjectives_Changed(object sender, RoutedEventArgs e)
@@ -1032,6 +1172,20 @@ public partial class MapTrackerPage : UserControl
         _hideCompletedObjectives = ChkHideCompletedObjectives.IsChecked == true;
         if (_isInitialized) _settings.MapHideCompletedObjectives = _hideCompletedObjectives;
         RedrawObjectives();
+    }
+
+    private void ChkShowPmcExtracts_Changed(object sender, RoutedEventArgs e)
+    {
+        _showPmcExtracts = ChkShowPmcExtracts.IsChecked == true;
+        if (_isInitialized) _settings.MapShowPmcExtracts = _showPmcExtracts;
+        RedrawMarkers();
+    }
+
+    private void ChkShowScavExtracts_Changed(object sender, RoutedEventArgs e)
+    {
+        _showScavExtracts = ChkShowScavExtracts.IsChecked == true;
+        if (_isInitialized) _settings.MapShowScavExtracts = _showScavExtracts;
+        RedrawMarkers();
     }
 
     private void CmbPanelTraderFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -2232,9 +2386,9 @@ public partial class MapTrackerPage : UserControl
 
         return type switch
         {
-            MarkerType.PmcExtraction => ChipExtract.IsChecked == true,
-            MarkerType.ScavExtraction => ChipExtract.IsChecked == true,
-            MarkerType.SharedExtraction => ChipExtract.IsChecked == true,
+            MarkerType.PmcExtraction => ChipExtract.IsChecked == true && _showPmcExtracts,
+            MarkerType.ScavExtraction => ChipExtract.IsChecked == true && _showScavExtracts,
+            MarkerType.SharedExtraction => ChipExtract.IsChecked == true && (_showPmcExtracts || _showScavExtracts),
             MarkerType.Transit => ChipTransit.IsChecked == true,
             MarkerType.PmcSpawn => ChipSpawn.IsChecked == true,
             MarkerType.ScavSpawn => ChipSpawn.IsChecked == true,
@@ -2379,6 +2533,7 @@ public partial class MapTrackerPage : UserControl
 
         MarkersCanvas.Children.Clear();
         _markerHitRegions.Clear();
+        _placedLabelRects.Clear();
 
         if (_currentMapConfig == null) return;
 
@@ -2406,6 +2561,11 @@ public partial class MapTrackerPage : UserControl
             var (sx, sy) = _currentMapConfig.GameToScreen(marker.X, marker.Z);
             visibleMarkersWithCoords.Add((marker, sx, sy));
         }
+
+        // Sort by priority (descending) so high-priority markers get their labels placed first
+        visibleMarkersWithCoords = visibleMarkersWithCoords
+            .OrderByDescending(m => GetMarkerTypePriority(m.marker.Type))
+            .ToList();
 
         int visibleCount = visibleMarkersWithCoords.Count;
 
@@ -2675,6 +2835,13 @@ public partial class MapTrackerPage : UserControl
             }
         }
 
+        // Draw floor direction arrow if marker is on different floor
+        if (hasFloors && marker.FloorId != null)
+        {
+            var floorDirection = GetFloorDirection(marker.FloorId);
+            DrawFloorArrowBadge(MarkersCanvas, sx, sy, markerSize, inverseScale, floorDirection, opacity);
+        }
+
         // Register hit region for tooltip
         _markerHitRegions.Add(new MarkerHitRegion
         {
@@ -2684,7 +2851,7 @@ public partial class MapTrackerPage : UserControl
             Radius = markerSize / 2 + 4 * inverseScale
         });
 
-        // Name label (localized) - only show when zoomed in enough
+        // Name label (localized) - only show when zoomed in enough and no collision
         if (showLabels)
         {
             var fontSize = Math.Max(10, 28 * inverseScale);
@@ -2696,29 +2863,41 @@ public partial class MapTrackerPage : UserControl
                 FontWeight = FontWeights.SemiBold
             };
 
-            Canvas.SetLeft(nameLabel, sx + markerSize / 2 + 8 * inverseScale);
-            Canvas.SetTop(nameLabel, sy - fontSize / 2);
-            MarkersCanvas.Children.Add(nameLabel);
+            // Measure label to get its size
+            nameLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            var labelWidth = nameLabel.DesiredSize.Width;
+            var labelHeight = nameLabel.DesiredSize.Height;
 
-            // Floor label (if different floor)
-            if (hasFloors && marker.FloorId != null && opacity < 1.0)
+            var labelX = sx + markerSize / 2 + 8 * inverseScale;
+            var labelY = sy - fontSize / 2;
+
+            // Check for collision before placing label
+            if (TryPlaceLabel(labelX, labelY, labelWidth, labelHeight))
             {
-                var floorDisplayName = _sortedFloors?
-                    .FirstOrDefault(f => string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase))
-                    ?.DisplayName ?? marker.FloorId;
+                Canvas.SetLeft(nameLabel, labelX);
+                Canvas.SetTop(nameLabel, labelY);
+                MarkersCanvas.Children.Add(nameLabel);
 
-                var floorFontSize = Math.Max(8, 20 * inverseScale);
-                var floorLabel = new TextBlock
+                // Floor label (if different floor) - only if main label was placed
+                if (hasFloors && marker.FloorId != null && opacity < 1.0)
                 {
-                    Text = $"[{floorDisplayName}]",
-                    Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 200), 154, 136, 102)),
-                    FontSize = floorFontSize,
-                    FontStyle = FontStyles.Italic
-                };
+                    var floorDisplayName = _sortedFloors?
+                        .FirstOrDefault(f => string.Equals(f.LayerId, marker.FloorId, StringComparison.OrdinalIgnoreCase))
+                        ?.DisplayName ?? marker.FloorId;
 
-                Canvas.SetLeft(floorLabel, sx + markerSize / 2 + 8 * inverseScale);
-                Canvas.SetTop(floorLabel, sy + fontSize / 2 + 2 * inverseScale);
-                MarkersCanvas.Children.Add(floorLabel);
+                    var floorFontSize = Math.Max(8, 20 * inverseScale);
+                    var floorLabel = new TextBlock
+                    {
+                        Text = $"[{floorDisplayName}]",
+                        Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 200), 154, 136, 102)),
+                        FontSize = floorFontSize,
+                        FontStyle = FontStyles.Italic
+                    };
+
+                    Canvas.SetLeft(floorLabel, sx + markerSize / 2 + 8 * inverseScale);
+                    Canvas.SetTop(floorLabel, sy + fontSize / 2 + 2 * inverseScale);
+                    MarkersCanvas.Children.Add(floorLabel);
+                }
             }
         }
     }
@@ -2734,6 +2913,10 @@ public partial class MapTrackerPage : UserControl
 
         ObjectivesCanvas.Children.Clear();
         _questHitRegions.Clear();
+
+        // Clear label collision list for quest objectives (separate from marker labels)
+        // This allows quest labels to overlap with marker labels but not with each other
+        _placedLabelRects.Clear();
 
         if (_currentMapConfig == null) return;
         if (!ShouldShowQuestObjectives()) return;
@@ -2815,7 +2998,7 @@ public partial class MapTrackerPage : UserControl
         }
 
         // Apply smart label clustering for single-point objectives
-        DrawClusteredObjectives(singlePointObjectives, inverseScale);
+        DrawClusteredObjectives(singlePointObjectives, inverseScale, hasFloors);
 
         TxtQuestCount.Text = count.ToString();
     }
@@ -2895,6 +3078,26 @@ public partial class MapTrackerPage : UserControl
     }
 
     /// <summary>
+    /// Get localized name for objective type
+    /// </summary>
+    private string GetObjectiveTypeName(QuestObjectiveType type)
+    {
+        return type switch
+        {
+            QuestObjectiveType.Kill => _loc.CurrentLanguage switch { AppLanguage.KO => "처치", AppLanguage.JA => "キル", _ => "Kill" },
+            QuestObjectiveType.Collect => _loc.CurrentLanguage switch { AppLanguage.KO => "수집", AppLanguage.JA => "収集", _ => "Collect" },
+            QuestObjectiveType.HandOver => _loc.CurrentLanguage switch { AppLanguage.KO => "납품", AppLanguage.JA => "納品", _ => "Hand Over" },
+            QuestObjectiveType.Visit => _loc.CurrentLanguage switch { AppLanguage.KO => "방문", AppLanguage.JA => "訪問", _ => "Visit" },
+            QuestObjectiveType.Mark => _loc.CurrentLanguage switch { AppLanguage.KO => "마킹", AppLanguage.JA => "マーク", _ => "Mark" },
+            QuestObjectiveType.Stash => _loc.CurrentLanguage switch { AppLanguage.KO => "은닉", AppLanguage.JA => "隠す", _ => "Stash" },
+            QuestObjectiveType.Survive => _loc.CurrentLanguage switch { AppLanguage.KO => "생존", AppLanguage.JA => "生還", _ => "Survive" },
+            QuestObjectiveType.Build => _loc.CurrentLanguage switch { AppLanguage.KO => "건설", AppLanguage.JA => "建設", _ => "Build" },
+            QuestObjectiveType.Task => _loc.CurrentLanguage switch { AppLanguage.KO => "작업", AppLanguage.JA => "タスク", _ => "Task" },
+            _ => _loc.CurrentLanguage switch { AppLanguage.KO => "기타", AppLanguage.JA => "その他", _ => "Other" }
+        };
+    }
+
+    /// <summary>
     /// Get opacity based on floor matching
     /// </summary>
     private double GetObjectiveOpacity(string? pointFloor, bool hasFloors)
@@ -2907,6 +3110,58 @@ public partial class MapTrackerPage : UserControl
             }
         }
         return 1.0;
+    }
+
+    /// <summary>
+    /// Get floor direction indicator: -1 = above current floor, 0 = same floor, 1 = below current floor
+    /// </summary>
+    private int GetFloorDirection(string? markerFloorId)
+    {
+        if (_sortedFloors == null || _sortedFloors.Count <= 1 ||
+            string.IsNullOrEmpty(markerFloorId) || string.IsNullOrEmpty(_currentFloorId))
+            return 0;
+
+        var currentFloor = _sortedFloors.FirstOrDefault(f =>
+            string.Equals(f.LayerId, _currentFloorId, StringComparison.OrdinalIgnoreCase));
+        var markerFloor = _sortedFloors.FirstOrDefault(f =>
+            string.Equals(f.LayerId, markerFloorId, StringComparison.OrdinalIgnoreCase));
+
+        if (currentFloor == null || markerFloor == null)
+            return 0;
+
+        if (markerFloor.Order < currentFloor.Order)
+            return -1;  // Marker is above (lower Order = higher floor visually)
+        if (markerFloor.Order > currentFloor.Order)
+            return 1;   // Marker is below
+
+        return 0;  // Same floor
+    }
+
+    /// <summary>
+    /// Draw floor direction arrow badge on marker (like Kappa star)
+    /// </summary>
+    private void DrawFloorArrowBadge(Canvas canvas, double sx, double sy, double markerSize, double inverseScale, int floorDirection, double opacity)
+    {
+        if (floorDirection == 0) return;
+
+        var arrowSize = 10 * inverseScale;
+        var arrowText = floorDirection < 0 ? "▲" : "▼";
+        var arrowColor = floorDirection < 0
+            ? Color.FromArgb((byte)(opacity * 255), 0x42, 0xA5, 0xF5)  // Blue for above
+            : Color.FromArgb((byte)(opacity * 255), 0xFF, 0x7C, 0x43); // Orange for below
+
+        var arrow = new TextBlock
+        {
+            Text = arrowText,
+            FontSize = arrowSize,
+            FontWeight = FontWeights.Bold,
+            Foreground = new SolidColorBrush(arrowColor)
+        };
+
+        // Position at bottom-left of marker (opposite side of Kappa star)
+        Canvas.SetLeft(arrow, sx - markerSize / 2 - arrowSize * 0.3);
+        Canvas.SetTop(arrow, sy + markerSize / 2 - arrowSize * 0.7);
+        canvas.Children.Add(arrow);
     }
 
     /// <summary>
@@ -2948,7 +3203,7 @@ public partial class MapTrackerPage : UserControl
     /// <summary>
     /// Draw clustered quest objectives with smart label system
     /// </summary>
-    private void DrawClusteredObjectives(List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status, bool IsKappa)> objectives, double inverseScale)
+    private void DrawClusteredObjectives(List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status, bool IsKappa)> objectives, double inverseScale, bool hasFloors)
     {
         if (objectives.Count == 0) return;
 
@@ -3037,6 +3292,17 @@ public partial class MapTrackerPage : UserControl
                 ObjectivesCanvas.Children.Add(star);
             }
 
+            // Draw floor direction arrow if objective is on different floor
+            if (hasFloors && primary.Objective.HasCoordinates && primary.Objective.LocationPoints.Count > 0)
+            {
+                var objFloorId = primary.Objective.LocationPoints[0].FloorId;
+                if (!string.IsNullOrEmpty(objFloorId))
+                {
+                    var floorDirection = GetFloorDirection(objFloorId);
+                    DrawFloorArrowBadge(ObjectivesCanvas, sx, sy, markerSize, inverseScale, floorDirection, opacity);
+                }
+            }
+
             // If cluster has multiple items, show count badge
             if (cluster.Items.Count > 1)
             {
@@ -3066,7 +3332,7 @@ public partial class MapTrackerPage : UserControl
             if (showLabels)
             {
                 var fontSize = Math.Max(10, 24 * inverseScale * _labelScale);
-                DrawQuestNameLabel(sx + markerSize / 2 + 8 * inverseScale, sy - fontSize / 2, primary.LocalizedName, objectiveColor, fontSize, opacity);
+                TryDrawQuestNameLabelWithFallback(sx, sy, markerSize, inverseScale, primary.LocalizedName, objectiveColor, fontSize, opacity);
             }
 
             // Register hit region for tooltip
@@ -3170,9 +3436,10 @@ public partial class MapTrackerPage : UserControl
     }
 
     /// <summary>
-    /// Draw quest name label with dark background and drop shadow for readability
+    /// Draw quest name label with dark background and drop shadow for readability.
+    /// Returns true if label was placed, false if collision prevented placement.
     /// </summary>
-    private void DrawQuestNameLabel(double x, double y, string questName, Color color, double fontSize, double opacity, bool centerText = false)
+    private bool DrawQuestNameLabel(double x, double y, string questName, Color color, double fontSize, double opacity, bool centerText = false)
     {
         // Create text with high contrast
         var label = new TextBlock
@@ -3207,9 +3474,49 @@ public partial class MapTrackerPage : UserControl
         double finalX = centerText ? x - bgRect.DesiredSize.Width / 2 : x;
         double finalY = centerText ? y - bgRect.DesiredSize.Height / 2 : y;
 
+        // Check for collision before placing label
+        if (!TryPlaceLabel(finalX, finalY, bgRect.DesiredSize.Width, bgRect.DesiredSize.Height))
+            return false;
+
         Canvas.SetLeft(bgRect, finalX);
         Canvas.SetTop(bgRect, finalY);
         ObjectivesCanvas.Children.Add(bgRect);
+        return true;
+    }
+
+    /// <summary>
+    /// Try to draw quest name label with fallback positions if primary position collides.
+    /// Tries: right, left, above, below the marker.
+    /// </summary>
+    private void TryDrawQuestNameLabelWithFallback(double markerX, double markerY, double markerSize, double inverseScale, string questName, Color color, double fontSize, double opacity)
+    {
+        var labelOffset = 8 * inverseScale;
+
+        // Position 1: Right of marker (default)
+        var rightX = markerX + markerSize / 2 + labelOffset;
+        var rightY = markerY - fontSize / 2;
+        if (DrawQuestNameLabel(rightX, rightY, questName, color, fontSize, opacity))
+            return;
+
+        // Position 2: Left of marker
+        // Need to estimate label width for left positioning
+        var estimatedLabelWidth = questName.Length * fontSize * 0.6;  // Rough estimate
+        var leftX = markerX - markerSize / 2 - labelOffset - estimatedLabelWidth;
+        var leftY = markerY - fontSize / 2;
+        if (DrawQuestNameLabel(leftX, leftY, questName, color, fontSize, opacity))
+            return;
+
+        // Position 3: Above marker
+        var aboveX = markerX - estimatedLabelWidth / 2;
+        var aboveY = markerY - markerSize / 2 - fontSize - labelOffset;
+        if (DrawQuestNameLabel(aboveX, aboveY, questName, color, fontSize, opacity))
+            return;
+
+        // Position 4: Below marker
+        var belowX = markerX - estimatedLabelWidth / 2;
+        var belowY = markerY + markerSize / 2 + labelOffset;
+        DrawQuestNameLabel(belowX, belowY, questName, color, fontSize, opacity);
+        // Don't check return - this is our last attempt
     }
 
     private void DrawObjectiveOptionalPoints(QuestObjective objective, double inverseScale, bool hasFloors, QuestStatus questStatus)
@@ -3289,6 +3596,13 @@ public partial class MapTrackerPage : UserControl
             Canvas.SetTop(numberLabel, sy - numberLabel.DesiredSize.Height / 2);
             ObjectivesCanvas.Children.Add(numberLabel);
 
+            // Draw floor direction arrow if on different floor
+            if (hasFloors && !string.IsNullOrEmpty(point.FloorId))
+            {
+                var floorDirection = GetFloorDirection(point.FloorId);
+                DrawFloorArrowBadge(ObjectivesCanvas, sx, sy, markerSize, inverseScale, floorDirection, opacity);
+            }
+
             // Add hit region for tooltip and click (with optional point info)
             _questHitRegions.Add(new QuestHitRegion
             {
@@ -3308,7 +3622,7 @@ public partial class MapTrackerPage : UserControl
             if (showLabels && i == 0 && !string.IsNullOrEmpty(questName))
             {
                 var labelFontSize = Math.Max(10, 24 * inverseScale * _labelScale);
-                DrawQuestNameLabel(sx + markerSize / 2 + 8 * inverseScale, sy - labelFontSize / 2, questName, color, labelFontSize, opacity);
+                TryDrawQuestNameLabelWithFallback(sx, sy, markerSize, inverseScale, questName, color, labelFontSize, opacity);
             }
         }
     }
@@ -3761,14 +4075,20 @@ public partial class MapTrackerPage : UserControl
             TooltipClusterInfo.Visibility = Visibility.Visible;
             TooltipClusterCount.Text = $"{hitRegion.ClusterObjectives.Count} quests at this location";
 
-            // Populate cluster list with quest names
-            var questNames = hitRegion.ClusterObjectives
-                .Select(o => GetLocalizedQuestName(o))
-                .Take(6)
+            // Populate cluster list with quest info (name + type color)
+            var questItems = hitRegion.ClusterObjectives
+                .Take(8)
+                .Select(o => TooltipClusterItem.FromQuestObjective(o, GetLocalizedQuestName(o)))
                 .ToList();
-            TooltipClusterList.ItemsSource = questNames;
+            TooltipClusterList.ItemsSource = questItems;
 
-            TooltipClusterTypes.Text = "";  // No type summary for quests
+            // Show objective type summary
+            var typeCounts = hitRegion.ClusterObjectives
+                .GroupBy(o => o.ObjectiveType)
+                .OrderByDescending(g => g.Count())
+                .Select(g => $"{GetObjectiveTypeName(g.Key)}: {g.Count()}")
+                .Take(4);
+            TooltipClusterTypes.Text = string.Join(", ", typeCounts);
 
             // Use primary objective coordinates and show floor info
             var primaryObj = hitRegion.Objective;
@@ -3908,17 +4228,18 @@ public partial class MapTrackerPage : UserControl
             TooltipClusterInfo.Visibility = Visibility.Visible;
             TooltipClusterCount.Text = $"{hitRegion.ClusterMarkers.Count} markers in this area";
 
-            // Populate cluster list with marker names (max 6 items)
-            var markerNames = hitRegion.ClusterMarkers
+            // Populate cluster list with marker info (name + type color)
+            var markerItems = hitRegion.ClusterMarkers
                 .OrderByDescending(m => GetMarkerTypePriority(m.Type))
-                .Take(6)
-                .Select(m => GetLocalizedMarkerName(m))
+                .Take(8)
+                .Select(m => TooltipClusterItem.FromMapMarker(m, GetLocalizedMarkerName(m)))
                 .ToList();
-            TooltipClusterList.ItemsSource = markerNames;
+            TooltipClusterList.ItemsSource = markerItems;
 
             // Build type summary
             var typeCounts = hitRegion.ClusterMarkers
                 .GroupBy(m => m.Type)
+                .OrderByDescending(g => g.Count())
                 .Select(g => $"{_loc.GetMarkerTypeName(g.Key)}: {g.Count()}")
                 .Take(4);
             TooltipClusterTypes.Text = string.Join(", ", typeCounts);
@@ -3982,6 +4303,39 @@ public partial class MapTrackerPage : UserControl
         MarkerType.ScavSpawn => 10,
         _ => 0
     };
+
+    /// <summary>
+    /// Check if a new label rect would overlap with any existing labels
+    /// </summary>
+    private bool WouldLabelOverlap(Rect newLabelRect)
+    {
+        // Add small padding for visual separation
+        var paddedRect = new Rect(
+            newLabelRect.X - 4,
+            newLabelRect.Y - 2,
+            newLabelRect.Width + 8,
+            newLabelRect.Height + 4);
+
+        foreach (var existingRect in _placedLabelRects)
+        {
+            if (paddedRect.IntersectsWith(existingRect))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Try to place a label, returns true if placed successfully
+    /// </summary>
+    private bool TryPlaceLabel(double labelX, double labelY, double labelWidth, double labelHeight)
+    {
+        var labelRect = new Rect(labelX, labelY, labelWidth, labelHeight);
+        if (WouldLabelOverlap(labelRect))
+            return false;
+
+        _placedLabelRects.Add(labelRect);
+        return true;
+    }
 
     private void PositionTooltip(Point markerViewerPos)
     {
@@ -4147,8 +4501,9 @@ public partial class MapTrackerPage : UserControl
         }
         else
         {
-            // Try auto-detect
-            var path = _watcherService.DetectDefaultScreenshotFolder();
+            // Use custom path if set, otherwise auto-detect
+            var customPath = _settings.MapScreenshotPath;
+            var path = !string.IsNullOrEmpty(customPath) ? customPath : _watcherService.DetectDefaultScreenshotFolder();
 
             if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
             {
@@ -4156,12 +4511,19 @@ public partial class MapTrackerPage : UserControl
             }
             else
             {
-                MessageBox.Show(
-                    "Screenshot folder not found.\n\nPlease ensure EFT is installed and screenshots folder exists at:\n" +
-                    "Documents\\Escape from Tarkov\\Screenshots",
-                    "Folder Not Found",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
+                var message = _loc.CurrentLanguage switch
+                {
+                    AppLanguage.KO => "스크린샷 폴더를 찾을 수 없습니다.\n\nSettings에서 경로를 직접 지정하거나,\nEFT가 설치되어 있는지 확인해주세요.\n\n기본 경로: Documents\\Escape from Tarkov\\Screenshots",
+                    AppLanguage.JA => "スクリーンショットフォルダが見つかりません。\n\n設定でパスを指定するか、\nEFTがインストールされているか確認してください。\n\nデフォルトパス: Documents\\Escape from Tarkov\\Screenshots",
+                    _ => "Screenshot folder not found.\n\nPlease set the path in Settings or ensure EFT is installed.\n\nDefault path: Documents\\Escape from Tarkov\\Screenshots"
+                };
+                var title = _loc.CurrentLanguage switch
+                {
+                    AppLanguage.KO => "폴더를 찾을 수 없음",
+                    AppLanguage.JA => "フォルダが見つかりません",
+                    _ => "Folder Not Found"
+                };
+                MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
             }
         }
         UpdateWatcherStatus();
@@ -4176,76 +4538,69 @@ public partial class MapTrackerPage : UserControl
         // Convert game coords to screen coords using player marker transform
         var (screenX, screenY) = _currentMapConfig.GameToScreenForPlayer(position.X, position.Z);
 
-        // Scale for current zoom level
+        // Scale for current zoom level - same as other markers with LOD
         double inverseScale = 1.0 / _zoomLevel;
-        double markerSize = 16 * inverseScale;
+        double lodMultiplier = GetLodSizeMultiplier();
+        double rawMarkerSize = 48 * inverseScale * _markerScale * lodMultiplier;
+        double markerSize = Math.Clamp(rawMarkerSize, MinMarkerSize * inverseScale, MaxMarkerSize * inverseScale * _markerScale);
+        double circleRadius = markerSize / 2;
 
-        // Draw player circle (cyan)
+        // Player marker color (red)
+        var playerColor = new SolidColorBrush(Color.FromRgb(0xE5, 0x39, 0x35));
+
+        // Draw player circle (red)
         var playerCircle = new Ellipse
         {
             Width = markerSize,
             Height = markerSize,
-            Fill = new SolidColorBrush(Color.FromRgb(0x00, 0xBC, 0xD4)),
+            Fill = playerColor,
             Stroke = Brushes.White,
             StrokeThickness = 2 * inverseScale
         };
 
-        Canvas.SetLeft(playerCircle, screenX - markerSize / 2);
-        Canvas.SetTop(playerCircle, screenY - markerSize / 2);
+        Canvas.SetLeft(playerCircle, screenX - circleRadius);
+        Canvas.SetTop(playerCircle, screenY - circleRadius);
         PlayerCanvas.Children.Add(playerCircle);
 
-        // Draw direction arrow if angle is available
+        // Draw direction triangle orbiting around the circle
         if (position.Angle.HasValue)
         {
-            double arrowLength = 24 * inverseScale;
             double angleRad = (position.Angle.Value - 90) * Math.PI / 180.0; // -90 to point up at 0°
 
-            double endX = screenX + Math.Cos(angleRad) * arrowLength;
-            double endY = screenY + Math.Sin(angleRad) * arrowLength;
+            // Triangle positioned outside the circle with margin
+            double margin = markerSize * 0.15;  // Gap between circle and triangle
+            double triangleHeight = markerSize * 0.5;  // Triangle height relative to marker
+            double triangleWidth = markerSize * 0.45;   // Triangle base width
 
-            // Arrow line
-            var arrowLine = new Line
-            {
-                X1 = screenX,
-                Y1 = screenY,
-                X2 = endX,
-                Y2 = endY,
-                Stroke = new SolidColorBrush(Color.FromRgb(0x00, 0xBC, 0xD4)),
-                StrokeThickness = 3 * inverseScale,
-                StrokeEndLineCap = PenLineCap.Triangle
-            };
-            PlayerCanvas.Children.Add(arrowLine);
+            // Triangle tip position (extends beyond circle edge + margin)
+            double tipDistance = circleRadius + margin + triangleHeight;
+            double tipX = screenX + Math.Cos(angleRad) * tipDistance;
+            double tipY = screenY + Math.Sin(angleRad) * tipDistance;
 
-            // Arrow head
-            double headSize = 8 * inverseScale;
-            double headAngle1 = angleRad + 2.5;
-            double headAngle2 = angleRad - 2.5;
+            // Triangle base positions (starts after circle edge + margin)
+            double baseDistance = circleRadius + margin;
+            double perpAngle1 = angleRad + Math.PI / 2;
+            double perpAngle2 = angleRad - Math.PI / 2;
 
-            var arrowHead = new Polygon
+            double base1X = screenX + Math.Cos(angleRad) * baseDistance + Math.Cos(perpAngle1) * (triangleWidth / 2);
+            double base1Y = screenY + Math.Sin(angleRad) * baseDistance + Math.Sin(perpAngle1) * (triangleWidth / 2);
+            double base2X = screenX + Math.Cos(angleRad) * baseDistance + Math.Cos(perpAngle2) * (triangleWidth / 2);
+            double base2Y = screenY + Math.Sin(angleRad) * baseDistance + Math.Sin(perpAngle2) * (triangleWidth / 2);
+
+            var directionTriangle = new Polygon
             {
                 Points = new PointCollection
                 {
-                    new Point(endX, endY),
-                    new Point(endX - Math.Cos(headAngle1) * headSize, endY - Math.Sin(headAngle1) * headSize),
-                    new Point(endX - Math.Cos(headAngle2) * headSize, endY - Math.Sin(headAngle2) * headSize)
+                    new Point(tipX, tipY),
+                    new Point(base1X, base1Y),
+                    new Point(base2X, base2Y)
                 },
-                Fill = new SolidColorBrush(Color.FromRgb(0x00, 0xBC, 0xD4))
+                Fill = playerColor,
+                Stroke = Brushes.White,
+                StrokeThickness = 2 * inverseScale
             };
-            PlayerCanvas.Children.Add(arrowHead);
+            PlayerCanvas.Children.Add(directionTriangle);
         }
-
-        // Draw "P" label
-        var label = new TextBlock
-        {
-            Text = "P",
-            Foreground = Brushes.White,
-            FontSize = 10 * inverseScale,
-            FontWeight = FontWeights.Bold
-        };
-
-        Canvas.SetLeft(label, screenX - 4 * inverseScale);
-        Canvas.SetTop(label, screenY - 5 * inverseScale);
-        PlayerCanvas.Children.Add(label);
     }
 
     #endregion
