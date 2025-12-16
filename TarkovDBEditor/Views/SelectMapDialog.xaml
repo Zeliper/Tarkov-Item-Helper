@@ -1,0 +1,67 @@
+<Window x:Class="TarkovDBEditor.Views.SelectMapDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Select Map" Height="280" Width="400"
+        Background="{StaticResource PrimaryBrush}"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0" x:Name="HeaderText"
+                   Text="This quest has multiple maps. Select a map for the location:"
+                   Foreground="{StaticResource TextBrush}" FontSize="13" TextWrapping="Wrap" Margin="0,0,0,12"/>
+
+        <!-- Quest Info -->
+        <Border Grid.Row="1" Background="{StaticResource SecondaryBrush}"
+                CornerRadius="4" Padding="10" Margin="0,0,0,12">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Quest Location:" Foreground="{StaticResource TextDimBrush}" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="QuestLocationText" FontWeight="SemiBold" Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Map List -->
+        <ListBox Grid.Row="2" x:Name="MapsList"
+                 BorderThickness="0"
+                 Background="Transparent"
+                 SelectionMode="Single">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border Background="{StaticResource SecondaryBrush}" CornerRadius="4"
+                            Margin="0,2" Padding="12,10">
+                        <StackPanel Orientation="Horizontal">
+                            <!-- Map Icon -->
+                            <Border Background="#0277BD" CornerRadius="3" Padding="8,4" Margin="0,0,12,0">
+                                <TextBlock Text="📍" FontSize="14"/>
+                            </Border>
+                            <!-- Map Name -->
+                            <TextBlock Text="{Binding}" FontSize="14" VerticalAlignment="Center"
+                                       Foreground="{StaticResource TextBrush}"/>
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Select" Width="80" Margin="0,0,8,0"
+                    Style="{StaticResource PrimaryButton}"
+                    Click="Select_Click"/>
+            <Button Content="Cancel" Width="80"
+                    Style="{StaticResource SecondaryButton}"
+                    Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
