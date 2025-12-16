@@ -1,0 +1,1011 @@
+================================================================================
+                        PRODUCT REQUIREMENTS DOCUMENT
+                               Map Feature
+================================================================================
+
+TITLE:          TarkovHelper Map Feature PRD
+VERSION:        1.0.0
+OWNER:          TarkovHelper Development Team
+DATE:           2025-12-15
+STATUS:         Draft
+TARGET PROJECT: TarkovHelper (End-User Application)
+
+
+================================================================================
+SECTION 1: BACKGROUND
+================================================================================
+
+1.1 PURPOSE
+-----------
+This document defines the requirements for implementing the Map Feature in the
+TarkovHelper application. The Map Feature enables real-time player position
+tracking via screenshot analysis and displays game-related map objects from the
+tarkov_data.db database.
+
+1.2 MOTIVATION
+--------------
+Escape from Tarkov players need a comprehensive map tool that:
+  - Shows their current in-game position without alt-tabbing
+  - Displays critical locations (extracts, transits, quest zones)
+  - Tracks player movement history during gameplay
+  - Provides layer-based visibility for multi-floor maps
+
+1.3 EXISTING PROBLEM
+--------------------
+Currently, players rely on external web-based maps that:
+  - Require manual position tracking
+  - Cannot show real-time position updates
+  - May not have accurate or up-to-date quest locations
+
+1.4 SOLUTION OVERVIEW
+---------------------
+Add a new "Map" tab to the TarkovHelper application that:
+  - Monitors EFT screenshot folder for coordinate-embedded filenames
+  - Parses player position and heading from screenshot filenames
+  - Renders player marker on SVG maps with direction indicator
+  - Displays DB-driven markers (Extracts, Transits, Quest zones)
+
+1.5 PROJECT CONTEXT
+-------------------
+Target Project:     TarkovHelper (main end-user application)
+Reference Project:  TarkovDBEditor (admin tool with prototype implementations)
+
+TarkovDBEditor already contains prototype implementations of:
+  - ScreenshotWatcherService (file system monitoring)
+  - ScreenshotCoordinateParser (filename parsing)
+  - MapMarkerService (marker CRUD)
+  - TestMapWindow (prototype map viewer)
+  - FloorLocationService (auto floor detection)
+
+These implementations can be referenced or adapted for TarkovHelper.
+
+
+================================================================================
+SECTION 2: GOALS / NON-GOALS
+================================================================================
+
+2.1 GOALS
+---------
+G1. Real-time player position display from screenshot file parsing
+G2. Player heading/direction visualization on map
+G3. Multi-floor support for complex maps (Labs, Factory, Reserve, etc.)
+G4. DB-driven extraction point display with PMC/Scav/Shared categorization
+G5. DB-driven transit point display
+G6. DB-driven quest marker and zone display
+G7. Layer/category toggle controls for marker visibility
+G8. Zoom and pan functionality for map navigation
+G9. Persistent settings for screenshot folder and parsing pattern
+G10. Auto-floor detection based on Y coordinate
+G11. Integration with existing quest progress tracking
+
+2.2 NON-GOALS
+-------------
+NG1. In-game overlay (requires game memory reading)
+NG2. Real-time multiplayer position sharing
+NG3. Automatic map detection (user selects map manually)
+NG4. Path planning or route optimization
+NG5. Item spawn location tracking
+NG6. Integration with EFT game servers
+
+
+================================================================================
+SECTION 3: CURRENT STATE ANALYSIS
+================================================================================
+
+3.1 TARKOVHELPER PROJECT STRUCTURE
+----------------------------------
+Framework:      WPF (.NET 8.0)
+Pattern:        Page-based navigation with code-behind
+DB Library:     Microsoft.Data.Sqlite 8.0.11
+SVG Rendering:  SharpVectors.Wpf 1.8.5
+Graph Library:  Westermo.GraphX.Controls 3.0.1
+
+3.2 EXISTING PAGES
+------------------
+MainWindow.xaml           - Main application window with tab navigation
+Pages/QuestListPage.xaml  - Quest tracking and progress
+Pages/HideoutPage.xaml    - Hideout module management
+Pages/ItemsPage.xaml      - Item requirement aggregation
+Pages/CollectorPage.xaml  - Collector quest item tracking
+
+Current Tab Order: Quests | Hideout | Items | Collector
+Proposed Addition: Quests | Hideout | Items | Collector | Map
+
+3.3 EXISTING SERVICES
+---------------------
+QuestDbService.cs             - Quest data from tarkov_data.db
+ItemDbService.cs              - Item data lookup
+QuestProgressService.cs       - Quest completion tracking (user_data.db)
+HideoutProgressService.cs     - Hideout progress (user_data.db)
+ItemInventoryService.cs       - User item inventory (user_data.db)
+SettingsService.cs            - App settings (user_data.db)
+LocalizationService.cs        - EN/KO/JA translations
+UserDataDbService.cs          - User data database operations
+MapMarkerDbService.cs         - Map marker data (mentioned in CLAUDE.md)
+
+3.4 EXISTING ASSETS (ALREADY PREPARED)
+--------------------------------------
+SVG Maps (Assets/DB/Maps/):
+  Customs.svg, Factory.svg, GroundZero.svg, Interchange.svg, Labs.svg,
+  Labyrinth.svg, Lighthouse.svg, Reserve.svg, Shoreline.svg,
+  StreetsOfTarkov.svg, Woods.svg
+
+Marker Icons (Assets/DB/Icons/):
+  PMC Extraction.webp, SCAV Extraction.webp, Transit.webp,
+  PMC Spawn.webp, SCAV Spawn.webp, BOSS Spawn.webp, Raider Spawn.webp,
+  Lever.webp, Keys.webp
+
+Configuration (Assets/DB/Data/):
+  map_configs.json - Coordinate transforms and floor definitions
+
+Master Database (Assets/tarkov_data.db):
+  - MapMarkers table
+  - MapFloorLocations table
+  - QuestObjectives table with LocationPoints
+
+3.5 DATA FLOW ARCHITECTURE
+--------------------------
+Master Data (read-only):
+  Assets/tarkov_data.db
+    +-- MapMarkers table
+    +-- MapFloorLocations table
+    +-- QuestObjectives table
+    +-- Quests table
+          |
+          v
+  MapMarkerDbService, QuestDbService
+          |
+          v
+  MapTrackerPage (new)
+
+User Data (read-write):
+  [AppData]/TarkovHelper/user_data.db
+    +-- UserSettings table (mapTracker.settings JSON)
+          |
+          v
+  SettingsService, MapTrackerService (new)
+
+3.6 SCREENSHOT FILENAME FORMAT
+------------------------------
+EFT screenshot format:
+  2025-12-04[00-40]_95.77, 2.44, -134.02_-0.02395, -0.85891, 0.03920, -0.51007_16.74 (0).png
+
+Components:
+  - Date/Time: 2025-12-04[00-40]
+  - Position: X, Y, Z (game coordinates)
+  - Quaternion: qx, qy, qz, qw (rotation)
+  - Additional data: FOV, screenshot number
+
+Default regex pattern:
+  \d{4}-\d{2}-\d{2}\[\d{2}-\d{2}\]_(?<x>-?\d+\.?\d*),\s*(?<y>-?\d+\.?\d*),\s*(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*),\s*(?<qy>-?\d+\.?\d*),\s*(?<qz>-?\d+\.?\d*),\s*(?<qw>-?\d+\.?\d*)_
+
+3.7 REFERENCE IMPLEMENTATIONS (TarkovDBEditor)
+----------------------------------------------
+The following services exist in TarkovDBEditor and can be referenced:
+
+ScreenshotWatcherService (Services/ScreenshotWatcherService.cs)
+  - FileSystemWatcher-based monitoring
+  - Debouncing (500ms default)
+  - Events: PositionDetected, ParsingFailed, StateChanged
+  - Auto-detect EFT screenshot folder
+
+ScreenshotCoordinateParser (Services/ScreenshotCoordinateParser.cs)
+  - Regex-based filename parsing
+  - Quaternion to yaw conversion
+  - Customizable pattern support
+
+MapMarkerService (Services/MapMarkerService.cs)
+  - CRUD for MapMarkers table
+  - MarkerType enum handling
+
+FloorLocationService (Services/FloorLocationService.cs)
+  - Y-coordinate based floor detection
+  - Priority-based region matching
+
+TestMapWindow (Views/TestMapWindow.xaml.cs)
+  - SVG rendering prototype
+  - Zoom/pan implementation
+  - Marker overlay canvas
+
+
+================================================================================
+SECTION 4: USER STORIES
+================================================================================
+
+US01. As a PMC player, I want to see my current position on the map after
+      taking a screenshot, so I can orient myself without external tools.
+
+US02. As a PMC player, I want to see which direction I'm facing on the map,
+      so I can navigate to objectives effectively.
+
+US03. As a Scav player, I want to see Scav-specific extraction points
+      highlighted differently from PMC extractions.
+
+US04. As a quest-focused player, I want to see quest objective locations
+      on the map, so I can plan efficient routes.
+
+US05. As a new player, I want to toggle different marker categories on/off,
+      so I can focus on specific information without clutter.
+
+US06. As a Labs/Factory player, I want to switch between floor views,
+      so I can see markers relevant to my current level.
+
+US07. As a user, I want my screenshot folder path and pattern settings
+      to persist between sessions.
+
+US08. As a power user, I want to customize the filename parsing pattern
+      if EFT changes its screenshot format.
+
+US09. As a user, I want visual feedback when my position updates on the map,
+      so I know the tracking is working.
+
+US10. As a returning player, I want the map to remember my last viewed
+      position and zoom level.
+
+US11. As a quest tracker user, I want to see my in-progress quest objectives
+      highlighted on the map to coordinate with my quest list.
+
+
+================================================================================
+SECTION 5: FUNCTIONAL REQUIREMENTS
+================================================================================
+
+5.1 MAP TAB INTEGRATION
+-----------------------
+FR01. System shall add new "Map" tab to MainWindow navigation
+FR02. System shall create MapTrackerPage.xaml as the Map tab content
+FR03. System shall maintain consistent tab styling with existing tabs
+FR04. System shall preserve tab state when switching between tabs
+
+5.2 MAP SELECTION AND DISPLAY
+-----------------------------
+FR05. System shall load SVG map files from Assets/DB/Maps/ folder
+FR06. System shall provide a dropdown/list to select current map
+FR07. System shall load map configuration from map_configs.json
+FR08. System shall render SVG at native resolution using SharpVectors
+FR09. System shall support 11 Tarkov maps (Woods, Customs, Shoreline,
+      Interchange, Reserve, Lighthouse, StreetsOfTarkov, Factory,
+      GroundZero, Labs, Labyrinth)
+
+5.3 SCREENSHOT FOLDER TRACKING
+------------------------------
+FR10. System shall monitor configured screenshot folder using FileSystemWatcher
+FR11. System shall filter for .png files only
+FR12. System shall debounce rapid file events (configurable, default 500ms)
+FR13. System shall wait for file write completion before parsing
+FR14. System shall auto-detect default EFT screenshot folder locations:
+      - Documents/Escape from Tarkov/Screenshots
+      - Documents/EFT/Screenshots
+      - OneDrive/Documents/Escape from Tarkov/Screenshots
+FR15. System shall persist screenshot folder setting to user_data.db
+
+5.4 FILENAME PARSING
+--------------------
+FR16. System shall parse X, Y, Z coordinates from filename
+FR17. System shall parse quaternion values (qx, qy, qz, qw) for heading
+FR18. System shall convert quaternion to yaw angle (degrees)
+FR19. System shall support configurable regex pattern with named groups
+FR20. System shall validate pattern contains required groups (x, y minimum)
+FR21. System shall emit error event on invalid filename format
+
+5.5 PLAYER POSITION/HEADING RENDERING
+-------------------------------------
+FR22. System shall convert game coordinates to map pixel coordinates
+      using PlayerMarkerTransform matrix from map_configs.json
+FR23. System shall display player position as a distinct marker
+FR24. System shall display heading as directional indicator (arrow/cone)
+FR25. System shall update marker position on each valid screenshot
+FR26. System shall maintain marker visibility during zoom/pan operations
+FR27. System shall scale marker inversely to zoom level (fixed screen size)
+
+5.6 DB OBJECT RENDERING
+-----------------------
+FR28. System shall load MapMarkers for selected map from tarkov_data.db
+FR29. System shall render extraction points with type-specific icons:
+      - PMC Extraction: Green icon
+      - Scav Extraction: Gray icon
+      - Shared Extraction: Green icon with indicator
+FR30. System shall render transit points with orange icon
+FR31. System shall load QuestObjectives with LocationPoints for selected map
+FR32. System shall render quest zones as:
+      - 1 point: Single marker
+      - 2 points: Line between points
+      - 3+ points: Polygon area
+FR33. System shall render OptionalPoints as alternative location markers
+FR34. System shall support marker tooltips showing name/description
+
+5.7 FILTER/LAYER/TOGGLE CONTROLS
+--------------------------------
+FR35. System shall provide toggles for marker categories:
+      - Player Position
+      - PMC Extractions
+      - Scav Extractions
+      - Transits
+      - Quest Markers
+      - Quest Zones
+      - Spawns (PMC/Scav/Boss/Raider)
+FR36. System shall persist toggle states per map in user_data.db
+FR37. System shall provide floor selector for multi-floor maps
+FR38. System shall auto-detect floor from Y coordinate when available
+FR39. System shall filter markers by FloorId when floor is selected
+
+5.8 ZOOM/PAN FUNCTIONALITY
+--------------------------
+FR40. System shall support mouse wheel zoom (0.1x to 5.0x)
+FR41. System shall support click-and-drag panning
+FR42. System shall provide zoom in/out buttons
+FR43. System shall provide reset view button
+FR44. System shall zoom toward mouse cursor position
+FR45. System shall display current zoom percentage
+
+5.9 QUEST INTEGRATION
+---------------------
+FR46. System shall highlight objectives for in-progress quests
+FR47. System shall integrate with QuestProgressService for quest status
+FR48. System shall allow clicking quest marker to see quest details
+
+5.10 PERFORMANCE REQUIREMENTS
+-----------------------------
+FR49. Position update latency shall be under 200ms from screenshot creation
+FR50. Map rendering shall maintain 30+ FPS during zoom/pan
+FR51. Initial map load shall complete within 1 second
+FR52. Marker rendering shall handle 500+ markers without degradation
+
+
+================================================================================
+SECTION 6: UI/UX REQUIREMENTS
+================================================================================
+
+6.1 TAB INTEGRATION
+-------------------
+MainWindow Tab Bar Update:
+  [Quests] [Hideout] [Items] [Collector] [Map]
+
+6.2 PAGE STRUCTURE
+------------------
+MapTrackerPage Layout:
+  +-------------------------------------------------------------------+
+  | Map: [Customs    v]  Floor: [Ground Floor v]  [Watcher: Running]  |
+  +-------------------------------------------------------------------+
+  | +---------------+ +---------------------------------------------+ |
+  | | LAYERS        | |                                             | |
+  | | [x] Player    | |                                             | |
+  | | [x] PMC Ext   | |              MAP SVG AREA                   | |
+  | | [x] Scav Ext  | |                                             | |
+  | | [x] Transit   | |            (Zoom/Pan enabled)               | |
+  | | [x] Quests    | |                                             | |
+  | | [x] Spawns    | |                                             | |
+  | +---------------+ |                                             | |
+  | [Settings]       | +---------------------------------------------+ |
+  +-------------------------------------------------------------------+
+  | Position: X: 95.7, Y: 2.4, Z: -134.0  Heading: 212.5deg  Zoom: 100% |
+  +-------------------------------------------------------------------+
+
+6.3 CONTROLS
+------------
+  - Map Dropdown: ComboBox with map names, sorted alphabetically
+  - Floor Dropdown: ComboBox, visible only for multi-floor maps
+  - Layer Toggles: CheckBox list in side panel
+  - Zoom Controls: Buttons (+/-/Reset), mouse wheel
+  - Settings Button: Opens screenshot watcher configuration
+  - Watcher Status: Icon/text showing running/stopped state
+  - Position Display: Real-time coordinate readout in status bar
+
+6.4 SETTINGS DIALOG
+-------------------
+Screenshot Watcher Settings (modal dialog or inline panel):
+  - Screenshot Folder Path: TextBox + Browse button
+  - Auto-Detect button
+  - Pattern TextBox (advanced, collapsed by default)
+  - Reset Pattern button
+  - Start/Stop Watcher button
+  - Status indicator (running/stopped/error)
+  - Last detected position display
+
+6.5 STATUS AND ERROR MESSAGES
+-----------------------------
+  - "Watcher: Running" (green) / "Watcher: Stopped" (gray)
+  - "Position updated" (brief flash on update)
+  - "Failed to parse screenshot filename" (warning toast)
+  - "Folder not accessible" (error dialog)
+  - "No markers found for this map" (info message)
+
+6.6 LOCALIZATION
+----------------
+All UI text shall support EN/KO/JA localization via LocalizationService:
+  - Tab name: "Map" / "지도" / "マップ"
+  - Layer names
+  - Status messages
+  - Settings labels
+
+
+================================================================================
+SECTION 7: TECHNICAL DESIGN
+================================================================================
+
+7.1 ARCHITECTURE
+----------------
+MapTrackerPage follows existing TarkovHelper page pattern:
+
+  +-------------------+
+  | MapTrackerPage    |
+  | (WPF Page)        |
+  +-------------------+
+         |
+         +---------------+---------------+---------------+
+         |               |               |               |
+         v               v               v               v
+  +-------------+  +-------------+  +-------------+  +-------------+
+  | MapTracker  |  | MapMarkerDb |  | QuestDb     |  | Settings    |
+  | Service     |  | Service     |  | Service     |  | Service     |
+  | (new)       |  | (existing)  |  | (existing)  | | (existing)  |
+  +-------------+  +-------------+  +-------------+  +-------------+
+         |               |               |               |
+         v               v               v               v
+    FileSystem     tarkov_data.db   tarkov_data.db   user_data.db
+
+7.2 NEW SERVICES
+----------------
+MapTrackerService (Services/MapTrackerService.cs)
+  Responsibilities:
+    - FileSystemWatcher management
+    - Screenshot filename parsing
+    - Position event emission
+    - Watcher state management
+    - Settings persistence via SettingsService
+
+  Properties:
+    - IsWatching: bool
+    - CurrentWatchPath: string
+    - CurrentPosition: EftPosition?
+    - LastError: string?
+
+  Events:
+    - PositionDetected(EftPosition)
+    - ParsingFailed(string filename, string reason)
+    - StateChanged(bool isWatching)
+
+  Methods:
+    - StartWatching(string folderPath): bool
+    - StopWatching(): void
+    - UpdatePattern(string regex): bool
+    - DetectDefaultFolder(): string?
+
+7.3 NEW MODELS
+--------------
+EftPosition (Models/EftPosition.cs)
+  Properties:
+    - X: double
+    - Y: double (height)
+    - Z: double
+    - Angle: double? (heading in degrees)
+    - Timestamp: DateTime
+    - OriginalFileName: string?
+
+MapTrackerSettings (stored as JSON in UserSettings)
+  Properties:
+    - ScreenshotFolderPath: string
+    - ParsePattern: string
+    - IsEnabled: bool
+    - LastMapKey: string
+    - LayerVisibility: Dictionary<string, bool>
+
+7.4 NEW PAGE
+------------
+MapTrackerPage (Pages/MapTrackerPage.xaml)
+  Code-behind pattern (consistent with existing pages):
+    - Loaded event initializes services and UI
+    - Event handlers for user interactions
+    - Service event subscriptions
+
+  Key UI Elements:
+    - SvgViewbox for map rendering (SharpVectors)
+    - Canvas overlay for markers
+    - ScrollViewer for zoom/pan container
+
+7.5 FILE WATCHER THREADING
+--------------------------
+MapTrackerService implementation:
+  - FileSystemWatcher runs on ThreadPool thread
+  - Events raised on background thread
+  - Dispatcher.Invoke required for UI updates in MapTrackerPage
+  - ConcurrentDictionary for debounce tracking
+  - Task.Delay for write-completion wait
+
+7.6 COORDINATE TRANSFORMATION
+-----------------------------
+Screenshot coordinates to map pixels:
+
+1. Load map_configs.json from Assets/DB/Data/
+2. Get playerMarkerTransform [a, b, c, d, tx, ty]
+3. Apply affine transformation:
+   screenX = a * gameX + b * gameZ + tx
+   screenY = c * gameX + d * gameZ + ty
+4. Position marker at (screenX, screenY) on canvas
+
+Note: gameY (height) used for floor detection only
+
+7.7 FLOOR DETECTION
+-------------------
+Auto-floor detection:
+1. Load MapFloorLocations for current map from tarkov_data.db
+2. On position update, check Y coordinate against floor ranges
+3. Regions checked in priority order
+4. First matching region determines floor
+5. Update floor selector and filter visible markers
+
+7.8 SETTINGS STORAGE
+--------------------
+Using existing SettingsService pattern:
+
+Key: "mapTracker.settings"
+Value: JSON serialized MapTrackerSettings
+
+Example:
+{
+  "ScreenshotFolderPath": "C:\\Users\\...\\Documents\\Escape from Tarkov\\Screenshots",
+  "ParsePattern": "...",
+  "IsEnabled": true,
+  "LastMapKey": "Customs",
+  "LayerVisibility": {
+    "player": true,
+    "pmcExtraction": true,
+    "scavExtraction": true,
+    ...
+  }
+}
+
+7.9 DB QUERIES
+--------------
+MapMarkers Query:
+  SELECT * FROM MapMarkers WHERE MapKey = @mapKey
+
+QuestObjectives Query:
+  SELECT o.*, q.Name as QuestName, q.NameKo, q.NameJa
+  FROM QuestObjectives o
+  LEFT JOIN Quests q ON o.QuestId = q.Id
+  WHERE o.MapName = @mapKey OR o.QuestLocation = @mapKey
+
+MapFloorLocations Query:
+  SELECT * FROM MapFloorLocations
+  WHERE MapKey = @mapKey
+  ORDER BY Priority DESC
+
+
+================================================================================
+SECTION 8: DATA REQUIREMENTS
+================================================================================
+
+8.1 DATABASE SCHEMA (tarkov_data.db)
+------------------------------------
+Existing Tables Used:
+
+MapMarkers
+  Id TEXT PRIMARY KEY
+  Name TEXT NOT NULL
+  NameKo TEXT
+  MarkerType TEXT NOT NULL  -- Enum: PmcSpawn, ScavSpawn, PmcExtraction,
+                            --       ScavExtraction, SharedExtraction, Transit,
+                            --       BossSpawn, RaiderSpawn, Lever, Keys
+  MapKey TEXT NOT NULL
+  X REAL NOT NULL
+  Y REAL NOT NULL           -- Height (for floor detection)
+  Z REAL NOT NULL
+  FloorId TEXT
+  CreatedAt TEXT NOT NULL
+  UpdatedAt TEXT NOT NULL
+  INDEX: idx_mapmarkers_mapkey ON MapMarkers(MapKey)
+  INDEX: idx_mapmarkers_type ON MapMarkers(MarkerType)
+
+MapFloorLocations
+  Id TEXT PRIMARY KEY
+  MapKey TEXT NOT NULL
+  FloorId TEXT NOT NULL
+  RegionName TEXT NOT NULL
+  MinY REAL NOT NULL
+  MaxY REAL NOT NULL
+  MinX REAL               -- Optional XZ bounds
+  MaxX REAL
+  MinZ REAL
+  MaxZ REAL
+  Priority INTEGER NOT NULL DEFAULT 0
+  CreatedAt TEXT NOT NULL
+  UpdatedAt TEXT NOT NULL
+
+QuestObjectives
+  Id TEXT PRIMARY KEY
+  QuestId TEXT NOT NULL
+  SortOrder INTEGER NOT NULL DEFAULT 0
+  ObjectiveType TEXT NOT NULL
+  Description TEXT NOT NULL
+  MapName TEXT              -- Primary map
+  LocationName TEXT
+  LocationPoints TEXT       -- JSON: [{X, Y, Z, FloorId}, ...]
+  OptionalPoints TEXT       -- JSON: [{X, Y, Z, FloorId}, ...]
+  ...
+  FOREIGN KEY (QuestId) REFERENCES Quests(Id)
+  INDEX: idx_questobj_map ON QuestObjectives(MapName)
+
+8.2 USER DATA SCHEMA (user_data.db)
+-----------------------------------
+UserSettings Table (existing):
+  Key TEXT PRIMARY KEY
+  Value TEXT NOT NULL
+
+Map Tracker Settings Key:
+  Key: "mapTracker.settings"
+  Value: JSON string of MapTrackerSettings object
+
+8.3 DATA MODELS (POCO)
+----------------------
+New models to create:
+  - EftPosition
+  - MapTrackerSettings (serializable to JSON)
+
+Models to reference from tarkov_data.db:
+  - MapMarker (already in MapMarkerDbService)
+  - QuestObjective (already in QuestDbService)
+  - MapConfig (load from JSON file)
+
+
+================================================================================
+SECTION 9: ACCEPTANCE CRITERIA
+================================================================================
+
+AC01. Given screenshot folder is configured,
+      When a valid EFT screenshot is created,
+      Then player marker appears at correct map position within 200ms.
+
+AC02. Given screenshot contains quaternion data,
+      When position is parsed,
+      Then heading indicator shows correct direction (+-5 degrees).
+
+AC03. Given user selects "Customs" map,
+      When map loads,
+      Then all MapMarkers with MapKey="Customs" are displayed.
+
+AC04. Given map has floor definitions,
+      When user changes floor selector,
+      Then only markers matching FloorId are visible.
+
+AC05. Given player is on basement (Y < threshold),
+      When auto-floor is enabled,
+      Then floor selector automatically changes to "Basement".
+
+AC06. Given user unchecks "PMC Extractions" toggle,
+      When map renders,
+      Then PmcExtraction markers are hidden.
+
+AC07. Given user zooms to 200%,
+      When markers render,
+      Then marker icons remain same screen size.
+
+AC08. Given ScreenshotWatcher is running,
+      When folder becomes inaccessible,
+      Then error message is displayed and watcher stops gracefully.
+
+AC09. Given invalid screenshot filename,
+      When parser fails,
+      Then error is logged and previous position is maintained.
+
+AC10. Given user customizes regex pattern,
+      When pattern is saved,
+      Then new pattern is used for subsequent screenshots.
+
+AC11. Given QuestObjective has 3 LocationPoints,
+      When rendered on map,
+      Then triangle polygon is drawn connecting all points.
+
+AC12. Given Transit markers exist for map,
+      When map loads,
+      Then Transit markers display with orange icon.
+
+AC13. Given user hovers over extraction marker,
+      When tooltip triggers,
+      Then extraction name is shown in current language (EN/KO/JA).
+
+AC14. Given 500+ markers on map,
+      When user zooms/pans,
+      Then frame rate remains above 30 FPS.
+
+AC15. Given app restarts,
+      When MapTrackerPage opens,
+      Then previous settings (folder, map, layers) are restored.
+
+AC16. Given Map tab is clicked,
+      When page loads,
+      Then last viewed map is selected by default.
+
+AC17. Given quest is marked as in-progress in Quests tab,
+      When Map tab shows same map,
+      Then quest objective markers are highlighted.
+
+
+================================================================================
+SECTION 10: EDGE CASES / FAILURE MODES
+================================================================================
+
+10.1 FILE SYSTEM EDGE CASES
+---------------------------
+E01. Screenshot file locked by EFT:
+     - Wait up to 5 seconds with 100ms retry interval
+     - If still locked, skip and log warning
+
+E02. Rapid screenshot burst (10+ in 1 second):
+     - Debounce with 500ms window
+     - Process only latest file in burst
+
+E03. Screenshot folder deleted while watching:
+     - FileSystemWatcher raises Error event
+     - Auto-attempt recovery after 1 second
+     - If folder still missing, stop watcher and notify user
+
+E04. Very long file path (>260 chars):
+     - Use extended path prefix (\\?\)
+     - Log warning if path exceeds limit
+
+E05. Non-PNG file created in folder:
+     - Filter already set to *.png
+     - Ignore other file types
+
+10.2 PARSING EDGE CASES
+-----------------------
+E06. Filename with unusual coordinates (e.g., 99999, -99999):
+     - Accept all valid float values
+     - Clamp to map bounds for display
+
+E07. Quaternion normalization error:
+     - Handle denormalized quaternions gracefully
+     - Default to 0 degrees if calculation fails
+
+E08. Non-matching filename format:
+     - Log warning with filename
+     - Keep previous position on map
+
+E09. Corrupted filename (truncated):
+     - Regex match fails
+     - Skip silently
+
+10.3 MAP RENDERING EDGE CASES
+-----------------------------
+E10. SVG file missing or corrupted:
+     - Display error message in map area
+     - Disable marker rendering
+
+E11. Map config missing transform data (Labyrinth):
+     - Use playerMarkerTransform only
+     - Log warning
+
+E12. No markers in database for map:
+     - Display map with info message
+     - Continue allowing position tracking
+
+
+================================================================================
+SECTION 11: TELEMETRY / LOGGING
+================================================================================
+
+11.1 LOG EVENTS
+---------------
+Using existing TarkovHelper logging pattern:
+
+LOG_INFO:
+  - [MapTracker] Watcher started: {folderPath}
+  - [MapTracker] Watcher stopped
+  - [MapTracker] Map changed: {mapKey}
+  - [MapTracker] Floor changed: {floorId}
+  - [MapTracker] Position updated: X={x}, Z={z}, Angle={angle}
+  - [MapTracker] Markers loaded: {count} for {mapKey}
+
+LOG_WARNING:
+  - [MapTracker] Parse failed: {filename}, Reason: {reason}
+  - [MapTracker] File access timeout: {filename}
+  - [MapTracker] Transform missing for map: {mapKey}
+
+LOG_ERROR:
+  - [MapTracker] FileSystemWatcher error: {exception}
+  - [MapTracker] SVG load failed: {filename}, {exception}
+  - [MapTracker] DB query failed: {exception}
+
+
+================================================================================
+SECTION 12: SECURITY / PRIVACY
+================================================================================
+
+12.1 LOCAL FILE ACCESS
+----------------------
+  - Screenshot folder path stored in local user_data.db only
+  - No transmission of file paths or coordinates externally
+  - User must explicitly configure folder path
+
+12.2 PATH EXPOSURE MITIGATION
+-----------------------------
+  - Log file paths using filename only when possible
+  - Settings dialog shows full path but does not auto-share
+  - No telemetry of file system paths
+
+12.3 INPUT VALIDATION
+---------------------
+  - Regex pattern validated before saving
+  - Folder path checked for existence
+  - No arbitrary code execution from filename parsing
+
+
+================================================================================
+SECTION 13: TEST PLAN
+================================================================================
+
+13.1 UNIT TESTS
+---------------
+MapTrackerService Tests:
+  - Parse valid filename with all components
+  - Parse filename with negative coordinates
+  - Parse filename with small decimal values
+  - Reject filename without position
+  - Reject filename without quaternion (heading = null)
+  - Custom pattern validation
+  - Quaternion to yaw conversion accuracy
+
+MapConfig Tests:
+  - Load map_configs.json successfully
+  - GameToScreenForPlayer transform accuracy
+  - Floor detection from Y coordinate
+
+13.2 INTEGRATION TESTS
+----------------------
+  - End-to-end: Create file -> Watcher detects -> Parser extracts ->
+    Page updates
+  - DB query with actual tarkov_data.db
+  - SVG rendering with real map files
+  - Settings persistence through restart
+
+13.3 UI TESTS
+-------------
+  - Map tab appears in navigation
+  - Map selection changes SVG
+  - Layer toggles show/hide markers
+  - Zoom preserves marker positions
+  - Pan updates viewport correctly
+  - Status bar updates with position
+  - Localization switches correctly
+
+13.4 SAMPLE FILENAME CASES
+--------------------------
+VALID:
+  2025-12-04[00-40]_95.77, 2.44, -134.02_-0.02395, -0.85891, 0.03920, -0.51007_16.74 (0).png
+  2025-01-01[23-59]_-500.0, 0.0, 500.0_0.0, 0.0, 0.0, 1.0_12.5 (1).png
+  2024-06-15[12-00]_0, 100, 0_1, 0, 0, 0_90 (0).png
+
+INVALID:
+  screenshot.png (no coordinates)
+  2025-12-04[00-40]_95.77, 2.44_16.74 (0).png (missing Z and quaternion)
+  2025-12-04[00-40]_abc, def, ghi_1, 2, 3, 4_16.74 (0).png (non-numeric)
+
+
+================================================================================
+SECTION 14: MILESTONES
+================================================================================
+
+PHASE 1: Core Map Viewer (v1.0)
+-------------------------------
+  - MapTrackerPage.xaml with SVG rendering
+  - Map selection dropdown
+  - Zoom/pan functionality
+  - Basic layer toggle for extractions
+  - Player marker rendering (without screenshot tracking)
+
+Deliverables:
+  - Pages/MapTrackerPage.xaml
+  - Pages/MapTrackerPage.xaml.cs
+  - MainWindow.xaml update (Map tab)
+
+PHASE 2: Screenshot Tracking (v1.1)
+-----------------------------------
+  - MapTrackerService implementation
+  - Screenshot folder configuration
+  - Real-time position tracking
+  - Heading indicator
+  - Settings persistence
+
+Deliverables:
+  - Services/MapTrackerService.cs
+  - Models/EftPosition.cs
+  - Settings dialog integration
+
+PHASE 3: Full Marker Support (v1.2)
+-----------------------------------
+  - All marker types from MapMarkers table
+  - Quest zones from QuestObjectives
+  - Marker tooltips (localized)
+  - Category toggles (full set)
+  - Floor selection for multi-floor maps
+  - Auto-floor detection
+
+Deliverables:
+  - MapMarkerDbService enhancement (if needed)
+  - Floor detection logic
+  - Quest integration with QuestProgressService
+
+PHASE 4: Polish and Optimization (v1.3)
+---------------------------------------
+  - Performance optimization
+  - Error handling improvements
+  - UI polish
+  - Full localization (EN/KO/JA)
+  - User feedback integration
+
+Deliverables:
+  - Performance profiling and fixes
+  - Localization strings
+  - Final UI refinements
+
+
+================================================================================
+SECTION 15: OPEN QUESTIONS / ASSUMPTIONS
+================================================================================
+
+15.1 OPEN QUESTIONS
+-------------------
+Q1. Should player position history (trail) be displayed?
+    - If yes, how many points to keep?
+    - Visual style for trail?
+
+Q2. Should map auto-pan to keep player marker visible?
+    - Or require manual pan to follow?
+
+Q3. Should Quest zones have click-to-select for details?
+    - If yes, navigate to quest in Quests tab?
+
+Q4. Should extraction conditions (e.g., "PMC only", "Key required") be displayed?
+    - Data source for conditions?
+
+Q5. How to handle maps without calibrated transform data (Labyrinth)?
+    - Currently only playerMarkerTransform available
+
+Q6. Should there be a mini-map or overview panel?
+
+Q7. Should in-progress quests from Quests tab auto-highlight on Map?
+    - Cross-tab coordination mechanism?
+
+15.2 ASSUMPTIONS
+----------------
+A1. EFT screenshot format will remain consistent
+    - If format changes, user can update regex pattern
+
+A2. SVG files are pre-calibrated and don't need runtime adjustment
+
+A3. Map selection is manual; no auto-detection from screenshot
+
+A4. Internet connectivity not required for map feature
+
+A5. Maximum 500 markers per map is sufficient for current game state
+
+A6. Floor detection priority values are correctly configured in DB
+
+A7. Quest Location field matches map key aliases
+
+A8. All coordinate transforms have been calibrated with sufficient accuracy
+
+A9. SettingsService can handle JSON serialization of MapTrackerSettings
+
+A10. Existing marker icons in Assets/DB/Icons/ are correctly named
+
+
+================================================================================
+FILES TO CREATE
+================================================================================
+
+New Files:
+  TarkovHelper/Pages/MapTrackerPage.xaml
+  TarkovHelper/Pages/MapTrackerPage.xaml.cs
+  TarkovHelper/Services/MapTrackerService.cs
+  TarkovHelper/Models/EftPosition.cs
+
+Files to Modify:
+  TarkovHelper/MainWindow.xaml (add Map tab)
+  TarkovHelper/MainWindow.xaml.cs (add tab handling)
+
+
+================================================================================
+FILE GENERATED: C:\prg\Tarkov-Item-Helper\TarkovHelper\docs\MapFeature.prd
+================================================================================

@@ -6,7 +6,6 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using TarkovHelper.Models;
 using TarkovHelper.Services;
-using TarkovHelper.Services.MapTracker;
 using System.Linq;
 
 namespace TarkovHelper.Pages
@@ -122,10 +121,8 @@ namespace TarkovHelper.Pages
     {
         private readonly LocalizationService _loc = LocalizationService.Instance;
         private readonly QuestProgressService _progressService = QuestProgressService.Instance;
-        private readonly QuestObjectiveService _objectiveService = QuestObjectiveService.Instance;
         private readonly ImageCacheService _imageCache = ImageCacheService.Instance;
         private readonly ItemInventoryService _inventoryService = ItemInventoryService.Instance;
-        private readonly MarkerQuestBridgeService _bridgeService = MarkerQuestBridgeService.Instance;
         private List<QuestViewModel> _allQuestViewModels = new();
         private List<string> _traders = new();
         private List<string> _maps = new();
@@ -681,10 +678,8 @@ namespace TarkovHelper.Pages
             _currentDetailTask = task;
             var status = _progressService.GetStatus(task);
 
-            // Show on Map button visibility (only if quest has markers)
-            BtnShowOnMap.Visibility = _bridgeService.HasMarkers(task)
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            // Show on Map button - hidden (Map feature removed)
+            BtnShowOnMap.Visibility = Visibility.Collapsed;
 
             // Title
             var (displayName, subtitle, showSubtitle) = GetLocalizedNames(task);
@@ -863,47 +858,7 @@ namespace TarkovHelper.Pages
 
         private void BtnShowOnMap_Click(object sender, RoutedEventArgs e)
         {
-            var selectedVm = LstQuests.SelectedItem as QuestViewModel;
-            if (selectedVm?.Task == null) return;
-
-            var task = selectedVm.Task;
-
-            // Check if quest has markers
-            if (!_bridgeService.HasMarkers(task))
-            {
-                System.Diagnostics.Debug.WriteLine($"[QuestListPage] No markers for quest: {task.Name}");
-                return;
-            }
-
-            // Get maps with markers for this quest
-            var mapsWithMarkers = _bridgeService.GetMapsWithMarkers(task);
-
-            if (mapsWithMarkers.Count == 0) return;
-
-            // If only one map, go directly to it
-            // If multiple maps, use the first one from the quest's Maps property if available
-            string targetMap;
-            if (mapsWithMarkers.Count == 1)
-            {
-                targetMap = mapsWithMarkers[0];
-            }
-            else if (task.Maps != null && task.Maps.Count > 0)
-            {
-                // Find a map that's both in task.Maps and has markers
-                targetMap = task.Maps.FirstOrDefault(m =>
-                    mapsWithMarkers.Any(mm => mm.Equals(m, StringComparison.OrdinalIgnoreCase)))
-                    ?? mapsWithMarkers[0];
-            }
-            else
-            {
-                targetMap = mapsWithMarkers[0];
-            }
-
-            // Fire the event to navigate to map and highlight markers
-            _bridgeService.SelectQuest(task, targetMap);
-            _bridgeService.RequestMapFocus(task, targetMap);
-
-            System.Diagnostics.Debug.WriteLine($"[QuestListPage] Show on map: {task.Name} -> {targetMap}");
+            // Map feature removed - this button is hidden
         }
 
         private void BtnComplete_Click(object sender, RoutedEventArgs e)
@@ -1157,21 +1112,11 @@ namespace TarkovHelper.Pages
             {
                 var isCompleted = checkBox.IsChecked ?? false;
 
-                // Map Tracker와 동기화를 위해 ObjectiveId도 함께 저장
-                string? objectiveId = null;
-                if (_objectiveService.IsLoaded)
-                {
-                    objectiveId = _objectiveService.GetObjectiveIdByIndex(
-                        _currentDetailTask.NormalizedName,
-                        objectiveIndex,
-                        _currentDetailTask);
-                }
-
                 _progressService.SetObjectiveCompleted(
                     _currentDetailTask.NormalizedName,
                     objectiveIndex,
                     isCompleted,
-                    objectiveId);
+                    null);
 
                 // Update the text style (strikethrough)
                 var parent = checkBox.Parent as StackPanel;

@@ -48,9 +48,28 @@ public class SettingsService
     private const string KeyMapAutoHideCompleted = "map.autoHideCompleted";
     private const string KeyMapFadeCompleted = "map.fadeCompleted";
     private const string KeyMapShowLabels = "map.showLabels";
+    private const string KeyMapLabelScale = "map.labelScale";
+    private const string KeyMapQuestStatusColors = "map.questStatusColors";
+    private const string KeyMapHideCompletedQuests = "map.hideCompletedQuests";
+    private const string KeyMapShowActiveOnly = "map.showActiveOnly";
+    private const string KeyMapHideCompletedObjectives = "map.hideCompletedObjectives";
+    private const string KeyMapShowKappaHighlight = "map.showKappaHighlight";
+    private const string KeyMapTraderFilter = "map.traderFilter";
     private const string KeyMapTrailColor = "map.trailColor";
     private const string KeyMapTrailThickness = "map.trailThickness";
     private const string KeyMapAutoStartTracking = "map.autoStartTracking";
+    private const string KeyMapClusteringEnabled = "map.clusteringEnabled";
+    private const string KeyMapClusterZoomThreshold = "map.clusterZoomThreshold";
+    private const string KeyMapAutoFloorEnabled = "map.autoFloorEnabled";
+    private const string KeyMapShowBosses = "map.showBosses";
+    private const string KeyMapShowSpawns = "map.showSpawns";
+    private const string KeyMapShowLevers = "map.showLevers";
+    private const string KeyMapShowKeys = "map.showKeys";
+    private const string KeyMapLeftPanelExpanded = "map.leftPanelExpanded";
+    private const string KeyExpanderLayersExpanded = "map.expanderLayers";
+    private const string KeyExpanderFloorExpanded = "map.expanderFloor";
+    private const string KeyExpanderMapInfoExpanded = "map.expanderMapInfo";
+    private const string KeyQuestPanelVisible = "map.questPanelVisible";
 
     private bool _settingsLoaded;
     private string? _detectionMethod;
@@ -86,9 +105,23 @@ public class SettingsService
     private bool? _mapAutoHideCompleted;
     private bool? _mapFadeCompleted;
     private bool? _mapShowLabels;
+    private double? _mapLabelScale;
+    private bool? _mapQuestStatusColors;
+    private bool? _mapHideCompletedQuests;
+    private bool? _mapShowActiveOnly;
+    private bool? _mapHideCompletedObjectives;
+    private bool? _mapShowKappaHighlight;
+    private string? _mapTraderFilter;  // Empty = all, or trader name
     private string? _mapTrailColor;
     private double? _mapTrailThickness;
     private bool? _mapAutoStartTracking;
+    private bool? _mapClusteringEnabled;
+    private double? _mapClusterZoomThreshold;
+    private bool? _mapAutoFloorEnabled;
+    private bool? _mapShowBosses;
+    private bool? _mapShowSpawns;
+    private bool? _mapShowLevers;
+    private bool? _mapShowKeys;
 
     public event EventHandler<string?>? LogFolderChanged;
     public event EventHandler<int>? PlayerLevelChanged;
@@ -746,6 +779,147 @@ public class SettingsService
     }
 
     /// <summary>
+    /// Label scale (0.5 - 1.5)
+    /// </summary>
+    public double MapLabelScale
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapLabelScale ?? 1.0;
+        }
+        set
+        {
+            var clampedValue = Math.Clamp(value, 0.5, 1.5);
+            if (Math.Abs((_mapLabelScale ?? 1.0) - clampedValue) > 0.01)
+            {
+                _mapLabelScale = clampedValue;
+                SaveSetting(KeyMapLabelScale, clampedValue.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Color quests by status (Active/Locked/Done)
+    /// </summary>
+    public bool MapQuestStatusColors
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapQuestStatusColors ?? true;
+        }
+        set
+        {
+            if (_mapQuestStatusColors != value)
+            {
+                _mapQuestStatusColors = value;
+                SaveSetting(KeyMapQuestStatusColors, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Hide completed quests on map
+    /// </summary>
+    public bool MapHideCompletedQuests
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapHideCompletedQuests ?? false;
+        }
+        set
+        {
+            if (_mapHideCompletedQuests != value)
+            {
+                _mapHideCompletedQuests = value;
+                SaveSetting(KeyMapHideCompletedQuests, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show only active quests on map
+    /// </summary>
+    public bool MapShowActiveOnly
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowActiveOnly ?? false;
+        }
+        set
+        {
+            if (_mapShowActiveOnly != value)
+            {
+                _mapShowActiveOnly = value;
+                SaveSetting(KeyMapShowActiveOnly, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Hide individually completed objectives on map
+    /// </summary>
+    public bool MapHideCompletedObjectives
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapHideCompletedObjectives ?? false;
+        }
+        set
+        {
+            if (_mapHideCompletedObjectives != value)
+            {
+                _mapHideCompletedObjectives = value;
+                SaveSetting(KeyMapHideCompletedObjectives, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Highlight Kappa-required quests on map
+    /// </summary>
+    public bool MapShowKappaHighlight
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowKappaHighlight ?? true;  // Default: show kappa highlight
+        }
+        set
+        {
+            if (_mapShowKappaHighlight != value)
+            {
+                _mapShowKappaHighlight = value;
+                SaveSetting(KeyMapShowKappaHighlight, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Trader filter for quests on map (empty = all traders)
+    /// </summary>
+    public string MapTraderFilter
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapTraderFilter ?? "";
+        }
+        set
+        {
+            if (_mapTraderFilter != value)
+            {
+                _mapTraderFilter = value;
+                SaveSetting(KeyMapTraderFilter, value ?? "");
+            }
+        }
+    }
+
+    /// <summary>
     /// Trail color (hex string)
     /// </summary>
     public string MapTrailColor
@@ -802,6 +976,240 @@ public class SettingsService
             {
                 _mapAutoStartTracking = value;
                 SaveSetting(KeyMapAutoStartTracking, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Enable marker clustering
+    /// </summary>
+    public bool MapClusteringEnabled
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapClusteringEnabled ?? true;
+        }
+        set
+        {
+            if (_mapClusteringEnabled != value)
+            {
+                _mapClusteringEnabled = value;
+                SaveSetting(KeyMapClusteringEnabled, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Zoom threshold for clustering (0-100)
+    /// </summary>
+    public double MapClusterZoomThreshold
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapClusterZoomThreshold ?? 50;
+        }
+        set
+        {
+            var clampedValue = Math.Clamp(value, 0, 100);
+            if (Math.Abs((_mapClusterZoomThreshold ?? 50) - clampedValue) > 0.5)
+            {
+                _mapClusterZoomThreshold = clampedValue;
+                SaveSetting(KeyMapClusterZoomThreshold, clampedValue.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Enable auto floor detection
+    /// </summary>
+    public bool MapAutoFloorEnabled
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapAutoFloorEnabled ?? true;
+        }
+        set
+        {
+            if (_mapAutoFloorEnabled != value)
+            {
+                _mapAutoFloorEnabled = value;
+                SaveSetting(KeyMapAutoFloorEnabled, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show boss markers on map
+    /// </summary>
+    public bool MapShowBosses
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowBosses ?? true;
+        }
+        set
+        {
+            if (_mapShowBosses != value)
+            {
+                _mapShowBosses = value;
+                SaveSetting(KeyMapShowBosses, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show spawn markers on map
+    /// </summary>
+    public bool MapShowSpawns
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowSpawns ?? true;
+        }
+        set
+        {
+            if (_mapShowSpawns != value)
+            {
+                _mapShowSpawns = value;
+                SaveSetting(KeyMapShowSpawns, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show lever markers on map
+    /// </summary>
+    public bool MapShowLevers
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowLevers ?? true;
+        }
+        set
+        {
+            if (_mapShowLevers != value)
+            {
+                _mapShowLevers = value;
+                SaveSetting(KeyMapShowLevers, value.ToString());
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show key markers on map
+    /// </summary>
+    public bool MapShowKeys
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapShowKeys ?? true;
+        }
+        set
+        {
+            if (_mapShowKeys != value)
+            {
+                _mapShowKeys = value;
+                SaveSetting(KeyMapShowKeys, value.ToString());
+            }
+        }
+    }
+
+    private bool? _mapLeftPanelExpanded;
+    /// <summary>
+    /// Left panel expanded state (true=80px with labels, false=48px icon only)
+    /// </summary>
+    public bool LeftPanelExpanded
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _mapLeftPanelExpanded ?? false;  // Default: collapsed
+        }
+        set
+        {
+            if (_mapLeftPanelExpanded != value)
+            {
+                _mapLeftPanelExpanded = value;
+                SaveSetting(KeyMapLeftPanelExpanded, value.ToString());
+            }
+        }
+    }
+
+    private bool? _expanderLayersExpanded;
+    public bool ExpanderLayersExpanded
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _expanderLayersExpanded ?? false;  // Default: collapsed
+        }
+        set
+        {
+            if (_expanderLayersExpanded != value)
+            {
+                _expanderLayersExpanded = value;
+                SaveSetting(KeyExpanderLayersExpanded, value.ToString());
+            }
+        }
+    }
+
+    private bool? _expanderFloorExpanded;
+    public bool ExpanderFloorExpanded
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _expanderFloorExpanded ?? false;  // Default: collapsed
+        }
+        set
+        {
+            if (_expanderFloorExpanded != value)
+            {
+                _expanderFloorExpanded = value;
+                SaveSetting(KeyExpanderFloorExpanded, value.ToString());
+            }
+        }
+    }
+
+    private bool? _expanderMapInfoExpanded;
+    public bool ExpanderMapInfoExpanded
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _expanderMapInfoExpanded ?? false;  // Default: collapsed
+        }
+        set
+        {
+            if (_expanderMapInfoExpanded != value)
+            {
+                _expanderMapInfoExpanded = value;
+                SaveSetting(KeyExpanderMapInfoExpanded, value.ToString());
+            }
+        }
+    }
+
+    private bool? _questPanelVisible;
+    public bool QuestPanelVisible
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _questPanelVisible ?? true;  // Default: visible
+        }
+        set
+        {
+            if (_questPanelVisible != value)
+            {
+                _questPanelVisible = value;
+                SaveSetting(KeyQuestPanelVisible, value.ToString());
             }
         }
     }
@@ -1204,6 +1612,66 @@ public class SettingsService
 
             if (bool.TryParse(_userDataDb.GetSetting(KeyMapAutoStartTracking), out var autoStartTracking))
                 _mapAutoStartTracking = autoStartTracking;
+
+            // Load clustering and layer settings
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapClusteringEnabled), out var clusteringEnabled))
+                _mapClusteringEnabled = clusteringEnabled;
+
+            if (double.TryParse(_userDataDb.GetSetting(KeyMapClusterZoomThreshold), out var clusterZoomThreshold))
+                _mapClusterZoomThreshold = clusterZoomThreshold;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapAutoFloorEnabled), out var autoFloorEnabled))
+                _mapAutoFloorEnabled = autoFloorEnabled;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowBosses), out var showBosses))
+                _mapShowBosses = showBosses;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowSpawns), out var showSpawns))
+                _mapShowSpawns = showSpawns;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowLevers), out var showLevers))
+                _mapShowLevers = showLevers;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowKeys), out var showKeys))
+                _mapShowKeys = showKeys;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapLeftPanelExpanded), out var leftPanelExpanded))
+                _mapLeftPanelExpanded = leftPanelExpanded;
+
+            // Load Expander states
+            if (bool.TryParse(_userDataDb.GetSetting(KeyExpanderLayersExpanded), out var expanderLayersExpanded))
+                _expanderLayersExpanded = expanderLayersExpanded;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyExpanderFloorExpanded), out var expanderFloorExpanded))
+                _expanderFloorExpanded = expanderFloorExpanded;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyExpanderMapInfoExpanded), out var expanderMapInfoExpanded))
+                _expanderMapInfoExpanded = expanderMapInfoExpanded;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyQuestPanelVisible), out var questPanelVisible))
+                _questPanelVisible = questPanelVisible;
+
+            // Load quest display settings
+            if (double.TryParse(_userDataDb.GetSetting(KeyMapLabelScale), out var labelScale))
+                _mapLabelScale = labelScale;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapQuestStatusColors), out var questStatusColors))
+                _mapQuestStatusColors = questStatusColors;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapHideCompletedQuests), out var hideCompletedQuests))
+                _mapHideCompletedQuests = hideCompletedQuests;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowActiveOnly), out var showActiveOnly))
+                _mapShowActiveOnly = showActiveOnly;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapHideCompletedObjectives), out var hideCompletedObjectives))
+                _mapHideCompletedObjectives = hideCompletedObjectives;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyMapShowKappaHighlight), out var showKappaHighlight))
+                _mapShowKappaHighlight = showKappaHighlight;
+
+            _mapTraderFilter = _userDataDb.GetSetting(KeyMapTraderFilter);
+            if (string.IsNullOrEmpty(_mapTraderFilter)) _mapTraderFilter = null;
         }
         catch (Exception ex)
         {

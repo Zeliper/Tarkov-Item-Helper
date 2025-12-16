@@ -1,0 +1,1090 @@
+================================================================================
+                    TARKOV HELPER - MAP TRACKER UI/UX REDESIGN
+                        Product Requirements Document (PRD)
+================================================================================
+
+Document Version: 1.0
+Created: 2025-12-15
+Author: Senior PM / UX Lead / Tech Lead
+Target Application: TarkovHelper (WPF .NET 8)
+Location: TarkovHelper/docs/MapUIUX_Redesign.prd
+
+================================================================================
+1. EXECUTIVE SUMMARY
+================================================================================
+
+1.1 Overview
+--------------------------------------------------------------------------------
+This document defines the comprehensive UI/UX redesign requirements for the
+MapTrackerPage feature in TarkovHelper application. The redesign aims to improve
+user experience, visual consistency, and functionality while maintaining all
+existing features.
+
+1.2 Goals
+--------------------------------------------------------------------------------
+- Achieve visual consistency with TarkovHelper's global design system (App.xaml)
+- Improve map readability and marker visibility at all zoom levels
+- Enhance layer management and floor navigation UX
+- Optimize sidebar layout and information density
+- Support trilingual localization (EN/KO/JA)
+- Maintain all existing functionality without breaking changes
+
+1.3 Scope
+--------------------------------------------------------------------------------
+IN SCOPE:
+- TarkovHelper/Pages/MapTrackerPage.xaml UI redesign
+- TarkovHelper/Pages/MapTrackerPage.xaml.cs interaction logic updates
+- TarkovHelper/Services/LocalizationService.cs UI string additions
+- Map marker rendering improvements
+- Sidebar layout optimization
+
+OUT OF SCOPE:
+- Database schema changes (tarkov_data.db is READ-ONLY)
+- New data ingestion from external APIs
+- TarkovDBEditor application changes
+
+================================================================================
+2. PROBLEM STATEMENT
+================================================================================
+
+2.1 Current State Issues
+--------------------------------------------------------------------------------
+
+2.1.1 Visual Inconsistency
+The current MapTrackerPage uses hardcoded color values that differ from the
+global design system defined in TarkovHelper/App.xaml. This creates visual
+discord with other application pages.
+
+CURRENT HARDCODED COLORS:
+- Background: #1A1A1A, #252526, #2D2D30, #3E3E42
+- Text: #CCC, #888, #AAA, White
+- Borders: #555, #444
+
+TARKOVHELPER APP.XAML DESIGN TOKENS:
+- BackgroundDark: #1a1a1a
+- BackgroundMedium: #252525
+- BackgroundLight: #2d2d2d
+- TextPrimary: #e0e0e0
+- TextSecondary: #9e9e9e
+- AccentColor: #c5a84a
+- SuccessColor: #4caf50
+- WarningColor: #ff9800
+
+2.1.2 Marker Rendering Issues
+- Marker labels overlap at high zoom levels creating unreadable clusters
+- Marker sizes become too small or too large at extreme zoom levels
+- Overlapping markers at same coordinates are not distinguishable
+- Quest objective markers lack clear differentiation from POI markers
+
+2.1.3 Sidebar Layout Problems
+- LAYERS section occupies excessive vertical space
+- SHORTCUTS section is always visible but rarely used
+- Floor selector is not intuitive for multi-floor maps
+- Layer visibility toggles lack visual feedback
+
+2.1.4 Localization Gaps
+- Several UI strings are hardcoded in English
+- Marker type names are not localized
+- Layer section headers are not localized
+
+2.2 User Pain Points
+--------------------------------------------------------------------------------
+- Difficulty reading marker names in dense areas
+- Confusion identifying current floor on multi-level maps
+- Inability to customize layer visibility quickly
+- Visual fatigue from inconsistent styling
+
+================================================================================
+3. DESIGN SYSTEM REFERENCE
+================================================================================
+
+3.1 Color Palette (from TarkovHelper/App.xaml)
+--------------------------------------------------------------------------------
+
+PRIMARY COLORS:
+- BackgroundDarkBrush:   #1a1a1a (main background)
+- BackgroundMediumBrush: #252525 (panels, cards)
+- BackgroundLightBrush:  #2d2d2d (elevated elements)
+
+TEXT COLORS:
+- TextPrimaryBrush:   #e0e0e0 (primary text)
+- TextSecondaryBrush: #9e9e9e (secondary text)
+
+ACCENT COLORS:
+- AccentBrush:      #c5a84a (gold accent)
+- AccentHoverBrush: #d4b85a (gold hover)
+
+STATUS COLORS:
+- SuccessBrush: #4caf50 (green - extractions)
+- WarningBrush: #ff9800 (orange - spawns)
+
+BORDER:
+- BorderBrush: #3d3d3d (borders, separators)
+
+3.2 Map-Specific Color Tokens (NEW)
+--------------------------------------------------------------------------------
+
+MARKER COLORS:
+- MarkerExtractBrush:  #4CAF50 (extractions)
+- MarkerTransitBrush:  #2196F3 (transits)
+- MarkerSpawnBrush:    #FF9800 (spawns)
+- MarkerBossBrush:     #F44336 (boss spawns)
+- MarkerLeverBrush:    #9C27B0 (levers)
+- MarkerKeyBrush:      #FFC107 (key locations)
+- PlayerPositionBrush: #00BCD4 (player marker)
+
+QUEST OBJECTIVE COLORS:
+- QuestAreaBrush:     #FF980040 (polygon fill, 25% opacity)
+- QuestLineBrush:     #FF9800 (line/route)
+- QuestPointBrush:    #FFC107 (single point)
+- QuestOptionalBrush: #9C27B0 (optional locations)
+
+3.3 Typography
+--------------------------------------------------------------------------------
+- Font Family: Maplestory (custom)
+- FontSizeTiny:   12px (marker labels at high density)
+- FontSizeXSmall: 14px (secondary labels)
+- FontSizeSmall:  16px (sidebar content)
+- FontSizeMedium: 18px (default UI text)
+- FontSizeLarge:  20px (section headers)
+
+3.4 Component Patterns
+--------------------------------------------------------------------------------
+
+BUTTONS:
+- Standard: BackgroundLightBrush bg, TextPrimaryBrush text
+- Hover: AccentBrush bg
+- Pressed: AccentHoverBrush bg
+- CornerRadius: 4px
+- Padding: 12px horizontal, 8px vertical
+
+CHECKBOXES:
+- Unchecked: BackgroundMediumBrush bg, BorderBrush border
+- Checked: BackgroundLightBrush bg, SuccessBrush border/checkmark
+- Size: 16x16px
+- CornerRadius: 3px
+
+PANELS:
+- Background: BackgroundMediumBrush
+- Border: BorderBrush, 1px
+- CornerRadius: 4px
+- Padding: 8-12px
+
+================================================================================
+4. FUNCTIONAL REQUIREMENTS
+================================================================================
+
+4.1 Map Rendering Requirements
+--------------------------------------------------------------------------------
+
+4.1.1 Zoom-Responsive Marker Sizing
+REQUIREMENT: Markers must scale with zoom level within defined bounds.
+
+SPECIFICATIONS:
+- MinMarkerSize: 16 pixels (at minimum zoom)
+- MaxMarkerSize: 64 pixels (at maximum zoom)
+- Formula: size = clamp(baseSize * zoomScale, MinMarkerSize, MaxMarkerSize)
+- Smooth interpolation required
+
+ACCEPTANCE CRITERIA:
+- Markers remain visible and distinguishable at all zoom levels
+- No markers smaller than 16px or larger than 64px
+- Size transitions are smooth during zoom
+
+4.1.2 Zoom-Threshold Label Visibility
+REQUIREMENT: Marker labels only show when zoom exceeds threshold.
+
+SPECIFICATIONS:
+- LabelShowZoomThreshold: 0.5 (50% zoom)
+- Below threshold: Show markers only, hide labels
+- Above threshold: Show markers with labels
+- Quest name labels: Show at 0.3 threshold (earlier)
+
+ACCEPTANCE CRITERIA:
+- Labels hidden at low zoom to prevent overlap
+- Labels appear smoothly as user zooms in
+- Quest labels appear slightly earlier than POI labels
+
+4.1.3 Overlapping Marker Offset
+REQUIREMENT: Markers at same coordinates must be offset in circular pattern.
+
+SPECIFICATIONS:
+- MarkerOverlapDistance: 30 pixels (detection threshold)
+- MarkerOffsetRadius: 25 pixels (offset distance)
+- Grouping: Grid-based spatial hashing
+- Distribution: Circular pattern around center point
+
+ALGORITHM:
+1. Group markers by grid cell (cellSize = MarkerOverlapDistance)
+2. For cells with multiple markers:
+   a. First marker: center position
+   b. Additional markers: offset using circular distribution
+   c. Angle = (index / total) * 2 * PI
+
+ACCEPTANCE CRITERIA:
+- No overlapping markers at same coordinates
+- Overlapped markers arranged in recognizable pattern
+- Tooltip shows all markers at location
+
+4.1.4 Quest Area Rendering
+REQUIREMENT: Quest objectives with multiple points render as distinct shapes.
+
+SPECIFICATIONS:
+- 1 point: Circle marker with quest name label
+- 2 points: Line between points with midpoint label
+- 3+ points: Filled polygon with center label
+- Optional points: Individual markers with dashed outline
+
+VISUAL STYLE:
+- Polygon fill: QuestAreaBrush (25% opacity)
+- Polygon stroke: QuestLineBrush (2px solid)
+- Line stroke: QuestLineBrush (3px dashed)
+- Point: QuestPointBrush (filled circle)
+
+ACCEPTANCE CRITERIA:
+- Quest areas clearly visible on map
+- Quest name displayed at center/midpoint
+- Labels have semi-transparent background for readability
+
+4.2 Sidebar Layout Requirements
+--------------------------------------------------------------------------------
+
+4.2.1 Layer Panel Redesign
+REQUIREMENT: Compact layer visibility controls with category grouping.
+
+SPECIFICATIONS:
+Current Layout (REMOVE):
+- Individual checkboxes for each layer type
+- Fixed position in sidebar
+- No category grouping
+
+New Layout:
+- Grouped by category:
+  * POINTS OF INTEREST: Extracts, Transits, Spawns, Bosses
+  * INTERACTABLES: Levers, Keys, Doors
+  * QUEST OBJECTIVES: Areas, Points, Optional
+- Collapsible category headers
+- Show All / Hide All quick actions per category
+- Compact checkbox grid (2 columns)
+
+ACCEPTANCE CRITERIA:
+- Layer panel height reduced by 40% minimum
+- Categories collapsible to save space
+- Quick toggle all within category
+- State persists across sessions
+
+4.2.2 Floor Selector Enhancement
+REQUIREMENT: Intuitive floor navigation for multi-floor maps.
+
+SPECIFICATIONS:
+- Visual floor stack (vertical button group)
+- Current floor highlighted with AccentBrush
+- Auto-floor detection indicator
+- "Auto" toggle checkbox
+
+AUTO-FLOOR DETECTION:
+- Uses TarkovHelper/Services/FloorDetectionService.cs
+- Reads Y coordinate from player position
+- Matches against MapFloorLocations ranges
+- Switches floor automatically when enabled
+
+VISUAL DESIGN:
+- Button stack: vertical arrangement
+- Active floor: AccentBrush background
+- Inactive floors: BackgroundLightBrush background
+- "Auto" checkbox: Placed above floor stack
+- Indicator: Show detected floor vs manual selection
+
+ACCEPTANCE CRITERIA:
+- Floor switches within 100ms of position update
+- Visual indicator for auto vs manual mode
+- Smooth transition animation (200ms)
+- Works for all multi-floor maps
+
+4.2.3 Shortcuts Section Optimization
+REQUIREMENT: Move keyboard shortcuts to popup dialog.
+
+SPECIFICATIONS:
+Current: Always-visible SHORTCUTS section in sidebar
+New:
+- Remove SHORTCUTS section from sidebar
+- Add "?" button to toolbar
+- Click opens ShortcutsPopup
+
+POPUP DESIGN:
+- Modal popup (Border element)
+- Title: "Keyboard Shortcuts" (localized)
+- Content: Grid of shortcut key + description
+- Close: Click outside or ESC key
+
+SHORTCUTS LIST:
+- Scroll Wheel: Zoom in/out
+- Ctrl + Scroll: Fine zoom
+- Middle Mouse: Pan map
+- Space: Center on player
+- R: Reset view
+- F: Fit map to view
+- 1-9: Quick floor select
+- L: Toggle layers panel
+- Escape: Close popup
+
+ACCEPTANCE CRITERIA:
+- Shortcuts accessible via "?" button
+- Popup closes on outside click or ESC
+- All shortcuts listed with localized descriptions
+- Sidebar space freed for other content
+
+4.2.4 Status Bar Information
+REQUIREMENT: Display current state in bottom status bar.
+
+SPECIFICATIONS:
+- Player position: X, Y, Z coordinates
+- Current map: Display localized map name
+- Current floor: Display floor ID
+- Watcher status: Active/Inactive indicator
+- Marker count: Visible markers / total
+
+VISUAL DESIGN:
+- Height: 24px
+- Background: BackgroundMediumBrush
+- Text: TextSecondaryBrush
+- Separator: BorderBrush (vertical lines)
+- Items: Evenly spaced, left-aligned
+
+ACCEPTANCE CRITERIA:
+- All status items update in real-time
+- Clear visual separation between items
+- No text overflow or truncation
+
+4.3 Localization Requirements
+--------------------------------------------------------------------------------
+
+4.3.1 UI String Additions
+REQUIREMENT: Add localized strings to TarkovHelper/Services/LocalizationService.cs
+
+NEW PROPERTIES:
+--------------------------------------------------------------------------------
+Property Name           | EN              | KO              | JA
+--------------------------------------------------------------------------------
+MapTrackerLayers        | LAYERS          | 레이어           | レイヤー
+MapTrackerPointsOfInt   | Points of Int.  | 관심 지점        | 注目ポイント
+MapTrackerEnemies       | Enemies         | 적               | 敵
+MapTrackerInteractables | Interactables   | 상호작용         | インタラクト
+MapTrackerExtractions   | Extractions     | 탈출구           | 脱出口
+MapTrackerTransits      | Transits        | 환승             | 乗り換え
+MapTrackerSpawns        | Spawns          | 스폰             | スポーン
+MapTrackerBosses        | Bosses          | 보스             | ボス
+MapTrackerLevers        | Levers          | 레버             | レバー
+MapTrackerKeys          | Keys            | 열쇠             | 鍵
+MapTrackerShowAll       | Show All        | 모두 표시        | すべて表示
+MapTrackerHideAll       | Hide All        | 모두 숨기기      | すべて非表示
+MapTrackerAutoFloor     | Auto            | 자동             | 自動
+MapTrackerShortcuts     | Shortcuts       | 단축키           | ショートカット
+MapTrackerPosition      | Position        | 위치             | 位置
+MapTrackerFloor         | Floor           | 층               | 階
+MapTrackerMarkers       | Markers         | 마커             | マーカー
+MapTrackerWatching      | Watching        | 감시중           | 監視中
+MapTrackerStopped       | Stopped         | 중지             | 停止
+--------------------------------------------------------------------------------
+
+4.3.2 Marker Type Localization
+REQUIREMENT: Add method to get localized marker type names.
+
+METHOD SIGNATURE:
+public string GetMarkerTypeName(MarkerType type)
+
+RETURN VALUES BY TYPE:
+--------------------------------------------------------------------------------
+MarkerType      | EN              | KO              | JA
+--------------------------------------------------------------------------------
+Extract         | Extraction      | 탈출구           | 脱出口
+Transit         | Transit         | 환승             | 乗り換え
+PmcSpawn        | PMC Spawn       | PMC 스폰         | PMCスポーン
+ScavSpawn       | Scav Spawn      | 스캐브 스폰       | Scavスポーン
+Boss            | Boss            | 보스             | ボス
+Lever           | Lever           | 레버             | レバー
+Key             | Key             | 열쇠             | 鍵
+Door            | Door            | 문               | ドア
+Loot            | Loot            | 전리품           | 戦利品
+Quest           | Quest           | 퀘스트           | クエスト
+Other           | Point           | 지점             | ポイント
+--------------------------------------------------------------------------------
+
+4.3.3 Dynamic Language Switching
+REQUIREMENT: UI updates immediately when language changes.
+
+SPECIFICATIONS:
+- Subscribe to LocalizationService.LanguageChanged event
+- Update all UI strings in handler method
+- No page reload required
+
+ACCEPTANCE CRITERIA:
+- Language switch reflects within 100ms
+- All visible strings update
+- No layout shift or flickering
+
+4.4 Accessibility Requirements
+--------------------------------------------------------------------------------
+
+4.4.1 Keyboard Navigation
+REQUIREMENT: Full keyboard support for map interaction.
+
+SPECIFICATIONS:
+- Tab: Navigate between sidebar controls
+- Arrow Keys: Pan map (when map focused)
+- +/-: Zoom in/out
+- Enter: Activate focused button
+- Escape: Close popups, clear selection
+
+4.4.2 Color Contrast
+REQUIREMENT: Maintain WCAG AA contrast ratios.
+
+SPECIFICATIONS:
+- Text on background: Minimum 4.5:1 ratio
+- Large text (18px+): Minimum 3:1 ratio
+- Interactive elements: Clear focus indicators
+
+4.4.3 Screen Reader Support
+REQUIREMENT: Basic screen reader compatibility.
+
+SPECIFICATIONS:
+- All buttons have AutomationProperties.Name
+- Images have AutomationProperties.HelpText
+- Status updates announced via AutomationPeer
+
+================================================================================
+5. NON-FUNCTIONAL REQUIREMENTS
+================================================================================
+
+5.1 Performance Requirements
+--------------------------------------------------------------------------------
+
+5.1.1 Rendering Performance
+- Map render: Under 16ms (60 FPS target)
+- Marker redraw: Under 50ms for 500+ markers
+- Zoom animation: Smooth 60 FPS
+- Memory: Under 200MB for map page
+
+5.1.2 Position Update Latency
+- Screenshot detection: Under 500ms
+- Position update display: Under 100ms
+- Floor auto-detection: Under 50ms
+
+5.2 Compatibility Requirements
+--------------------------------------------------------------------------------
+- Windows 10 version 1903+
+- Windows 11
+- .NET 8.0 Runtime
+- 1920x1080 minimum resolution
+- 1280x720 minimum usable (scaled UI)
+
+5.3 Maintainability Requirements
+--------------------------------------------------------------------------------
+- All colors via StaticResource references
+- Localized strings via LocalizationService
+- No magic numbers in code
+- XML documentation for public methods
+
+================================================================================
+6. TECHNICAL SPECIFICATIONS
+================================================================================
+
+6.1 File Changes Summary
+--------------------------------------------------------------------------------
+
+6.1.1 Modified Files (TarkovHelper Project)
+--------------------------------------------------------------------------------
+File                                  | Change Type    | Complexity
+--------------------------------------------------------------------------------
+Pages/MapTrackerPage.xaml             | Major Update   | High
+Pages/MapTrackerPage.xaml.cs          | Major Update   | High
+Services/LocalizationService.cs       | Addition       | Medium
+App.xaml                              | Addition       | Low
+--------------------------------------------------------------------------------
+
+6.1.2 Files NOT Modified
+--------------------------------------------------------------------------------
+- Assets/tarkov_data.db (READ-ONLY, no schema changes)
+- Services/MapMarkerDbService.cs (no changes needed)
+- Services/QuestObjectiveDbService.cs (no changes needed)
+- Services/FloorDetectionService.cs (no changes needed)
+- Services/MapTrackerService.cs (no changes needed)
+- Models/* (no changes needed)
+
+6.2 XAML Structure Changes
+--------------------------------------------------------------------------------
+
+6.2.1 MapTrackerPage.xaml Resource Section (NEW)
+--------------------------------------------------------------------------------
+Add to Page.Resources:
+
+MARKER COLOR BRUSHES:
+- MarkerExtractBrush: SolidColorBrush #4CAF50
+- MarkerTransitBrush: SolidColorBrush #2196F3
+- MarkerSpawnBrush: SolidColorBrush #FF9800
+- MarkerBossBrush: SolidColorBrush #F44336
+- MarkerLeverBrush: SolidColorBrush #9C27B0
+- MarkerKeyBrush: SolidColorBrush #FFC107
+- PlayerPositionBrush: SolidColorBrush #00BCD4
+- QuestAreaBrush: SolidColorBrush #FF980040
+
+STYLES:
+- SidebarHeaderStyle: TextBlock style for section headers
+- LayerCheckboxStyle: CheckBox style for layer toggles
+- FloorButtonStyle: Button style for floor selector
+- StatusBarTextStyle: TextBlock style for status bar
+
+6.2.2 Layout Structure Changes
+--------------------------------------------------------------------------------
+
+CURRENT STRUCTURE:
+Grid
+  |- Row 0: Toolbar
+  |- Row 1: Content (Sidebar + Map)
+     |- Column 0: Sidebar
+        |- CONTROLS section
+        |- MAP section
+        |- LAYERS section
+        |- SHORTCUTS section
+        |- STATUS section
+     |- Column 1: Map Viewer
+
+NEW STRUCTURE:
+Grid
+  |- Row 0: Toolbar (with shortcuts button)
+  |- Row 1: Content (Sidebar + Map)
+     |- Column 0: Sidebar (ScrollViewer)
+        |- StackPanel
+           |- CONTROLS section (collapsed)
+           |- MAP & FLOOR section (combined)
+           |- LAYERS section (collapsible categories)
+     |- Column 1: Map Viewer
+  |- Row 2: Status Bar (NEW)
+  |- ShortcutsPopup (overlay)
+
+6.2.3 Style Migration Table
+--------------------------------------------------------------------------------
+Replace                    | With
+--------------------------------------------------------------------------------
+Background="#1A1A1A"       | Background="{StaticResource BackgroundDarkBrush}"
+Background="#252526"       | Background="{StaticResource BackgroundMediumBrush}"
+Background="#2D2D30"       | Background="{StaticResource BackgroundLightBrush}"
+Background="#3E3E42"       | Background="{StaticResource BackgroundLightBrush}"
+Foreground="#CCC"          | Foreground="{StaticResource TextPrimaryBrush}"
+Foreground="#888"          | Foreground="{StaticResource TextSecondaryBrush}"
+Foreground="#AAA"          | Foreground="{StaticResource TextSecondaryBrush}"
+Foreground="White"         | Foreground="{StaticResource TextPrimaryBrush}"
+BorderBrush="#555"         | BorderBrush="{StaticResource BorderBrush}"
+BorderBrush="#444"         | BorderBrush="{StaticResource BorderBrush}"
+--------------------------------------------------------------------------------
+
+6.3 Code-Behind Changes
+--------------------------------------------------------------------------------
+
+6.3.1 New Constants
+--------------------------------------------------------------------------------
+private const double MinMarkerSize = 16.0;
+private const double MaxMarkerSize = 64.0;
+private const double LabelShowZoomThreshold = 0.5;
+private const double QuestLabelZoomThreshold = 0.3;
+private const double MarkerOverlapDistance = 30.0;
+private const double MarkerOffsetRadius = 25.0;
+private const int GridCellSize = 30;
+
+6.3.2 New Fields
+--------------------------------------------------------------------------------
+private readonly LocalizationService _loc;
+private readonly FloorDetectionService _floorDetection;
+private bool _autoFloorEnabled = true;
+private Dictionary<string, bool> _layerCategoryCollapsed;
+private bool _isShortcutsPopupOpen = false;
+
+6.3.3 New Methods
+--------------------------------------------------------------------------------
+
+// Marker rendering helpers
+private double CalculateMarkerSize(double baseSize, double zoomScale)
+private bool ShouldShowLabel(double zoomScale, bool isQuest = false)
+private (double offsetX, double offsetY) CalculateMarkerOffset(int index, int total)
+private Dictionary<(int,int), List<MarkerInfo>> GroupOverlappingMarkers(...)
+
+// Localization helpers
+private string GetLocalizedMarkerName(MapMarker marker)
+private string GetLocalizedQuestName(QuestObjective objective)
+private string GetLocalizedMarkerTypeName(MarkerType type)
+private void UpdateUIStrings()
+
+// Floor detection
+private void OnAutoFloorToggle(bool enabled)
+private void AutoDetectFloor(double y)
+
+// UI handlers
+private void ShowShortcutsPopup()
+private void HideShortcutsPopup()
+private void ToggleLayerCategory(string category)
+private void ShowAllInCategory(string category)
+private void HideAllInCategory(string category)
+
+6.3.4 Event Subscriptions
+--------------------------------------------------------------------------------
+// In constructor or Loaded event:
+_loc = LocalizationService.Instance;
+_loc.LanguageChanged += OnLanguageChanged;
+
+// In Unloaded event:
+_loc.LanguageChanged -= OnLanguageChanged;
+
+================================================================================
+7. DATA REQUIREMENTS
+================================================================================
+
+7.1 Database Tables Used (READ-ONLY from tarkov_data.db)
+--------------------------------------------------------------------------------
+
+7.1.1 MapMarkers Table
+--------------------------------------------------------------------------------
+Column      | Type    | Description
+--------------------------------------------------------------------------------
+Id          | TEXT    | Unique marker identifier
+Name        | TEXT    | English name
+NameKo      | TEXT    | Korean name (nullable)
+NameJa      | TEXT    | Japanese name (nullable)
+MarkerType  | TEXT    | Type enum as string
+MapKey      | TEXT    | Map identifier
+X           | REAL    | X coordinate
+Y           | REAL    | Y coordinate (height)
+Z           | REAL    | Z coordinate
+FloorId     | TEXT    | Floor identifier (nullable)
+--------------------------------------------------------------------------------
+
+7.1.2 QuestObjectives Table
+--------------------------------------------------------------------------------
+Column          | Type    | Description
+--------------------------------------------------------------------------------
+Id              | TEXT    | Unique objective identifier
+QuestId         | TEXT    | Parent quest ID
+Description     | TEXT    | Objective description
+MapName         | TEXT    | Map name (nullable)
+LocationPoints  | TEXT    | JSON array of coordinates
+OptionalPoints  | TEXT    | JSON array of optional coordinates
+--------------------------------------------------------------------------------
+
+7.1.3 Quests Table
+--------------------------------------------------------------------------------
+Column    | Type    | Description
+--------------------------------------------------------------------------------
+Id        | TEXT    | Unique quest identifier
+Name      | TEXT    | English quest name
+NameKo    | TEXT    | Korean quest name (nullable)
+NameJa    | TEXT    | Japanese quest name (nullable)
+Location  | TEXT    | Quest location
+Trader    | TEXT    | Trader name
+--------------------------------------------------------------------------------
+
+7.1.4 MapFloorLocations Table (if exists)
+--------------------------------------------------------------------------------
+Column    | Type    | Description
+--------------------------------------------------------------------------------
+MapKey    | TEXT    | Map identifier
+FloorId   | TEXT    | Floor identifier
+MinY      | REAL    | Minimum Y coordinate
+MaxY      | REAL    | Maximum Y coordinate
+Priority  | INTEGER | Detection priority
+--------------------------------------------------------------------------------
+
+7.2 User Settings (user_data.db in AppData)
+--------------------------------------------------------------------------------
+
+7.2.1 Existing Settings Used
+--------------------------------------------------------------------------------
+Key                      | Type   | Description
+--------------------------------------------------------------------------------
+mapTracker.settings      | JSON   | Map tracker preferences
+app.language             | TEXT   | Current language (EN/KO/JA)
+--------------------------------------------------------------------------------
+
+7.2.2 Settings JSON Structure
+--------------------------------------------------------------------------------
+{
+  "screenshotPath": "string",
+  "autoFloorEnabled": true,
+  "layerVisibility": {
+    "extract": true,
+    "transit": true,
+    "pmcSpawn": true,
+    "scavSpawn": true,
+    "boss": true,
+    "lever": true,
+    "key": true,
+    "quest": true
+  },
+  "categoryCollapsed": {
+    "pointsOfInterest": false,
+    "interactables": false,
+    "quests": false
+  },
+  "lastSelectedMap": "woods",
+  "lastSelectedFloor": null
+}
+
+================================================================================
+8. USER INTERFACE MOCKUPS
+================================================================================
+
+8.1 Main Layout Structure
+--------------------------------------------------------------------------------
+
++------------------------------------------------------------------------+
+| [Logo] TarkovHelper          [Fit] [Reset] [Start/Stop] [?]   [x][-][#]|
++------------------------------------------------------------------------+
+|            |                                                           |
+| CONTROLS   |                                                           |
+| [Map: v]   |                                                           |
+| [Floor: v] |                                                           |
+| [x] Auto   |                                                           |
+|            |                                                           |
++------------+                                                           |
+| LAYERS     |              MAP VIEWER                                   |
++------------+                                                           |
+| v POI      |                     [Player]                              |
+|   [x] Extr |                        *                                  |
+|   [x] Tran |                    [Marker]                               |
+|   [ ] Spwn |                                                           |
+| v INTERACT |                                                           |
+|   [x] Levr |                                                           |
+|   [x] Keys |                                                           |
+| v QUEST    |                                                           |
+|   [x] Area |                                                           |
+|   [x] Pts  |                                                           |
++------------+-----------------------------------------------------------+
+| Position: 123.4, 5.6, -78.9 | Map: Woods | Floor: auto | Markers: 45  |
++------------------------------------------------------------------------+
+
+8.2 Shortcuts Popup
+--------------------------------------------------------------------------------
+
++------------------------------------------+
+|           KEYBOARD SHORTCUTS             |
++------------------------------------------+
+|  Scroll Wheel    Zoom in/out             |
+|  Ctrl + Scroll   Fine zoom               |
+|  Middle Mouse    Pan map                 |
+|  Space           Center on player        |
+|  R               Reset view              |
+|  F               Fit map to view         |
+|  1-9             Quick floor select      |
+|  L               Toggle layers           |
+|  ESC             Close popup             |
++------------------------------------------+
+|              [Close]                     |
++------------------------------------------+
+
+8.3 Layer Categories (Expanded)
+--------------------------------------------------------------------------------
+
+LAYERS
++------------------------------------------+
+| [-] POINTS OF INTEREST     [All] [None]  |
++------------------------------------------+
+|   [x] Extractions    [x] Transits        |
+|   [x] PMC Spawns     [x] Scav Spawns     |
+|   [x] Bosses                             |
++------------------------------------------+
+| [-] INTERACTABLES          [All] [None]  |
++------------------------------------------+
+|   [x] Levers         [x] Keys            |
+|   [ ] Doors          [ ] Loot            |
++------------------------------------------+
+| [-] QUEST OBJECTIVES       [All] [None]  |
++------------------------------------------+
+|   [x] Quest Areas    [x] Quest Points    |
+|   [x] Optional Pts                       |
++------------------------------------------+
+
+8.4 Floor Selector (Multi-Floor Map)
+--------------------------------------------------------------------------------
+
+FLOOR
++----------------+
+| [x] Auto       |
++----------------+
+| [    3F    ]   |  <- Active (AccentBrush)
+| [    2F    ]   |  <- Inactive (BackgroundLightBrush)
+| [    1F    ]   |
+| [    B1    ]   |
++----------------+
+
+================================================================================
+9. IMPLEMENTATION PHASES
+================================================================================
+
+9.1 Phase 1: Style Migration (Foundation)
+--------------------------------------------------------------------------------
+PRIORITY: HIGH
+EFFORT: Medium
+
+TASKS:
+1. Add map-specific color brushes to MapTrackerPage.xaml Resources
+2. Replace all hardcoded colors with StaticResource references
+3. Update button styles to use ToolbarButtonStyle
+4. Update checkbox styles to use LayerCheckboxStyle
+5. Add status bar to bottom of page
+
+DELIVERABLES:
+- MapTrackerPage.xaml with consistent styling
+- Visual consistency with rest of application
+
+ACCEPTANCE CRITERIA:
+- All hardcoded colors replaced
+- No visual regression
+- Matches App.xaml design system
+
+9.2 Phase 2: Marker Rendering Improvements
+--------------------------------------------------------------------------------
+PRIORITY: HIGH
+EFFORT: High
+
+TASKS:
+1. Implement zoom-responsive marker sizing
+2. Implement zoom-threshold label visibility
+3. Implement overlapping marker detection and offset
+4. Improve quest area rendering with labels
+5. Add marker type color coding
+
+DELIVERABLES:
+- Updated RedrawMarkers() method
+- New helper methods for marker calculations
+- Improved visual clarity
+
+ACCEPTANCE CRITERIA:
+- Markers visible at all zoom levels
+- Labels don't overlap
+- Quest areas clearly marked
+- Performance under 50ms for 500 markers
+
+9.3 Phase 3: Sidebar Optimization
+--------------------------------------------------------------------------------
+PRIORITY: MEDIUM
+EFFORT: Medium
+
+TASKS:
+1. Implement collapsible layer categories
+2. Add Show All / Hide All buttons
+3. Move shortcuts to popup
+4. Add "?" button to toolbar
+5. Combine MAP and FLOOR sections
+
+DELIVERABLES:
+- Compact sidebar layout
+- ShortcutsPopup implementation
+- Layer category UI
+
+ACCEPTANCE CRITERIA:
+- Sidebar height reduced by 40%
+- Shortcuts accessible via popup
+- Categories collapsible
+- State persisted
+
+9.4 Phase 4: Localization Completion
+--------------------------------------------------------------------------------
+PRIORITY: MEDIUM
+EFFORT: Low
+
+TASKS:
+1. Add UI string properties to LocalizationService
+2. Add GetMarkerTypeName() method
+3. Subscribe to LanguageChanged event
+4. Implement UpdateUIStrings() method
+5. Update all UI text to use localized strings
+
+DELIVERABLES:
+- Complete localization support
+- Dynamic language switching
+
+ACCEPTANCE CRITERIA:
+- All UI strings localized
+- Language switch works immediately
+- EN/KO/JA all supported
+
+9.5 Phase 5: Auto-Floor Detection Integration
+--------------------------------------------------------------------------------
+PRIORITY: LOW
+EFFORT: Low
+
+TASKS:
+1. Add Auto checkbox to floor selector
+2. Call FloorDetectionService on position update
+3. Update floor selection automatically
+4. Show auto vs manual indicator
+
+DELIVERABLES:
+- Auto-floor detection feature
+- Visual indicator for mode
+
+ACCEPTANCE CRITERIA:
+- Floor detects within 50ms
+- User can toggle auto mode
+- Manual selection overrides auto
+
+================================================================================
+10. TESTING REQUIREMENTS
+================================================================================
+
+10.1 Unit Tests
+--------------------------------------------------------------------------------
+- CalculateMarkerSize(): Test boundary conditions
+- GroupOverlappingMarkers(): Test grouping logic
+- GetLocalizedMarkerName(): Test all languages
+- AutoDetectFloor(): Test Y coordinate ranges
+
+10.2 Integration Tests
+--------------------------------------------------------------------------------
+- Map loading with markers
+- Layer visibility toggling
+- Floor selection changes
+- Language switching
+- Settings persistence
+
+10.3 Manual Testing Checklist
+--------------------------------------------------------------------------------
+[ ] Open MapTrackerPage
+[ ] Select each map from dropdown
+[ ] Verify markers load and display
+[ ] Zoom in to maximum
+[ ] Verify labels appear
+[ ] Zoom out to minimum
+[ ] Verify markers remain visible
+[ ] Click overlapping markers
+[ ] Verify tooltip shows all
+[ ] Toggle each layer on/off
+[ ] Verify markers show/hide
+[ ] Collapse/expand categories
+[ ] Click Show All / Hide All
+[ ] Select different floors
+[ ] Enable auto-floor
+[ ] Move player position
+[ ] Verify floor auto-switches
+[ ] Open shortcuts popup
+[ ] Verify all shortcuts listed
+[ ] Close popup with ESC
+[ ] Switch language to Korean
+[ ] Verify all text updates
+[ ] Switch language to Japanese
+[ ] Verify all text updates
+[ ] Switch language to English
+[ ] Restart application
+[ ] Verify settings persisted
+
+================================================================================
+11. RISKS AND MITIGATIONS
+================================================================================
+
+11.1 Technical Risks
+--------------------------------------------------------------------------------
+
+RISK: Performance degradation with many markers
+PROBABILITY: Medium
+IMPACT: High
+MITIGATION:
+- Implement virtualization for off-screen markers
+- Use canvas clipping to skip invisible markers
+- Profile and optimize hot paths
+
+RISK: SVG rendering issues with new styles
+PROBABILITY: Low
+IMPACT: Medium
+MITIGATION:
+- Test with all map SVGs
+- Keep SvgStylePreprocessor as fallback
+- Validate SVG compatibility
+
+RISK: Settings migration breaking existing users
+PROBABILITY: Low
+IMPACT: High
+MITIGATION:
+- Handle missing settings gracefully
+- Provide default values
+- No schema changes to databases
+
+11.2 User Experience Risks
+--------------------------------------------------------------------------------
+
+RISK: Learning curve for new UI layout
+PROBABILITY: Medium
+IMPACT: Low
+MITIGATION:
+- Keep familiar map interaction patterns
+- Provide clear tooltips
+- Document changes in release notes
+
+RISK: Localization errors in non-English languages
+PROBABILITY: Medium
+IMPACT: Medium
+MITIGATION:
+- Review translations with native speakers
+- Test all languages before release
+- Allow community feedback on translations
+
+================================================================================
+12. SUCCESS METRICS
+================================================================================
+
+12.1 Technical Metrics
+--------------------------------------------------------------------------------
+- Map render time: Under 16ms (60 FPS)
+- Marker redraw: Under 50ms (500+ markers)
+- Memory usage: Under 200MB
+- Position update latency: Under 100ms
+- Code coverage: Above 70%
+
+12.2 User Experience Metrics
+--------------------------------------------------------------------------------
+- Visual consistency score: 100% (no hardcoded colors)
+- Accessibility compliance: WCAG AA
+- Localization coverage: 100% (all UI strings)
+- Bug reports: Less than 5 post-release
+
+12.3 Feature Completion
+--------------------------------------------------------------------------------
+- Style migration: 100%
+- Marker improvements: 100%
+- Sidebar optimization: 100%
+- Localization: 100%
+- Auto-floor detection: 100%
+
+================================================================================
+13. APPENDICES
+================================================================================
+
+13.1 Glossary
+--------------------------------------------------------------------------------
+- EFT: Escape from Tarkov (the game)
+- POI: Point of Interest
+- PMC: Private Military Contractor (player character)
+- Scav: Scavenger (AI or player character)
+- FIR: Found In Raid (item status)
+- SVG: Scalable Vector Graphics
+- WPF: Windows Presentation Foundation
+
+13.2 References
+--------------------------------------------------------------------------------
+- TarkovHelper/App.xaml: Global design system
+- TarkovHelper/CLAUDE.md: Project architecture documentation
+- tarkov.dev API: Data source for markers
+- WPF Documentation: Microsoft docs
+
+13.3 Change Log
+--------------------------------------------------------------------------------
+Version 1.0 (2025-12-15)
+- Initial PRD creation
+- Defined all requirements
+- Documented technical specifications
+
+Version 1.1 (2025-12-15)
+- Moved document to TarkovHelper/docs/
+- Updated file path references
+- Clarified target project is TarkovHelper
+
+================================================================================
+                              END OF DOCUMENT
+================================================================================
