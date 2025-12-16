@@ -66,6 +66,7 @@ public class SettingsService
     private const string KeyMapAutoStartTracking = "map.autoStartTracking";
     private const string KeyMapClusteringEnabled = "map.clusteringEnabled";
     private const string KeyMapClusterZoomThreshold = "map.clusterZoomThreshold";
+    private const string KeyMapClusterTextOnly = "map.clusterTextOnly";
     private const string KeyMapAutoFloorEnabled = "map.autoFloorEnabled";
     private const string KeyMapShowBosses = "map.showBosses";
     private const string KeyMapShowSpawns = "map.showSpawns";

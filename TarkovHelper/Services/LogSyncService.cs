@@ -895,9 +895,12 @@ namespace TarkovHelper.Services
                         break;
                 }
 
-                // STEP 3: Complete prerequisites for ANY quest that was started/completed/failed
-                // (If a quest was started, failed, or completed, its prerequisites must be done)
-                // Skip alternative quests (mutually exclusive) - collect them separately for user selection
+                // STEP 3: Complete prerequisites for quests that were COMPLETED or FAILED only
+                // For Started quests, we cannot reliably determine prerequisite completion
+                // because a quest can be started even if prerequisites are still in progress in some cases
+                if (eventType == QuestEventType.Started)
+                    continue;
+
                 var prereqs = graphService.GetAllPrerequisites(normalizedName);
                 foreach (var prereq in prereqs)
                 {
@@ -906,6 +909,11 @@ namespace TarkovHelper.Services
 
                     // Skip if this prereq will have a terminal state from logs
                     if (terminalStateQuests.Contains(prereq.NormalizedName)) continue;
+
+                    // Skip if prereq has no event in logs (we cannot determine its state)
+                    // This prevents auto-completing quests that have no log evidence
+                    if (!questFinalStates.ContainsKey(prereq.NormalizedName))
+                        continue;
 
                     // Skip if prereq is started but not in terminal state (still in progress)
                     if (startedQuests.Contains(prereq.NormalizedName) && !terminalStateQuests.Contains(prereq.NormalizedName))

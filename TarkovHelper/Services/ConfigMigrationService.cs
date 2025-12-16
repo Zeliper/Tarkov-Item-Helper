@@ -263,6 +263,10 @@ public sealed class ConfigMigrationService
             "app_settings.json"
         };
 
+        var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "migration_log.txt");
+        var deleteLog = new System.Text.StringBuilder();
+        deleteLog.AppendLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Deleting migrated JSON files from: {configFolderPath}");
+
         foreach (var fileName in filesToDelete)
         {
             try
@@ -271,14 +275,19 @@ public sealed class ConfigMigrationService
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
+                    deleteLog.AppendLine($"  Deleted: {fileName}");
                     System.Diagnostics.Debug.WriteLine($"[ConfigMigrationService] Deleted: {filePath}");
                 }
             }
             catch (Exception ex)
             {
+                deleteLog.AppendLine($"  Failed to delete {fileName}: {ex.Message}");
                 System.Diagnostics.Debug.WriteLine($"[ConfigMigrationService] Failed to delete {fileName}: {ex.Message}");
             }
         }
+
+        deleteLog.AppendLine();
+        File.AppendAllText(logPath, deleteLog.ToString());
     }
 
     private async Task<(int count, string? error)> MigrateQuestProgressAsync(string configFolderPath, UserDataDbService userDataDb)

@@ -234,6 +234,19 @@ public partial class MainWindow : Window
 
                 // ConfigMigrationService를 사용하여 마이그레이션 수행
                 migrationResult = await migrationService.MigrateFromCurrentConfigAsync(progress);
+
+                // 마이그레이션 결과 로깅
+                var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "migration_log.txt");
+                var logContent = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Migration completed\n" +
+                                 $"  Success: {migrationResult?.Success}\n" +
+                                 $"  QuestProgress: {migrationResult?.QuestProgressCount}\n" +
+                                 $"  HideoutProgress: {migrationResult?.HideoutProgressCount}\n" +
+                                 $"  ItemInventory: {migrationResult?.ItemInventoryCount}\n" +
+                                 $"  Settings: {migrationResult?.SettingsCount}\n" +
+                                 $"  TotalCount: {migrationResult?.TotalCount}\n" +
+                                 $"  Warnings: {string.Join(", ", migrationResult?.Warnings ?? [])}\n" +
+                                 $"  Errors: {string.Join(", ", migrationResult?.Errors ?? [])}\n\n";
+                File.AppendAllText(logPath, logContent);
             }
             catch (Exception ex)
             {
@@ -244,7 +257,8 @@ public partial class MainWindow : Window
             }
             finally
             {
-                LoadingOverlay.Visibility = Visibility.Collapsed;
+                // HideLoadingOverlay()를 호출하여 Blur 효과도 함께 해제
+                HideLoadingOverlay();
             }
         }
 

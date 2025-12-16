@@ -537,6 +537,7 @@ public partial class MapTrackerPage : UserControl
     // Clustering settings
     private bool _clusteringEnabled = true;
     private double _clusterZoomThreshold = 0.5;  // Cluster when zoom < this value
+    private bool _clusterTextOnly;  // If true, only cluster text labels, not icons
     private const double ClusterGridSize = 60.0;  // Grid size for clustering in pixels
 
     // Auto-follow state
@@ -1225,6 +1226,12 @@ public partial class MapTrackerPage : UserControl
         _hideCompletedObjectives = ChkHideCompletedObjectives.IsChecked == true;
         if (_isInitialized) _settings.MapHideCompletedObjectives = _hideCompletedObjectives;
         RedrawObjectives();
+    }
+
+    private void ChkClusterTextOnly_Changed(object sender, RoutedEventArgs e)
+    {
+        _clusterTextOnly = ChkClusterTextOnly.IsChecked == true;
+        RedrawMarkers();
     }
 
     private void ChkShowPmcExtracts_Changed(object sender, RoutedEventArgs e)

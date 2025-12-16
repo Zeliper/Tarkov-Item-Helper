@@ -928,6 +928,16 @@
                             <TextBlock Text="Shared extracts are always visible when either option is enabled"
                                        FontSize="10" Foreground="{StaticResource TextMuted}" Margin="20,4,0,0" TextWrapping="Wrap"/>
 
+                            <!-- Clustering Section -->
+                            <Rectangle Height="1" Fill="{StaticResource BorderSubtle}" Margin="0,16,0,12"/>
+                            <TextBlock Text="MARKER CLUSTERING" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,12"/>
+                            <CheckBox x:Name="ChkClusterTextOnly" Content="Cluster text labels only" IsChecked="False" Margin="0,4"
+                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
+                                      Checked="ChkClusterTextOnly_Changed" Unchecked="ChkClusterTextOnly_Changed"/>
+                            <TextBlock Text="When enabled, marker icons are shown individually but text labels are merged when clustered"
+                                       FontSize="10" Foreground="{StaticResource TextMuted}" Margin="20,4,0,0" TextWrapping="Wrap"/>
+
                             <!-- Screenshot Path Section -->
                             <Rectangle Height="1" Fill="{StaticResource BorderSubtle}" Margin="0,16,0,12"/>
                             <TextBlock Text="SCREENSHOT TRACKING" FontSize="10" FontWeight="SemiBold"
