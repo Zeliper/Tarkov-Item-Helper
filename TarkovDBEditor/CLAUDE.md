@@ -23,6 +23,14 @@ This project is part of the TarkovHelper solution. See `../TarkovHelper/CLAUDE.m
 
 ## Project Characteristics & Common Issues
 
+### Data Source Policy (CRITICAL)
+
+**NEVER use tarkov.dev API directly for runtime data.** All data must come from:
+1. **Cached data** - Local cache files in `wiki_data/` directory
+2. **tarkov_data.db** - The local SQLite database
+
+The tarkov.dev API services exist only for initial data population/sync. During normal operation, always read from cached/local database sources.
+
 ### Type Ambiguity (IMPORTANT)
 
 This project uses **both WPF and WindowsForms** (`UseWindowsForms=true` in csproj). This causes type name conflicts that require explicit using aliases in code-behind files:
@@ -70,6 +78,24 @@ The UI uses `_schema_meta.SchemaJson` to display columns in the DataGrid. If you
 // 6. Update AddQuestParameters - add parameter binding
 ```
 
+### Dogtag Item Auto-Generation
+
+When `RefreshDataFromCacheAsync` runs, it automatically creates BEAR/USEC Dogtag items if quest requirements reference them:
+
+1. **Detection**: Scans `QuestRequiredItems` and `QuestObjectives` for `DogtagFaction` field
+2. **Auto-creation**: Creates `dogtag-bear` and `dogtag-usec` items in Items table if not exists
+3. **Linking**: Sets `ItemId` in quest requirements to reference the dogtag items
+4. **Shared icon**: New dogtag items inherit `IconUrl` from existing Dogtag item in DB
+
+```csharp
+// Generated Dogtag item IDs
+"dogtag-bear"  // BEAR Dogtag
+"dogtag-usec"  // USEC Dogtag
+
+// Dogtag level requirements are stored in QuestRequiredItems.DogtagMinLevel
+// not in Items table (varies per quest)
+```
+
 ## Architecture
 
 ### Pattern: MVVM with Singleton Services
@@ -91,7 +117,7 @@ DatabaseService.cs        - Singleton SQLite service with schema metadata
 - `TarkovWikiDataService.cs` - Parses Fandom wiki for item categories
 - `WikiQuestService.cs` - Quest data parsing and caching
 - `WikiCacheService.cs` - Page content caching with revision checking
-- `RefreshDataService.cs` - Syncs wiki/API data to local DB
+- `RefreshDataService.cs` - Syncs wiki/API data to local DB. Auto-creates BEAR/USEC Dogtag items when detected in quest requirements.
 - `HideoutDataService.cs` - Fetches hideout data from tarkov.dev and saves to DB with icon download (Base64 encoded ID filenames)
 - `SvgStylePreprocessor.cs` - SVG floor layer filtering for multi-floor maps
 
@@ -137,9 +163,9 @@ CREATE TABLE _schema_meta (
 #### Data Tables (created by RefreshDataService)
 
 ```sql
--- Items from tarkov.dev API
+-- Items from cached data (tarkov.dev API used only for initial sync)
 CREATE TABLE Items (
-    Id TEXT PRIMARY KEY,       -- tarkov.dev ID
+    Id TEXT PRIMARY KEY,       -- tarkov.dev ID or generated ID (e.g., "dogtag-bear")
     BsgId TEXT,                -- BSG internal ID
     Name TEXT NOT NULL,
     NameEN TEXT,
@@ -152,6 +178,8 @@ CREATE TABLE Items (
     IconUrl TEXT,
     Category TEXT,
     Categories TEXT,           -- JSON array
+    IsDogtagItem INTEGER NOT NULL DEFAULT 0,  -- Is this a dogtag item (BEAR/USEC)
+    DogtagFaction TEXT,        -- Dogtag faction: "BEAR", "USEC", or NULL
     UpdatedAt TEXT
 )
 
@@ -174,6 +202,12 @@ CREATE TABLE Quests (
     MinScavKarmaApprovedAt TEXT,
     KappaRequired INTEGER NOT NULL DEFAULT 0,  -- Required for Kappa container (from Wiki reqkappa field)
     Faction TEXT,              -- Bear, Usec, or NULL (from Wiki Requirements section)
+    RequiredEdition TEXT,      -- Edition required: "EOD", "Unheard" (only available to this edition)
+    RequiredEditionApproved INTEGER NOT NULL DEFAULT 0,
+    RequiredEditionApprovedAt TEXT,
+    ExcludedEdition TEXT,      -- Edition excluded: "Unheard", "EOD" (NOT available to this edition)
+    ExcludedEditionApproved INTEGER NOT NULL DEFAULT 0,
+    ExcludedEditionApprovedAt TEXT,
     IsApproved INTEGER NOT NULL DEFAULT 0,     -- Quest itself approved
     ApprovedAt TEXT,
     UpdatedAt TEXT
@@ -203,7 +237,7 @@ CREATE TABLE QuestObjectives (
     SortOrder INTEGER NOT NULL DEFAULT 0,
     ObjectiveType TEXT NOT NULL DEFAULT 'Custom',  -- Kill, Collect, HandOver, Visit, Mark, Stash, Survive, Build, Task
     Description TEXT NOT NULL,
-    TargetType TEXT,           -- For Kill objectives: Scav, PMC, Boss, etc.
+    TargetType TEXT,           -- For Kill objectives: Scav, PMC, Boss, Any, etc.
     TargetCount INTEGER,
     ItemId TEXT,               -- FK to Items table
     ItemName TEXT,
@@ -213,6 +247,8 @@ CREATE TABLE QuestObjectives (
     LocationPoints TEXT,       -- JSON array of LocationPoint [{X, Y, Z, FloorId}] - defines area (polygon/line/point)
     OptionalPoints TEXT,       -- JSON array of LocationPoint [{X, Y, Z, FloorId}] - OR locations (alternative spots)
     Conditions TEXT,           -- Additional conditions text
+    DogtagMinLevel INTEGER,    -- Minimum dogtag level for handover objectives (e.g., 15)
+    DogtagFaction TEXT,        -- Dogtag faction: "BEAR", "USEC", or NULL
     ContentHash TEXT,
     IsApproved INTEGER NOT NULL DEFAULT 0,
     ApprovedAt TEXT,
@@ -247,6 +283,7 @@ CREATE TABLE QuestRequiredItems (
     RequirementType TEXT NOT NULL DEFAULT 'Required',  -- Handover, Required, Optional
     SortOrder INTEGER NOT NULL DEFAULT 0,
     DogtagMinLevel INTEGER,    -- Minimum dogtag level (for dogtag items only)
+    DogtagFaction TEXT,        -- Dogtag faction: "BEAR", "USEC", or NULL
     ContentHash TEXT,          -- For change detection
     IsApproved INTEGER NOT NULL DEFAULT 0,
     ApprovedAt TEXT,

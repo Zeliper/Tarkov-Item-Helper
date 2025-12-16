@@ -7,6 +7,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.Data.Sqlite;
 using TarkovDBEditor.Models;
 
@@ -106,11 +109,21 @@ namespace TarkovDBEditor.Services
                 logBuilder.AppendLine($"OptionalQuests: {questsResult.OptionalQuests.Count}");
                 logBuilder.AppendLine($"RequiredItems: {questsResult.RequiredItems.Count}");
 
-                // DB 업데이트 (Items는 null로 전달하여 업데이트하지 않음)
-                progress?.Invoke("Updating database (Quests only)...");
+                // Dogtag 아이템 자동 생성 (QuestRequiredItems/Objectives에서 필요한 경우)
+                // EnsureDogtagItemsExist는 생성된 아이템을 existingItems에도 추가함
+                var dogtagItems = EnsureDogtagItemsExist(existingItems, questsResult, logBuilder);
+
+                // QuestRequiredItems/Objectives의 ItemId를 Dogtag 아이템과 연결
+                LinkDogtagItemIds(questsResult, logBuilder);
+
+                // Dogtag 아이템이 있으면 전체 Items 리스트 전달 (기존 아이템 삭제 방지)
+                List<DbItem>? itemsToUpdate = dogtagItems.Count > 0 ? existingItems : null;
+
+                // DB 업데이트
+                progress?.Invoke("Updating database...");
                 await UpdateDatabaseAsync(
                     databasePath,
-                    null, // Items는 업데이트하지 않음
+                    itemsToUpdate, // Dogtag 아이템이 추가된 전체 Items 리스트
                     questsResult.Quests,
                     questsResult.Requirements,
                     questsResult.Objectives,
@@ -434,6 +447,8 @@ namespace TarkovDBEditor.Services
         {
             // 아이템 이름 -> ID 매핑 (Objective의 ItemName을 ItemId로 변환용)
             var itemNameToId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // BsgId -> (Id, Name) 매핑 (Wiki {{itemId}} 템플릿 처리용)
+            var bsgIdToItem = new Dictionary<string, (string Id, string Name)>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in items)
             {
                 // Wiki Name으로 매핑
@@ -442,6 +457,9 @@ namespace TarkovDBEditor.Services
                 // NameEN으로도 매핑 (다국어 지원)
                 if (!string.IsNullOrEmpty(item.NameEN) && !itemNameToId.ContainsKey(item.NameEN))
                     itemNameToId[item.NameEN] = item.Id;
+                // BsgId로 매핑 (Wiki {{24자hex}} 템플릿 처리용)
+                if (!string.IsNullOrEmpty(item.BsgId) && !bsgIdToItem.ContainsKey(item.BsgId))
+                    bsgIdToItem[item.BsgId] = (item.Id, item.Name);
             }
             using var questService = new WikiQuestService(_wikiDataDir);
 
@@ -523,12 +541,15 @@ namespace TarkovDBEditor.Services
                     dbQuest.MinScavKarma = cached.MinScavKarma ?? WikiQuestService.ExtractMinScavKarma(cached.PageContent ?? "");
                 }
 
-                // Wiki 캐시에서 KappaRequired, Faction, RequiredEdition 파싱
+                // Wiki 캐시에서 KappaRequired, Faction, RequiredEdition, ExcludedEdition, RequiredDecodeCount 파싱
                 if (cachedQuests.TryGetValue(questName, out var cachedForKappa) && !string.IsNullOrEmpty(cachedForKappa.PageContent))
                 {
                     dbQuest.KappaRequired = WikiQuestService.ExtractKappaRequired(cachedForKappa.PageContent);
                     dbQuest.Faction = cachedForKappa.Faction ?? WikiQuestService.ExtractFaction(cachedForKappa.PageContent);
                     dbQuest.RequiredEdition = cachedForKappa.RequiredEdition ?? WikiQuestService.ExtractRequiredEdition(cachedForKappa.PageContent);
+                    dbQuest.ExcludedEdition = cachedForKappa.ExcludedEdition ?? WikiQuestService.ExtractExcludedEdition(cachedForKappa.PageContent);
+                    dbQuest.RequiredDecodeCount = cachedForKappa.RequiredDecodeCount ?? WikiQuestService.ExtractRequiredDecodeCount(cachedForKappa.PageContent);
+                    dbQuest.RequiredPrestigeLevel = WikiQuestService.ExtractRequiredPrestigeLevel(cachedForKappa.PageContent);
                 }
 
                 // tarkov.dev 매칭 (캐시된 데이터 사용) - 번역용
@@ -642,7 +663,9 @@ namespace TarkovDBEditor.Services
                         RequiresFIR = obj.RequiresFIR,
                         MapName = obj.MapName,
                         LocationName = obj.LocationName,
-                        Conditions = obj.Conditions
+                        Conditions = obj.Conditions,
+                        DogtagMinLevel = obj.DogtagMinLevel,
+                        DogtagFaction = obj.DogtagFaction
                     });
                 }
             }
@@ -703,28 +726,36 @@ namespace TarkovDBEditor.Services
 
                 foreach (var item in parsedItems)
                 {
-                    // ItemName으로 ItemId 매핑
+                    // ItemId, ItemName 매핑
                     string? itemId = null;
-                    if (!string.IsNullOrEmpty(item.ItemId))
+                    string itemName = item.ItemName;
+
+                    // 1. Wiki {{itemId}} 템플릿의 24자 hex ID -> Items 테이블의 BsgId로 찾기
+                    if (!string.IsNullOrEmpty(item.ItemId) && bsgIdToItem.TryGetValue(item.ItemId, out var bsgMatch))
                     {
-                        // Wiki {{itemId}} 템플릿의 24자 hex ID -> Items 테이블의 BsgId로 찾기
-                        // TODO: BsgId -> Id 매핑 필요 시 추가
+                        itemId = bsgMatch.Id;
+                        // ItemName이 비어있으면 매칭된 아이템 이름 사용
+                        if (string.IsNullOrEmpty(itemName))
+                            itemName = bsgMatch.Name;
                     }
-                    if (string.IsNullOrEmpty(itemId) && !string.IsNullOrEmpty(item.ItemName))
+
+                    // 2. ItemName으로 ItemId 매핑 (BsgId 매칭 실패 시)
+                    if (string.IsNullOrEmpty(itemId) && !string.IsNullOrEmpty(itemName))
                     {
-                        itemNameToId.TryGetValue(item.ItemName, out itemId);
+                        itemNameToId.TryGetValue(itemName, out itemId);
                     }
 
                     var dbItem = new DbQuestRequiredItem
                     {
                         QuestId = questId,
                         ItemId = itemId,
-                        ItemName = item.ItemName,
+                        ItemName = itemName,
                         Count = item.Count,
                         RequiresFIR = item.RequiresFIR,
                         RequirementType = item.RequirementType,
                         SortOrder = item.SortOrder,
-                        DogtagMinLevel = item.DogtagMinLevel
+                        DogtagMinLevel = item.DogtagMinLevel,
+                        DogtagFaction = item.DogtagFaction
                     };
                     dbItem.Id = dbItem.ComputeId(); // ID 생성
                     dbRequiredItems.Add(dbItem);
@@ -745,6 +776,262 @@ namespace TarkovDBEditor.Services
                 RequiredItems = dbRequiredItems,
                 Revision = revision
             };
+        }
+
+        /// <summary>
+        /// Dogtag 아이템이 필요하면 자동 생성
+        /// QuestRequiredItems/QuestObjectives에서 DogtagFaction이 설정된 항목이 있으면
+        /// BEAR Dogtag, USEC Dogtag를 Items 테이블에 추가
+        /// 아이콘은 기존 Dogtag 아이콘을 좌/우로 잘라서 생성
+        /// </summary>
+        private List<DbItem> EnsureDogtagItemsExist(
+            List<DbItem> existingItems,
+            QuestsFetchResult questsResult,
+            StringBuilder? logBuilder)
+        {
+            var result = new List<DbItem>();
+            var existingItemNames = new HashSet<string>(existingItems.Select(i => i.Name), StringComparer.OrdinalIgnoreCase);
+            var existingItemIds = new HashSet<string>(existingItems.Select(i => i.Id));
+
+            // QuestRequiredItems에서 필요한 Dogtag 진영 수집
+            var neededFactions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in questsResult.RequiredItems)
+            {
+                if (!string.IsNullOrEmpty(item.DogtagFaction))
+                {
+                    neededFactions.Add(item.DogtagFaction.ToUpper());
+                }
+            }
+
+            // QuestObjectives에서 필요한 Dogtag 진영 수집
+            foreach (var obj in questsResult.Objectives)
+            {
+                if (!string.IsNullOrEmpty(obj.DogtagFaction))
+                {
+                    neededFactions.Add(obj.DogtagFaction.ToUpper());
+                }
+            }
+
+            if (neededFactions.Count == 0)
+                return result;
+
+            // 기존 아이템에서 원본 Dogtag 아이콘 찾기 (Name이 "Dogtag"인 항목)
+            var baseDogtagItem = existingItems.FirstOrDefault(i =>
+                i.Name.Equals("Dogtag", StringComparison.OrdinalIgnoreCase));
+
+            // 아이콘 디렉토리
+            var iconDir = Path.Combine(_wikiDataDir, "icons");
+            Directory.CreateDirectory(iconDir);
+
+            // 원본 Dogtag 아이콘 파일 찾기 (Items.Id로 검색)
+            string? baseDogtagIconPath = null;
+            if (baseDogtagItem != null && !string.IsNullOrEmpty(baseDogtagItem.Id))
+            {
+                var extensions = new[] { ".png", ".jpg", ".jpeg", ".gif", ".webp" };
+                foreach (var ext in extensions)
+                {
+                    var path = Path.Combine(iconDir, $"{baseDogtagItem.Id}{ext}");
+                    if (File.Exists(path))
+                    {
+                        baseDogtagIconPath = path;
+                        logBuilder?.AppendLine($"  [DOGTAG ICON] Found base icon: {baseDogtagItem.Id}{ext}");
+                        break;
+                    }
+                }
+                if (baseDogtagIconPath == null)
+                {
+                    logBuilder?.AppendLine($"  [DOGTAG ICON] Base icon not found for Id: {baseDogtagItem.Id}");
+                }
+            }
+            else
+            {
+                logBuilder?.AppendLine("  [DOGTAG ICON] No 'Dogtag' item found in Items table");
+            }
+
+            // 진영별 아이콘 생성 (좌/우 자르기)
+            var factionIcons = CreateDogtagFactionIcons(baseDogtagIconPath, iconDir, neededFactions, logBuilder);
+
+            // 필요한 Dogtag 아이템 생성
+            foreach (var faction in neededFactions)
+            {
+                var dogtagName = $"{faction} Dogtag";
+                var dogtagId = $"dogtag-{faction.ToLower()}";
+
+                // 이미 존재하는지 확인 (이름 또는 ID로)
+                if (existingItemNames.Contains(dogtagName) || existingItemIds.Contains(dogtagId))
+                {
+                    // 기존 아이템 업데이트 (IsDogtagItem, DogtagFaction 설정)
+                    var existing = existingItems.FirstOrDefault(i =>
+                        i.Name.Equals(dogtagName, StringComparison.OrdinalIgnoreCase) ||
+                        i.Id == dogtagId);
+                    if (existing != null)
+                    {
+                        bool updated = false;
+                        if (!existing.IsDogtagItem || string.IsNullOrEmpty(existing.DogtagFaction))
+                        {
+                            existing.IsDogtagItem = true;
+                            existing.DogtagFaction = faction;
+                            updated = true;
+                        }
+                        // 아이콘 경로 업데이트
+                        if (factionIcons.TryGetValue(faction, out var iconPath) && existing.IconUrl != iconPath)
+                        {
+                            existing.IconUrl = iconPath;
+                            updated = true;
+                        }
+                        if (updated)
+                        {
+                            result.Add(existing);
+                            logBuilder?.AppendLine($"  [DOGTAG UPDATE] Updated existing: {dogtagName}");
+                        }
+                    }
+                    continue;
+                }
+
+                // 진영별 아이콘 URL
+                factionIcons.TryGetValue(faction, out var factionIconUrl);
+
+                // 새 Dogtag 아이템 생성
+                var newDogtag = new DbItem
+                {
+                    Id = dogtagId,
+                    Name = dogtagName,
+                    NameEN = dogtagName,
+                    NameKO = faction == "BEAR" ? "BEAR 인식표" : "USEC 인식표",
+                    NameJA = faction == "BEAR" ? "BEAR ドッグタグ" : "USEC ドッグタグ",
+                    ShortNameEN = $"{faction} Tag",
+                    ShortNameKO = $"{faction} 태그",
+                    ShortNameJA = $"{faction} タグ",
+                    WikiPageLink = "https://escapefromtarkov.fandom.com/wiki/Dogtag",
+                    IconUrl = factionIconUrl ?? baseDogtagItem?.IconUrl,
+                    Category = "Dogtag",
+                    Categories = "[\"Dogtag\"]",
+                    IsDogtagItem = true,
+                    DogtagFaction = faction
+                };
+
+                result.Add(newDogtag);
+                existingItems.Add(newDogtag); // 중복 생성 방지
+                existingItemNames.Add(dogtagName);
+                existingItemIds.Add(dogtagId);
+
+                logBuilder?.AppendLine($"  [DOGTAG CREATE] Created new dogtag item: {dogtagName} (Id: {dogtagId})");
+            }
+
+            if (result.Count > 0)
+            {
+                logBuilder?.AppendLine($"Dogtag items processed: {result.Count}");
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 원본 Dogtag 아이콘을 좌/우로 잘라서 진영별 아이콘 생성
+        /// BEAR: 좌측 절반, USEC: 우측 절반
+        /// </summary>
+        private Dictionary<string, string> CreateDogtagFactionIcons(
+            string? baseDogtagIconPath,
+            string iconDir,
+            HashSet<string> neededFactions,
+            StringBuilder? logBuilder)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            if (string.IsNullOrEmpty(baseDogtagIconPath) || !File.Exists(baseDogtagIconPath))
+            {
+                logBuilder?.AppendLine("  [DOGTAG ICON] Base dogtag icon not found, skipping icon generation");
+                return result;
+            }
+
+            try
+            {
+                // WPF BitmapImage로 원본 이미지 로드
+                var originalImage = new BitmapImage();
+                originalImage.BeginInit();
+                originalImage.UriSource = new Uri(baseDogtagIconPath, UriKind.Absolute);
+                originalImage.CacheOption = BitmapCacheOption.OnLoad;
+                originalImage.EndInit();
+                originalImage.Freeze();
+
+                int fullWidth = originalImage.PixelWidth;
+                int halfWidth = fullWidth / 2;
+                int height = originalImage.PixelHeight;
+
+                logBuilder?.AppendLine($"  [DOGTAG ICON] Original image size: {fullWidth}x{height}");
+
+                foreach (var faction in neededFactions)
+                {
+                    var iconFileName = $"dogtag-{faction.ToLower()}.png";
+                    var iconPath = Path.Combine(iconDir, iconFileName);
+
+                    // 이미 존재하면 스킵
+                    if (File.Exists(iconPath))
+                    {
+                        result[faction] = iconPath;
+                        logBuilder?.AppendLine($"  [DOGTAG ICON] {faction} icon already exists: {iconFileName}");
+                        continue;
+                    }
+
+                    // BEAR: 좌측 절반 (x=0), USEC: 우측 절반 (x=halfWidth)
+                    int srcX = faction.Equals("BEAR", StringComparison.OrdinalIgnoreCase) ? 0 : halfWidth;
+
+                    // CroppedBitmap으로 이미지 자르기
+                    var croppedBitmap = new CroppedBitmap(originalImage, new Int32Rect(srcX, 0, halfWidth, height));
+                    croppedBitmap.Freeze();
+
+                    // PNG로 저장
+                    var encoder = new PngBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(croppedBitmap));
+
+                    using (var fileStream = new FileStream(iconPath, FileMode.Create))
+                    {
+                        encoder.Save(fileStream);
+                    }
+
+                    result[faction] = iconPath;
+                    logBuilder?.AppendLine($"  [DOGTAG ICON] Created {faction} icon: {iconFileName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                logBuilder?.AppendLine($"  [DOGTAG ICON ERROR] Failed to create faction icons: {ex.Message}");
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// QuestRequiredItems/QuestObjectives에서 DogtagFaction이 설정된 항목의 ItemId를 연결
+        /// </summary>
+        private void LinkDogtagItemIds(QuestsFetchResult questsResult, StringBuilder? logBuilder)
+        {
+            int linkedCount = 0;
+
+            // QuestRequiredItems의 ItemId 연결
+            foreach (var item in questsResult.RequiredItems)
+            {
+                if (!string.IsNullOrEmpty(item.DogtagFaction) && string.IsNullOrEmpty(item.ItemId))
+                {
+                    item.ItemId = $"dogtag-{item.DogtagFaction.ToLower()}";
+                    linkedCount++;
+                }
+            }
+
+            // QuestObjectives의 ItemId 연결
+            foreach (var obj in questsResult.Objectives)
+            {
+                if (!string.IsNullOrEmpty(obj.DogtagFaction) && string.IsNullOrEmpty(obj.ItemId))
+                {
+                    obj.ItemId = $"dogtag-{obj.DogtagFaction.ToLower()}";
+                    linkedCount++;
+                }
+            }
+
+            if (linkedCount > 0)
+            {
+                logBuilder?.AppendLine($"Linked {linkedCount} dogtag item references");
+            }
         }
 
         /// <summary>
@@ -774,12 +1061,16 @@ namespace TarkovDBEditor.Services
                 return items;
             }
 
+            // Dogtag 컬럼 마이그레이션 (기존 DB 호환성)
+            await MigrateItemsDogtagColumnsAsync(connection, cancellationToken);
+
             // Items 로드
             await using var cmd = connection.CreateCommand();
             cmd.CommandText = @"
                 SELECT Id, BsgId, Name, NameEN, NameKO, NameJA,
                        ShortNameEN, ShortNameKO, ShortNameJA,
-                       WikiPageLink, IconUrl, Category, Categories
+                       WikiPageLink, IconUrl, Category, Categories,
+                       IsDogtagItem, DogtagFaction
                 FROM Items";
 
             await using var reader = await cmd.ExecuteReaderAsync(cancellationToken);
@@ -799,11 +1090,39 @@ namespace TarkovDBEditor.Services
                     WikiPageLink = reader.IsDBNull(9) ? null : reader.GetString(9),
                     IconUrl = reader.IsDBNull(10) ? null : reader.GetString(10),
                     Category = reader.IsDBNull(11) ? null : reader.GetString(11),
-                    Categories = reader.IsDBNull(12) ? null : reader.GetString(12)
+                    Categories = reader.IsDBNull(12) ? null : reader.GetString(12),
+                    IsDogtagItem = !reader.IsDBNull(13) && reader.GetInt32(13) != 0,
+                    DogtagFaction = reader.IsDBNull(14) ? null : reader.GetString(14)
                 });
             }
 
             return items;
+        }
+
+        /// <summary>
+        /// Items 테이블에 Dogtag 관련 컬럼이 없으면 추가
+        /// </summary>
+        private async Task MigrateItemsDogtagColumnsAsync(SqliteConnection connection, CancellationToken cancellationToken)
+        {
+            var alterCommands = new[]
+            {
+                "ALTER TABLE Items ADD COLUMN IsDogtagItem INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE Items ADD COLUMN DogtagFaction TEXT"
+            };
+
+            foreach (var alterSql in alterCommands)
+            {
+                try
+                {
+                    await using var cmd = connection.CreateCommand();
+                    cmd.CommandText = alterSql;
+                    await cmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+                catch (SqliteException)
+                {
+                    // 컬럼이 이미 존재하면 무시
+                }
+            }
         }
 
         /// <summary>
@@ -850,12 +1169,17 @@ namespace TarkovDBEditor.Services
 
             // 아이템 이름 → ID 매핑
             var itemNameToId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // BsgId -> (Id, Name) 매핑 (Wiki {{itemId}} 템플릿 처리용)
+            var bsgIdToItem = new Dictionary<string, (string Id, string Name)>(StringComparer.OrdinalIgnoreCase);
             foreach (var item in items)
             {
                 if (!string.IsNullOrEmpty(item.Name) && !itemNameToId.ContainsKey(item.Name))
                     itemNameToId[item.Name] = item.Id;
                 if (!string.IsNullOrEmpty(item.NameEN) && !itemNameToId.ContainsKey(item.NameEN))
                     itemNameToId[item.NameEN] = item.Id;
+                // BsgId로 매핑 (Wiki {{24자hex}} 템플릿 처리용)
+                if (!string.IsNullOrEmpty(item.BsgId) && !bsgIdToItem.ContainsKey(item.BsgId))
+                    bsgIdToItem[item.BsgId] = (item.Id, item.Name);
             }
 
             var questNameToId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -896,10 +1220,13 @@ namespace TarkovDBEditor.Services
                 dbQuest.MinLevel = cached.MinLevel ?? WikiQuestService.ExtractMinLevel(cached.PageContent ?? "");
                 dbQuest.MinScavKarma = cached.MinScavKarma ?? WikiQuestService.ExtractMinScavKarma(cached.PageContent ?? "");
 
-                // Wiki 캐시에서 KappaRequired, Faction, RequiredEdition 파싱
+                // Wiki 캐시에서 KappaRequired, Faction, RequiredEdition, ExcludedEdition, RequiredDecodeCount 파싱
                 dbQuest.KappaRequired = WikiQuestService.ExtractKappaRequired(cached.PageContent ?? "");
                 dbQuest.Faction = cached.Faction ?? WikiQuestService.ExtractFaction(cached.PageContent ?? "");
                 dbQuest.RequiredEdition = cached.RequiredEdition ?? WikiQuestService.ExtractRequiredEdition(cached.PageContent ?? "");
+                dbQuest.ExcludedEdition = cached.ExcludedEdition ?? WikiQuestService.ExtractExcludedEdition(cached.PageContent ?? "");
+                dbQuest.RequiredDecodeCount = cached.RequiredDecodeCount ?? WikiQuestService.ExtractRequiredDecodeCount(cached.PageContent ?? "");
+                dbQuest.RequiredPrestigeLevel = WikiQuestService.ExtractRequiredPrestigeLevel(cached.PageContent ?? "");
 
                 // tarkov.dev 매칭 - 번역용
                 TarkovDevQuestCacheItem? devQuest = null;
@@ -984,7 +1311,9 @@ namespace TarkovDBEditor.Services
                         RequiresFIR = obj.RequiresFIR,
                         MapName = obj.MapName,
                         LocationName = obj.LocationName,
-                        Conditions = obj.Conditions
+                        Conditions = obj.Conditions,
+                        DogtagMinLevel = obj.DogtagMinLevel,
+                        DogtagFaction = obj.DogtagFaction
                     };
                     dbObj.Id = dbObj.ComputeId();
                     result.Objectives.Add(dbObj);
@@ -1033,22 +1362,36 @@ namespace TarkovDBEditor.Services
                 var parsedItems = WikiQuestService.ExtractRequiredItems(cached.PageContent);
                 foreach (var item in parsedItems)
                 {
+                    // ItemId, ItemName 매핑
                     string? itemId = null;
-                    if (!string.IsNullOrEmpty(item.ItemName))
+                    string itemName = item.ItemName;
+
+                    // 1. Wiki {{itemId}} 템플릿의 24자 hex ID -> Items 테이블의 BsgId로 찾기
+                    if (!string.IsNullOrEmpty(item.ItemId) && bsgIdToItem.TryGetValue(item.ItemId, out var bsgMatch))
                     {
-                        itemNameToId.TryGetValue(item.ItemName, out itemId);
+                        itemId = bsgMatch.Id;
+                        // ItemName이 비어있으면 매칭된 아이템 이름 사용
+                        if (string.IsNullOrEmpty(itemName))
+                            itemName = bsgMatch.Name;
+                    }
+
+                    // 2. ItemName으로 ItemId 매핑 (BsgId 매칭 실패 시)
+                    if (string.IsNullOrEmpty(itemId) && !string.IsNullOrEmpty(itemName))
+                    {
+                        itemNameToId.TryGetValue(itemName, out itemId);
                     }
 
                     var dbItem = new DbQuestRequiredItem
                     {
                         QuestId = questId,
                         ItemId = itemId,
-                        ItemName = item.ItemName,
+                        ItemName = itemName,
                         Count = item.Count,
                         RequiresFIR = item.RequiresFIR,
                         RequirementType = item.RequirementType,
                         SortOrder = item.SortOrder,
-                        DogtagMinLevel = item.DogtagMinLevel
+                        DogtagMinLevel = item.DogtagMinLevel,
+                        DogtagFaction = item.DogtagFaction
                     };
                     dbItem.Id = dbItem.ComputeId();
                     result.RequiredItems.Add(dbItem);
@@ -1215,7 +1558,9 @@ namespace TarkovDBEditor.Services
                 new() { Name = "IconUrl", DisplayName = "Icon URL", Type = ColumnType.Text, SortOrder = 10 },
                 new() { Name = "Category", DisplayName = "Category", Type = ColumnType.Text, SortOrder = 11 },
                 new() { Name = "Categories", DisplayName = "Categories", Type = ColumnType.Text, SortOrder = 12 },
-                new() { Name = "UpdatedAt", DisplayName = "Updated At", Type = ColumnType.DateTime, SortOrder = 13 }
+                new() { Name = "IsDogtagItem", DisplayName = "Is Dogtag", Type = ColumnType.Boolean, IsRequired = true, SortOrder = 13 },
+                new() { Name = "DogtagFaction", DisplayName = "Dogtag Faction", Type = ColumnType.Text, SortOrder = 14 },
+                new() { Name = "UpdatedAt", DisplayName = "Updated At", Type = ColumnType.DateTime, SortOrder = 15 }
             };
 
             var schemaJson = JsonSerializer.Serialize(columns);
@@ -1239,8 +1584,12 @@ namespace TarkovDBEditor.Services
                 new() { Name = "MinScavKarma", DisplayName = "Min Scav Karma", Type = ColumnType.Integer, SortOrder = 10 },
                 new() { Name = "KappaRequired", DisplayName = "Kappa Required", Type = ColumnType.Boolean, SortOrder = 11 },
                 new() { Name = "Faction", DisplayName = "Faction", Type = ColumnType.Text, SortOrder = 12 },
-                new() { Name = "IsApproved", DisplayName = "Approved", Type = ColumnType.Boolean, SortOrder = 13 },
-                new() { Name = "UpdatedAt", DisplayName = "Updated At", Type = ColumnType.DateTime, SortOrder = 14 }
+                new() { Name = "RequiredEdition", DisplayName = "Required Edition", Type = ColumnType.Text, SortOrder = 13 },
+                new() { Name = "ExcludedEdition", DisplayName = "Excluded Edition", Type = ColumnType.Text, SortOrder = 14 },
+                new() { Name = "RequiredDecodeCount", DisplayName = "Decode Count", Type = ColumnType.Integer, SortOrder = 15 },
+                new() { Name = "RequiredPrestigeLevel", DisplayName = "Prestige Level", Type = ColumnType.Integer, SortOrder = 16 },
+                new() { Name = "IsApproved", DisplayName = "Approved", Type = ColumnType.Boolean, SortOrder = 17 },
+                new() { Name = "UpdatedAt", DisplayName = "Updated At", Type = ColumnType.DateTime, SortOrder = 18 }
             };
 
             var schemaJson = JsonSerializer.Serialize(columns);
@@ -1297,11 +1646,30 @@ namespace TarkovDBEditor.Services
                     IconUrl TEXT,
                     Category TEXT,
                     Categories TEXT,
+                    IsDogtagItem INTEGER NOT NULL DEFAULT 0,
+                    DogtagFaction TEXT,
                     UpdatedAt TEXT
                 )";
 
             using var cmd = new SqliteCommand(sql, connection, transaction);
             await cmd.ExecuteNonQueryAsync();
+
+            // 기존 테이블에 Dogtag 컬럼 마이그레이션
+            var newColumns = new[]
+            {
+                "ALTER TABLE Items ADD COLUMN IsDogtagItem INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE Items ADD COLUMN DogtagFaction TEXT"
+            };
+
+            foreach (var alterSql in newColumns)
+            {
+                try
+                {
+                    using var alterCmd = new SqliteCommand(alterSql, connection, transaction);
+                    await alterCmd.ExecuteNonQueryAsync();
+                }
+                catch (SqliteException) { /* 컬럼이 이미 존재하면 무시 */ }
+            }
         }
 
         private async Task CreateQuestsTableIfNotExistsAsync(SqliteConnection connection, SqliteTransaction transaction)
@@ -1328,6 +1696,15 @@ namespace TarkovDBEditor.Services
                     RequiredEdition TEXT,
                     RequiredEditionApproved INTEGER NOT NULL DEFAULT 0,
                     RequiredEditionApprovedAt TEXT,
+                    ExcludedEdition TEXT,
+                    ExcludedEditionApproved INTEGER NOT NULL DEFAULT 0,
+                    ExcludedEditionApprovedAt TEXT,
+                    RequiredDecodeCount INTEGER,
+                    RequiredDecodeCountApproved INTEGER NOT NULL DEFAULT 0,
+                    RequiredDecodeCountApprovedAt TEXT,
+                    RequiredPrestigeLevel INTEGER,
+                    RequiredPrestigeLevelApproved INTEGER NOT NULL DEFAULT 0,
+                    RequiredPrestigeLevelApprovedAt TEXT,
                     IsApproved INTEGER NOT NULL DEFAULT 0,
                     ApprovedAt TEXT,
                     UpdatedAt TEXT
@@ -1351,8 +1728,17 @@ namespace TarkovDBEditor.Services
                 "ALTER TABLE Quests ADD COLUMN RequiredEdition TEXT",
                 "ALTER TABLE Quests ADD COLUMN RequiredEditionApproved INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE Quests ADD COLUMN RequiredEditionApprovedAt TEXT",
+                "ALTER TABLE Quests ADD COLUMN ExcludedEdition TEXT",
+                "ALTER TABLE Quests ADD COLUMN ExcludedEditionApproved INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE Quests ADD COLUMN ExcludedEditionApprovedAt TEXT",
                 "ALTER TABLE Quests ADD COLUMN IsApproved INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN ApprovedAt TEXT"
+                "ALTER TABLE Quests ADD COLUMN ApprovedAt TEXT",
+                "ALTER TABLE Quests ADD COLUMN RequiredDecodeCount INTEGER",
+                "ALTER TABLE Quests ADD COLUMN RequiredDecodeCountApproved INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE Quests ADD COLUMN RequiredDecodeCountApprovedAt TEXT",
+                "ALTER TABLE Quests ADD COLUMN RequiredPrestigeLevel INTEGER",
+                "ALTER TABLE Quests ADD COLUMN RequiredPrestigeLevelApproved INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE Quests ADD COLUMN RequiredPrestigeLevelApprovedAt TEXT"
             };
 
             foreach (var alterSql in newColumns)
@@ -1470,6 +1856,8 @@ namespace TarkovDBEditor.Services
                     LocationPoints TEXT,
                     OptionalPoints TEXT,
                     Conditions TEXT,
+                    DogtagMinLevel INTEGER,
+                    DogtagFaction TEXT,
                     ContentHash TEXT,
                     IsApproved INTEGER NOT NULL DEFAULT 0,
                     ApprovedAt TEXT,
@@ -1489,15 +1877,23 @@ namespace TarkovDBEditor.Services
             using var indexCmd = new SqliteCommand(indexSql, connection, transaction);
             await indexCmd.ExecuteNonQueryAsync();
 
-            // OptionalPoints 컬럼 마이그레이션 (기존 DB용)
-            try
+            // 컬럼 마이그레이션 (기존 DB용)
+            var alterCommands = new[]
             {
-                using var alterCmd = new SqliteCommand(
-                    "ALTER TABLE QuestObjectives ADD COLUMN OptionalPoints TEXT",
-                    connection, transaction);
-                await alterCmd.ExecuteNonQueryAsync();
+                "ALTER TABLE QuestObjectives ADD COLUMN OptionalPoints TEXT",
+                "ALTER TABLE QuestObjectives ADD COLUMN DogtagMinLevel INTEGER",
+                "ALTER TABLE QuestObjectives ADD COLUMN DogtagFaction TEXT"
+            };
+
+            foreach (var alterSql in alterCommands)
+            {
+                try
+                {
+                    using var alterCmd = new SqliteCommand(alterSql, connection, transaction);
+                    await alterCmd.ExecuteNonQueryAsync();
+                }
+                catch { /* 이미 존재하면 무시 */ }
             }
-            catch { /* 이미 존재하면 무시 */ }
         }
 
         private async Task MigrateQuestObjectivesTableAsync(SqliteConnection connection, SqliteTransaction transaction)
@@ -1549,10 +1945,12 @@ namespace TarkovDBEditor.Services
                 new() { Name = "LocationPoints", DisplayName = "Location Points", Type = ColumnType.Json, SortOrder = 12 },
                 new() { Name = "OptionalPoints", DisplayName = "Optional Points", Type = ColumnType.Json, SortOrder = 13 },
                 new() { Name = "Conditions", DisplayName = "Conditions", Type = ColumnType.Text, SortOrder = 14 },
-                new() { Name = "ContentHash", DisplayName = "Content Hash", Type = ColumnType.Text, SortOrder = 15 },
-                new() { Name = "IsApproved", DisplayName = "Approved", Type = ColumnType.Boolean, IsRequired = true, SortOrder = 16 },
-                new() { Name = "ApprovedAt", DisplayName = "Approved At", Type = ColumnType.DateTime, SortOrder = 17 },
-                new() { Name = "UpdatedAt", DisplayName = "Updated At", Type = ColumnType.DateTime, SortOrder = 18 }
+                new() { Name = "DogtagMinLevel", DisplayName = "Dogtag Level", Type = ColumnType.Integer, SortOrder = 15 },
+                new() { Name = "DogtagFaction", DisplayName = "Dogtag Faction", Type = ColumnType.Text, SortOrder = 16 },
+                new() { Name = "ContentHash", DisplayName = "Content Hash", Type = ColumnType.Text, SortOrder = 17 },
+                new() { Name = "IsApproved", DisplayName = "Approved", Type = ColumnType.Boolean, IsRequired = true, SortOrder = 18 },
+                new() { Name = "ApprovedAt", DisplayName = "Approved At", Type = ColumnType.DateTime, SortOrder = 19 },
+                new() { Name = "UpdatedAt", DisplayName = "Updated At", Type = ColumnType.DateTime, SortOrder = 20 }
             };
 
             var schemaJson = JsonSerializer.Serialize(columns);
@@ -1615,6 +2013,7 @@ namespace TarkovDBEditor.Services
                     RequirementType TEXT NOT NULL DEFAULT 'Required',
                     SortOrder INTEGER NOT NULL DEFAULT 0,
                     DogtagMinLevel INTEGER,
+                    DogtagFaction TEXT,
                     ContentHash TEXT,
                     IsApproved INTEGER NOT NULL DEFAULT 0,
                     ApprovedAt TEXT,
@@ -1632,6 +2031,16 @@ namespace TarkovDBEditor.Services
                 CREATE INDEX IF NOT EXISTS idx_questreqitem_itemid ON QuestRequiredItems(ItemId)";
             using var indexCmd = new SqliteCommand(indexSql, connection, transaction);
             await indexCmd.ExecuteNonQueryAsync();
+
+            // DogtagFaction 컬럼 마이그레이션 (기존 DB용)
+            try
+            {
+                using var alterCmd = new SqliteCommand(
+                    "ALTER TABLE QuestRequiredItems ADD COLUMN DogtagFaction TEXT",
+                    connection, transaction);
+                await alterCmd.ExecuteNonQueryAsync();
+            }
+            catch { /* 이미 존재하면 무시 */ }
         }
 
         private async Task RegisterQuestRequiredItemsSchemaAsync(SqliteConnection connection, SqliteTransaction transaction)
@@ -1647,10 +2056,11 @@ namespace TarkovDBEditor.Services
                 new() { Name = "RequirementType", DisplayName = "Type", Type = ColumnType.Text, IsRequired = true, SortOrder = 6 },
                 new() { Name = "SortOrder", DisplayName = "Order", Type = ColumnType.Integer, IsRequired = true, SortOrder = 7 },
                 new() { Name = "DogtagMinLevel", DisplayName = "Dogtag Level", Type = ColumnType.Integer, SortOrder = 8 },
-                new() { Name = "ContentHash", DisplayName = "Content Hash", Type = ColumnType.Text, SortOrder = 9 },
-                new() { Name = "IsApproved", DisplayName = "Approved", Type = ColumnType.Boolean, IsRequired = true, SortOrder = 10 },
-                new() { Name = "ApprovedAt", DisplayName = "Approved At", Type = ColumnType.DateTime, SortOrder = 11 },
-                new() { Name = "UpdatedAt", DisplayName = "Updated At", Type = ColumnType.DateTime, SortOrder = 12 }
+                new() { Name = "DogtagFaction", DisplayName = "Dogtag Faction", Type = ColumnType.Text, SortOrder = 9 },
+                new() { Name = "ContentHash", DisplayName = "Content Hash", Type = ColumnType.Text, SortOrder = 10 },
+                new() { Name = "IsApproved", DisplayName = "Approved", Type = ColumnType.Boolean, IsRequired = true, SortOrder = 11 },
+                new() { Name = "ApprovedAt", DisplayName = "Approved At", Type = ColumnType.DateTime, SortOrder = 12 },
+                new() { Name = "UpdatedAt", DisplayName = "Updated At", Type = ColumnType.DateTime, SortOrder = 13 }
             };
 
             var schemaJson = JsonSerializer.Serialize(columns);
@@ -1924,8 +2334,8 @@ namespace TarkovDBEditor.Services
                 {
                     // INSERT
                     var insertSql = @"
-                        INSERT INTO QuestRequiredItems (Id, QuestId, ItemId, ItemName, Count, RequiresFIR, RequirementType, SortOrder, DogtagMinLevel, ContentHash, IsApproved, ApprovedAt, UpdatedAt)
-                        VALUES (@Id, @QuestId, @ItemId, @ItemName, @Count, @RequiresFIR, @RequirementType, @SortOrder, @DogtagMinLevel, @ContentHash, @IsApproved, @ApprovedAt, @UpdatedAt)";
+                        INSERT INTO QuestRequiredItems (Id, QuestId, ItemId, ItemName, Count, RequiresFIR, RequirementType, SortOrder, DogtagMinLevel, DogtagFaction, ContentHash, IsApproved, ApprovedAt, UpdatedAt)
+                        VALUES (@Id, @QuestId, @ItemId, @ItemName, @Count, @RequiresFIR, @RequirementType, @SortOrder, @DogtagMinLevel, @DogtagFaction, @ContentHash, @IsApproved, @ApprovedAt, @UpdatedAt)";
 
                     using var insertCmd = new SqliteCommand(insertSql, connection, transaction);
                     AddRequiredItemParameters(insertCmd, item, newHash, isApproved, approvedAt, now);
@@ -1939,7 +2349,7 @@ namespace TarkovDBEditor.Services
                         UPDATE QuestRequiredItems SET
                             QuestId = @QuestId, ItemId = @ItemId, ItemName = @ItemName, Count = @Count,
                             RequiresFIR = @RequiresFIR, RequirementType = @RequirementType, SortOrder = @SortOrder,
-                            DogtagMinLevel = @DogtagMinLevel, ContentHash = @ContentHash,
+                            DogtagMinLevel = @DogtagMinLevel, DogtagFaction = @DogtagFaction, ContentHash = @ContentHash,
                             IsApproved = @IsApproved, ApprovedAt = @ApprovedAt, UpdatedAt = @UpdatedAt
                         WHERE Id = @Id";
 
@@ -1966,6 +2376,7 @@ namespace TarkovDBEditor.Services
             cmd.Parameters.AddWithValue("@RequirementType", item.RequirementType);
             cmd.Parameters.AddWithValue("@SortOrder", item.SortOrder);
             cmd.Parameters.AddWithValue("@DogtagMinLevel", (object?)item.DogtagMinLevel ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@DogtagFaction", (object?)item.DogtagFaction ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@ContentHash", contentHash);
             cmd.Parameters.AddWithValue("@IsApproved", isApproved ? 1 : 0);
             cmd.Parameters.AddWithValue("@ApprovedAt", (object?)approvedAt ?? DBNull.Value);
@@ -2168,11 +2579,11 @@ namespace TarkovDBEditor.Services
                         INSERT INTO QuestObjectives (
                             Id, QuestId, SortOrder, ObjectiveType, Description, TargetType, TargetCount,
                             ItemId, ItemName, RequiresFIR, MapName, LocationName, LocationPoints,
-                            Conditions, ContentHash, IsApproved, ApprovedAt, UpdatedAt
+                            Conditions, DogtagMinLevel, DogtagFaction, ContentHash, IsApproved, ApprovedAt, UpdatedAt
                         ) VALUES (
                             @Id, @QuestId, @SortOrder, @ObjectiveType, @Description, @TargetType, @TargetCount,
                             @ItemId, @ItemName, @RequiresFIR, @MapName, @LocationName, @LocationPoints,
-                            @Conditions, @ContentHash, @IsApproved, @ApprovedAt, @UpdatedAt
+                            @Conditions, @DogtagMinLevel, @DogtagFaction, @ContentHash, @IsApproved, @ApprovedAt, @UpdatedAt
                         )";
 
                     using var insertCmd = new SqliteCommand(insertSql, connection, transaction);
@@ -2189,8 +2600,8 @@ namespace TarkovDBEditor.Services
                             Description = @Description, TargetType = @TargetType, TargetCount = @TargetCount,
                             ItemId = @ItemId, ItemName = @ItemName, RequiresFIR = @RequiresFIR,
                             MapName = @MapName, LocationName = @LocationName, LocationPoints = @LocationPoints,
-                            Conditions = @Conditions, ContentHash = @ContentHash,
-                            IsApproved = @IsApproved, ApprovedAt = @ApprovedAt, UpdatedAt = @UpdatedAt
+                            Conditions = @Conditions, DogtagMinLevel = @DogtagMinLevel, DogtagFaction = @DogtagFaction,
+                            ContentHash = @ContentHash, IsApproved = @IsApproved, ApprovedAt = @ApprovedAt, UpdatedAt = @UpdatedAt
                         WHERE Id = @Id";
 
                     using var updateCmd = new SqliteCommand(updateSql, connection, transaction);
@@ -2217,6 +2628,8 @@ namespace TarkovDBEditor.Services
             cmd.Parameters.AddWithValue("@ItemId", (object?)obj.ItemId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@ItemName", (object?)obj.ItemName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@RequiresFIR", obj.RequiresFIR ? 1 : 0);
+            cmd.Parameters.AddWithValue("@DogtagMinLevel", (object?)obj.DogtagMinLevel ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@DogtagFaction", (object?)obj.DogtagFaction ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@MapName", (object?)obj.MapName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@LocationName", (object?)obj.LocationName ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@LocationPoints", (object?)locationPoints ?? DBNull.Value);
@@ -2274,8 +2687,8 @@ namespace TarkovDBEditor.Services
                 {
                     // INSERT
                     var insertSql = @"
-                        INSERT INTO Items (Id, BsgId, Name, NameEN, NameKO, NameJA, ShortNameEN, ShortNameKO, ShortNameJA, WikiPageLink, IconUrl, Category, Categories, UpdatedAt)
-                        VALUES (@Id, @BsgId, @Name, @NameEN, @NameKO, @NameJA, @ShortNameEN, @ShortNameKO, @ShortNameJA, @WikiPageLink, @IconUrl, @Category, @Categories, @UpdatedAt)";
+                        INSERT INTO Items (Id, BsgId, Name, NameEN, NameKO, NameJA, ShortNameEN, ShortNameKO, ShortNameJA, WikiPageLink, IconUrl, Category, Categories, IsDogtagItem, DogtagFaction, UpdatedAt)
+                        VALUES (@Id, @BsgId, @Name, @NameEN, @NameKO, @NameJA, @ShortNameEN, @ShortNameKO, @ShortNameJA, @WikiPageLink, @IconUrl, @Category, @Categories, @IsDogtagItem, @DogtagFaction, @UpdatedAt)";
 
                     using var insertCmd = new SqliteCommand(insertSql, connection, transaction);
                     AddItemParameters(insertCmd, item, now);
@@ -2289,7 +2702,8 @@ namespace TarkovDBEditor.Services
                         UPDATE Items SET
                             BsgId = @BsgId, Name = @Name, NameEN = @NameEN, NameKO = @NameKO, NameJA = @NameJA,
                             ShortNameEN = @ShortNameEN, ShortNameKO = @ShortNameKO, ShortNameJA = @ShortNameJA,
-                            WikiPageLink = @WikiPageLink, IconUrl = @IconUrl, Category = @Category, Categories = @Categories, UpdatedAt = @UpdatedAt
+                            WikiPageLink = @WikiPageLink, IconUrl = @IconUrl, Category = @Category, Categories = @Categories,
+                            IsDogtagItem = @IsDogtagItem, DogtagFaction = @DogtagFaction, UpdatedAt = @UpdatedAt
                         WHERE Id = @Id";
 
                     using var updateCmd = new SqliteCommand(updateSql, connection, transaction);
@@ -2317,6 +2731,8 @@ namespace TarkovDBEditor.Services
             cmd.Parameters.AddWithValue("@IconUrl", (object?)item.IconUrl ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@Category", (object?)item.Category ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@Categories", (object?)item.Categories ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@IsDogtagItem", item.IsDogtagItem ? 1 : 0);
+            cmd.Parameters.AddWithValue("@DogtagFaction", (object?)item.DogtagFaction ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@UpdatedAt", now);
         }
 
@@ -2366,8 +2782,8 @@ namespace TarkovDBEditor.Services
                 if (!exists)
                 {
                     var insertSql = @"
-                        INSERT INTO Quests (Id, BsgId, Name, NameEN, NameKO, NameJA, WikiPageLink, Trader, Location, MinLevel, MinScavKarma, KappaRequired, Faction, RequiredEdition, UpdatedAt)
-                        VALUES (@Id, @BsgId, @Name, @NameEN, @NameKO, @NameJA, @WikiPageLink, @Trader, @Location, @MinLevel, @MinScavKarma, @KappaRequired, @Faction, @RequiredEdition, @UpdatedAt)";
+                        INSERT INTO Quests (Id, BsgId, Name, NameEN, NameKO, NameJA, WikiPageLink, Trader, Location, MinLevel, MinScavKarma, KappaRequired, Faction, RequiredEdition, ExcludedEdition, RequiredDecodeCount, RequiredPrestigeLevel, UpdatedAt)
+                        VALUES (@Id, @BsgId, @Name, @NameEN, @NameKO, @NameJA, @WikiPageLink, @Trader, @Location, @MinLevel, @MinScavKarma, @KappaRequired, @Faction, @RequiredEdition, @ExcludedEdition, @RequiredDecodeCount, @RequiredPrestigeLevel, @UpdatedAt)";
 
                     using var insertCmd = new SqliteCommand(insertSql, connection, transaction);
                     AddQuestParameters(insertCmd, quest, now);
@@ -2381,7 +2797,7 @@ namespace TarkovDBEditor.Services
                     var updateSql = @"
                         UPDATE Quests SET
                             BsgId = @BsgId, Name = @Name, NameEN = @NameEN, NameKO = @NameKO, NameJA = @NameJA,
-                            WikiPageLink = @WikiPageLink, Trader = @Trader, Location = @Location, MinLevel = @MinLevel, MinScavKarma = @MinScavKarma, KappaRequired = @KappaRequired, Faction = @Faction, RequiredEdition = @RequiredEdition, UpdatedAt = @UpdatedAt
+                            WikiPageLink = @WikiPageLink, Trader = @Trader, Location = @Location, MinLevel = @MinLevel, MinScavKarma = @MinScavKarma, KappaRequired = @KappaRequired, Faction = @Faction, RequiredEdition = @RequiredEdition, ExcludedEdition = @ExcludedEdition, RequiredDecodeCount = @RequiredDecodeCount, RequiredPrestigeLevel = @RequiredPrestigeLevel, UpdatedAt = @UpdatedAt
                         WHERE Id = @Id";
 
                     using var updateCmd = new SqliteCommand(updateSql, connection, transaction);
@@ -2410,6 +2826,9 @@ namespace TarkovDBEditor.Services
             cmd.Parameters.AddWithValue("@KappaRequired", quest.KappaRequired ? 1 : 0);
             cmd.Parameters.AddWithValue("@Faction", (object?)quest.Faction ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@RequiredEdition", (object?)quest.RequiredEdition ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@ExcludedEdition", (object?)quest.ExcludedEdition ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@RequiredDecodeCount", (object?)quest.RequiredDecodeCount ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@RequiredPrestigeLevel", (object?)quest.RequiredPrestigeLevel ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@UpdatedAt", now);
         }
 
@@ -2422,10 +2841,20 @@ namespace TarkovDBEditor.Services
             var stats = new UpsertStats();
             var now = DateTime.UtcNow.ToString("o");
 
+            // Collector 퀘스트 ID 조회 (Collector의 requirements는 AddCollectorKappaRequirementsAsync에서 관리)
+            string? collectorId = null;
+            using (var cmd = new SqliteCommand(
+                "SELECT Id FROM Quests WHERE Name = 'Collector' OR NameEN = 'Collector' LIMIT 1",
+                connection, transaction))
+            {
+                var result = await cmd.ExecuteScalarAsync();
+                collectorId = result?.ToString();
+            }
+
             // 기존 데이터 로드 (Id 기준으로 승인 상태 유지)
-            var existingData = new Dictionary<string, (bool IsApproved, string? ApprovedAt, string? ContentHash)>();
+            var existingData = new Dictionary<string, (bool IsApproved, string? ApprovedAt, string? ContentHash, string QuestId)>();
             var existingIds = new HashSet<string>();
-            var selectSql = "SELECT Id, IsApproved, ApprovedAt, ContentHash FROM QuestRequirements";
+            var selectSql = "SELECT Id, IsApproved, ApprovedAt, ContentHash, QuestId FROM QuestRequirements";
             using (var selectCmd = new SqliteCommand(selectSql, connection, transaction))
             using (var reader = await selectCmd.ExecuteReaderAsync())
             {
@@ -2435,8 +2864,9 @@ namespace TarkovDBEditor.Services
                     var isApproved = !reader.IsDBNull(1) && reader.GetInt64(1) != 0;
                     var approvedAt = reader.IsDBNull(2) ? null : reader.GetString(2);
                     var contentHash = reader.IsDBNull(3) ? null : reader.GetString(3);
+                    var questId = reader.GetString(4);
                     existingIds.Add(id);
-                    existingData[id] = (isApproved, approvedAt, contentHash);
+                    existingData[id] = (isApproved, approvedAt, contentHash, questId);
                 }
             }
 
@@ -2448,10 +2878,16 @@ namespace TarkovDBEditor.Services
                 newIds.Add(req.Id);
             }
 
-            // DB에 있지만 새 목록에 없는 항목 삭제
+            // DB에 있지만 새 목록에 없는 항목 삭제 (Collector 퀘스트의 requirements는 제외)
             var idsToDelete = existingIds.Except(newIds).ToList();
             foreach (var idToDelete in idsToDelete)
             {
+                // Collector 퀘스트의 requirements는 AddCollectorKappaRequirementsAsync에서 관리하므로 삭제하지 않음
+                if (collectorId != null && existingData.TryGetValue(idToDelete, out var data) && data.QuestId == collectorId)
+                {
+                    continue;
+                }
+
                 using var deleteCmd = new SqliteCommand("DELETE FROM QuestRequirements WHERE Id = @Id", connection, transaction);
                 deleteCmd.Parameters.AddWithValue("@Id", idToDelete);
                 await deleteCmd.ExecuteNonQueryAsync();
@@ -2591,29 +3027,30 @@ namespace TarkovDBEditor.Services
                 return;
             }
 
-            // 4. 기존 Collector 선행 조건 조회 (중복 방지)
-            var existingRequiredIds = new HashSet<string>();
+            // 4. 기존 Collector 선행 조건 조회 (중복 방지 및 승인 상태 보존)
+            var existingRequirements = new Dictionary<string, (bool IsApproved, string? ApprovedAt)>();
             using (var cmd = new SqliteCommand(
-                "SELECT RequiredQuestId FROM QuestRequirements WHERE QuestId = @CollectorId",
+                "SELECT RequiredQuestId, IsApproved, ApprovedAt FROM QuestRequirements WHERE QuestId = @CollectorId",
                 connection, transaction))
             {
                 cmd.Parameters.AddWithValue("@CollectorId", collectorId);
                 using var reader = await cmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
                 {
-                    existingRequiredIds.Add(reader.GetString(0));
+                    var reqId = reader.GetString(0);
+                    var isApproved = !reader.IsDBNull(1) && reader.GetInt64(1) != 0;
+                    var approvedAt = reader.IsDBNull(2) ? null : reader.GetString(2);
+                    existingRequirements[reqId] = (isApproved, approvedAt);
                 }
             }
 
-            // 5. 새로운 선행 조건 추가
+            // 5. 선행 조건 추가/업데이트 (기존 승인 상태 보존)
             var now = DateTime.UtcNow.ToString("o");
             var insertedCount = 0;
+            var preservedCount = 0;
 
             foreach (var kappaQuestId in kappaQuestIds)
             {
-                if (existingRequiredIds.Contains(kappaQuestId))
-                    continue;
-
                 var requirementId = $"{collectorId}_{kappaQuestId}";
                 // ContentHash 계산 (변경 감지용)
                 var hashData = $"{collectorId}|{kappaQuestId}|Complete||0";
@@ -2621,24 +3058,41 @@ namespace TarkovDBEditor.Services
                 var hashBytes = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(hashData));
                 var contentHash = Convert.ToBase64String(hashBytes).Substring(0, 16);
 
+                // 기존 승인 상태 확인
+                var isApproved = false;
+                string? approvedAt = null;
+                if (existingRequirements.TryGetValue(kappaQuestId, out var existing))
+                {
+                    isApproved = existing.IsApproved;
+                    approvedAt = existing.ApprovedAt;
+                    if (isApproved)
+                        preservedCount++;
+                }
+
                 using var cmd = new SqliteCommand(@"
                     INSERT INTO QuestRequirements (Id, QuestId, RequiredQuestId, RequirementType, DelayMinutes, GroupId, ContentHash, IsApproved, ApprovedAt, UpdatedAt)
-                    VALUES (@Id, @QuestId, @RequiredQuestId, @RequirementType, NULL, 0, @ContentHash, 0, NULL, @UpdatedAt)
-                    ON CONFLICT(Id) DO NOTHING", connection, transaction);
+                    VALUES (@Id, @QuestId, @RequiredQuestId, @RequirementType, NULL, 0, @ContentHash, @IsApproved, @ApprovedAt, @UpdatedAt)
+                    ON CONFLICT(Id) DO UPDATE SET
+                        ContentHash = @ContentHash,
+                        IsApproved = @IsApproved,
+                        ApprovedAt = @ApprovedAt,
+                        UpdatedAt = @UpdatedAt", connection, transaction);
 
                 cmd.Parameters.AddWithValue("@Id", requirementId);
                 cmd.Parameters.AddWithValue("@QuestId", collectorId);
                 cmd.Parameters.AddWithValue("@RequiredQuestId", kappaQuestId);
                 cmd.Parameters.AddWithValue("@RequirementType", "Complete");
                 cmd.Parameters.AddWithValue("@ContentHash", contentHash);
+                cmd.Parameters.AddWithValue("@IsApproved", isApproved ? 1 : 0);
+                cmd.Parameters.AddWithValue("@ApprovedAt", (object?)approvedAt ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@UpdatedAt", now);
 
                 var affected = await cmd.ExecuteNonQueryAsync();
-                if (affected > 0)
+                if (affected > 0 && !existingRequirements.ContainsKey(kappaQuestId))
                     insertedCount++;
             }
 
-            var message = $"Collector: Added {insertedCount} Kappa-required quests as prerequisites (total Kappa quests: {kappaQuestIds.Count})";
+            var message = $"Collector: Added {insertedCount} new, preserved {preservedCount} approved (total Kappa quests: {kappaQuestIds.Count})";
             progress?.Invoke(message);
             logBuilder?.AppendLine();
             logBuilder?.AppendLine($"=== Collector Kappa Requirements ===");
@@ -2858,6 +3312,8 @@ namespace TarkovDBEditor.Services
         public string? IconUrl { get; set; }
         public string? Category { get; set; }
         public string? Categories { get; set; }
+        public bool IsDogtagItem { get; set; }       // 도그태그 아이템 여부
+        public string? DogtagFaction { get; set; }   // 도그태그 진영: "BEAR", "USEC", or null
     }
 
     public class DbQuest
@@ -2875,7 +3331,10 @@ namespace TarkovDBEditor.Services
         public int? MinScavKarma { get; set; }
         public bool KappaRequired { get; set; }
         public string? Faction { get; set; }
-        public string? RequiredEdition { get; set; } // EOD, Standard 등 게임 에디션 요구사항
+        public string? RequiredEdition { get; set; }  // EOD, Unheard 등 게임 에디션 필수 요구사항 (이 에디션만 가능)
+        public string? ExcludedEdition { get; set; }  // Unheard, EOD 등 게임 에디션 제외 조건 (이 에디션은 불가)
+        public int? RequiredDecodeCount { get; set; }  // DSP 라디오 해독 필요 횟수 (Make Amends 퀘스트 등)
+        public int? RequiredPrestigeLevel { get; set; }  // Prestige 레벨 요구사항 (New Beginning 퀘스트 등)
     }
 
     public class DbTrader
@@ -3001,6 +3460,10 @@ namespace TarkovDBEditor.Services
         // 조건
         public string? Conditions { get; set; }  // 추가 조건 (JSON 또는 텍스트)
 
+        // 도그태그 관련 정보
+        public int? DogtagMinLevel { get; set; }   // 도그태그 최소 레벨 (예: 15레벨 이상)
+        public string? DogtagFaction { get; set; } // 도그태그 진영: "BEAR", "USEC", or null
+
         // 승인 상태
         public string? ContentHash { get; set; }
         public bool IsApproved { get; set; }
@@ -3022,7 +3485,7 @@ namespace TarkovDBEditor.Services
         /// </summary>
         public string ComputeContentHash()
         {
-            var data = $"{QuestId}|{SortOrder}|{ObjectiveType}|{Description}|{TargetType}|{TargetCount}|{ItemName}|{RequiresFIR}|{MapName}|{LocationName}|{Conditions}";
+            var data = $"{QuestId}|{SortOrder}|{ObjectiveType}|{Description}|{TargetType}|{TargetCount}|{ItemName}|{RequiresFIR}|{MapName}|{LocationName}|{Conditions}|{DogtagMinLevel}|{DogtagFaction}";
             using var sha = System.Security.Cryptography.SHA256.Create();
             var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(data));
             return Convert.ToBase64String(hash).Substring(0, 16);
@@ -3043,6 +3506,7 @@ namespace TarkovDBEditor.Services
         public string RequirementType { get; set; } = "Required"; // Handover, Required, Optional
         public int SortOrder { get; set; }       // 정렬 순서
         public int? DogtagMinLevel { get; set; } // 도그태그 최소 레벨
+        public string? DogtagFaction { get; set; } // 도그태그 진영: "BEAR", "USEC", or null
         public string? ContentHash { get; set; } // 변경 감지용 해시
         public bool IsApproved { get; set; }     // 사용자 승인 여부
         public DateTime? ApprovedAt { get; set; } // 승인 시간
@@ -3064,7 +3528,7 @@ namespace TarkovDBEditor.Services
         /// </summary>
         public string ComputeContentHash()
         {
-            var data = $"{QuestId}|{ItemName}|{Count}|{RequiresFIR}|{RequirementType}|{DogtagMinLevel}";
+            var data = $"{QuestId}|{ItemName}|{Count}|{RequiresFIR}|{RequirementType}|{DogtagMinLevel}|{DogtagFaction}";
             using var sha = System.Security.Cryptography.SHA256.Create();
             var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(data));
             return Convert.ToBase64String(hash).Substring(0, 16);

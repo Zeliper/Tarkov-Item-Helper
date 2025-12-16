@@ -494,6 +494,48 @@ public partial class QuestRequirementsView : Window
             : $"Unapproved RequiredEdition requirement for {_viewModel.SelectedQuest.Name}";
     }
 
+    private async void ExcludedEditionCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedQuest == null) return;
+        if (sender is not CheckBox cb) return;
+
+        var isApproved = cb.IsChecked ?? false;
+        _viewModel.SelectedQuest.ExcludedEditionApproved = isApproved; // Update model immediately
+        await _viewModel.UpdateExcludedEditionApprovalAsync(_viewModel.SelectedQuest.Id, isApproved);
+        UpdateProgressText();
+        StatusText.Text = isApproved
+            ? $"Approved ExcludedEdition ({_viewModel.SelectedQuest.ExcludedEdition}) for {_viewModel.SelectedQuest.Name}"
+            : $"Unapproved ExcludedEdition requirement for {_viewModel.SelectedQuest.Name}";
+    }
+
+    private async void RequiredDecodeCountCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedQuest == null) return;
+        if (sender is not CheckBox cb) return;
+
+        var isApproved = cb.IsChecked ?? false;
+        _viewModel.SelectedQuest.RequiredDecodeCountApproved = isApproved; // Update model immediately
+        await _viewModel.UpdateRequiredDecodeCountApprovalAsync(_viewModel.SelectedQuest.Id, isApproved);
+        UpdateProgressText();
+        StatusText.Text = isApproved
+            ? $"Approved DSP decode count ({_viewModel.SelectedQuest.DecodeCountLabel}) for {_viewModel.SelectedQuest.Name}"
+            : $"Unapproved DSP decode count requirement for {_viewModel.SelectedQuest.Name}";
+    }
+
+    private async void RequiredPrestigeLevelCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedQuest == null) return;
+        if (sender is not CheckBox cb) return;
+
+        var isApproved = cb.IsChecked ?? false;
+        _viewModel.SelectedQuest.RequiredPrestigeLevelApproved = isApproved; // Update model immediately
+        await _viewModel.UpdateRequiredPrestigeLevelApprovalAsync(_viewModel.SelectedQuest.Id, isApproved);
+        UpdateProgressText();
+        StatusText.Text = isApproved
+            ? $"Approved Prestige level ({_viewModel.SelectedQuest.PrestigeLevelLabel}) for {_viewModel.SelectedQuest.Name}"
+            : $"Unapproved Prestige level requirement for {_viewModel.SelectedQuest.Name}";
+    }
+
     private async void QuestApprovalCheckbox_Changed(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedQuest == null) return;
@@ -533,6 +575,27 @@ public partial class QuestRequirementsView : Window
         {
             currentQuest.RequiredEditionApproved = true;
             await _viewModel.UpdateRequiredEditionApprovalAsync(currentQuest.Id, true);
+        }
+
+        // Approve ExcludedEdition if exists
+        if (currentQuest.HasExcludedEdition && !currentQuest.ExcludedEditionApproved)
+        {
+            currentQuest.ExcludedEditionApproved = true;
+            await _viewModel.UpdateExcludedEditionApprovalAsync(currentQuest.Id, true);
+        }
+
+        // Approve RequiredDecodeCount if exists
+        if (currentQuest.HasRequiredDecodeCount && !currentQuest.RequiredDecodeCountApproved)
+        {
+            currentQuest.RequiredDecodeCountApproved = true;
+            await _viewModel.UpdateRequiredDecodeCountApprovalAsync(currentQuest.Id, true);
+        }
+
+        // Approve RequiredPrestigeLevel if exists
+        if (currentQuest.HasRequiredPrestigeLevel && !currentQuest.RequiredPrestigeLevelApproved)
+        {
+            currentQuest.RequiredPrestigeLevelApproved = true;
+            await _viewModel.UpdateRequiredPrestigeLevelApprovalAsync(currentQuest.Id, true);
         }
 
         // Approve quest requirements
@@ -621,6 +684,27 @@ public partial class QuestRequirementsView : Window
         {
             currentQuest.RequiredEditionApproved = false;
             await _viewModel.UpdateRequiredEditionApprovalAsync(currentQuest.Id, false);
+        }
+
+        // Unapprove ExcludedEdition if exists
+        if (currentQuest.HasExcludedEdition && currentQuest.ExcludedEditionApproved)
+        {
+            currentQuest.ExcludedEditionApproved = false;
+            await _viewModel.UpdateExcludedEditionApprovalAsync(currentQuest.Id, false);
+        }
+
+        // Unapprove RequiredDecodeCount if exists
+        if (currentQuest.HasRequiredDecodeCount && currentQuest.RequiredDecodeCountApproved)
+        {
+            currentQuest.RequiredDecodeCountApproved = false;
+            await _viewModel.UpdateRequiredDecodeCountApprovalAsync(currentQuest.Id, false);
+        }
+
+        // Unapprove RequiredPrestigeLevel if exists
+        if (currentQuest.HasRequiredPrestigeLevel && currentQuest.RequiredPrestigeLevelApproved)
+        {
+            currentQuest.RequiredPrestigeLevelApproved = false;
+            await _viewModel.UpdateRequiredPrestigeLevelApprovalAsync(currentQuest.Id, false);
         }
 
         // Unapprove quest requirements
@@ -853,14 +937,123 @@ public partial class QuestRequirementsView : Window
         }
     }
 
+    private async void AddApiPoints_Click(object sender, RoutedEventArgs e)
+    {
+        // Check if an objective is selected
+        if (ObjectivesList.SelectedItem is not QuestObjectiveItem selectedObj)
+        {
+            MessageBox.Show("Please select an objective first.", "No Objective Selected", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        // Get available API markers for this quest
+        var apiMarkers = _viewModel.SelectedApiMarkers.ToList();
+        if (apiMarkers.Count == 0)
+        {
+            MessageBox.Show("No API reference markers available for this quest.\nUse Map Transfer to import markers from Tarkov Market API.",
+                "No API Markers", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        var effectiveMapName = selectedObj.EffectiveMapName;
+
+        // If the objective has multi-map location (e.g., "Shoreline, Interchange"), let user select one
+        if (SelectMapDialog.IsMultiMapLocation(effectiveMapName))
+        {
+            var mapDialog = new SelectMapDialog(effectiveMapName!,
+                "This quest has multiple maps. Select the map for location points:");
+            mapDialog.Owner = this;
+
+            if (mapDialog.ShowDialog() != true || string.IsNullOrEmpty(mapDialog.SelectedMap))
+                return;
+
+            // Update objective's MapName to the selected map
+            selectedObj.MapName = mapDialog.SelectedMap;
+            await _viewModel.UpdateObjectiveMapNameAsync(selectedObj.Id, mapDialog.SelectedMap);
+            effectiveMapName = mapDialog.SelectedMap;
+
+            StatusText.Text = $"Set objective map to: {mapDialog.SelectedMap}";
+        }
+
+        // Show the dialog
+        var dialog = new AddApiPointsDialog(selectedObj, apiMarkers);
+        dialog.Owner = this;
+
+        if (dialog.ShowDialog() != true || dialog.SelectedMarkers.Count == 0)
+            return;
+
+        // Apply selected markers
+        var addedAreaPoints = 0;
+        var addedOrPoints = 0;
+
+        foreach (var marker in dialog.SelectedMarkers)
+        {
+            // Check map match (warning only)
+            if (!string.IsNullOrEmpty(effectiveMapName) &&
+                !MapConfig.AreMapNamesEqual(effectiveMapName, marker.MapKey))
+            {
+                System.Diagnostics.Debug.WriteLine($"[AddApiPoints] Map mismatch: Objective={effectiveMapName}, Marker={marker.MapKey}");
+            }
+
+            if (dialog.IsOrPoint)
+            {
+                // Add as OR point
+                await _viewModel.ApplyApiMarkerAsOrPointAsync(marker, selectedObj);
+                addedOrPoints++;
+            }
+            else
+            {
+                // Add as Area point
+                await _viewModel.ApplyApiMarkerLocationToObjectiveAsync(marker, selectedObj);
+                addedAreaPoints++;
+            }
+        }
+
+        // Refresh UI
+        ObjectivesList.Items.Refresh();
+
+        // Update status
+        var pointInfo = new List<string>();
+        if (addedAreaPoints > 0)
+            pointInfo.Add($"{addedAreaPoints} Area");
+        if (addedOrPoints > 0)
+            pointInfo.Add($"{addedOrPoints} OR");
+
+        var desc = selectedObj.Description.Length > 40
+            ? selectedObj.Description.Substring(0, 40) + "..."
+            : selectedObj.Description;
+
+        StatusText.Text = $"Added {string.Join(", ", pointInfo)} point(s) to: {desc}";
+    }
+
     private async Task ApplyMarkerToObjective(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
     {
+        var effectiveMapName = objective.EffectiveMapName;
+
+        // If the objective has multi-map location (e.g., "Shoreline, Interchange"), let user select one
+        if (SelectMapDialog.IsMultiMapLocation(effectiveMapName))
+        {
+            var mapDialog = new SelectMapDialog(effectiveMapName!,
+                "This quest has multiple maps. Select the map for this location point:");
+            mapDialog.Owner = this;
+
+            if (mapDialog.ShowDialog() != true || string.IsNullOrEmpty(mapDialog.SelectedMap))
+                return;
+
+            // Update objective's MapName to the selected map
+            objective.MapName = mapDialog.SelectedMap;
+            await _viewModel.UpdateObjectiveMapNameAsync(objective.Id, mapDialog.SelectedMap);
+            effectiveMapName = mapDialog.SelectedMap;
+
+            StatusText.Text = $"Set objective map to: {mapDialog.SelectedMap}";
+        }
+
         // Check if the objective's map matches the marker's map (using normalized comparison)
-        if (!string.IsNullOrEmpty(objective.EffectiveMapName) &&
-            !MapConfig.AreMapNamesEqual(objective.EffectiveMapName, apiMarker.MapKey))
+        if (!string.IsNullOrEmpty(effectiveMapName) &&
+            !MapConfig.AreMapNamesEqual(effectiveMapName, apiMarker.MapKey))
         {
             var result = MessageBox.Show(
-                $"The objective's map ({objective.EffectiveMapName}) differs from the marker's map ({apiMarker.MapKey}).\n\nDo you want to apply anyway?",
+                $"The objective's map ({effectiveMapName}) differs from the marker's map ({apiMarker.MapKey}).\n\nDo you want to apply anyway?",
                 "Map Mismatch",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);

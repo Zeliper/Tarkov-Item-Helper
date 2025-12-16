@@ -1,0 +1,137 @@
+<Window x:Class="TarkovDBEditor.Views.AddApiPointsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add API Points to Objective" Height="500" Width="600"
+        Background="{StaticResource PrimaryBrush}"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header: Objective Info -->
+        <Border Grid.Row="0" Background="{StaticResource SecondaryBrush}" CornerRadius="4" Padding="12" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="Target Objective" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"/>
+                <TextBlock x:Name="ObjectiveDescText" Text="" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Point Type Selection -->
+        <Border Grid.Row="1" Background="{StaticResource SecondaryBrush}" CornerRadius="4" Padding="12" Margin="0,0,0,12">
+            <StackPanel>
+                <TextBlock Text="Point Type" FontWeight="Bold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,8"/>
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton x:Name="AreaPointRadio" Content="Area Point (Location)" IsChecked="True"
+                                 Foreground="{StaticResource TextBrush}" Margin="0,0,24,0"/>
+                    <RadioButton x:Name="OrPointRadio" Content="OR Point (Alternative Location)"
+                                 Foreground="{StaticResource TextBrush}"/>
+                </StackPanel>
+                <TextBlock Margin="0,8,0,0" FontSize="11" Foreground="{StaticResource TextDimBrush}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Text" Value="Area Points define the main objective area (polygon/line/point)"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsChecked, ElementName=OrPointRadio}" Value="True">
+                                    <Setter Property="Text" Value="OR Points define alternative locations where the objective can be completed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <!-- API Markers List -->
+        <Border Grid.Row="2" Background="{StaticResource SecondaryBrush}" CornerRadius="4" Padding="12">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="Select API Markers" FontWeight="Bold" Foreground="{StaticResource TextBrush}"/>
+                    <TextBlock x:Name="SelectionCountText" Text=" (0 selected)" Foreground="{StaticResource AccentBrush}" Margin="4,0,0,0"/>
+                    <Button Content="Select All" Click="SelectAll_Click" Style="{StaticResource SecondaryButton}"
+                            Padding="8,2" Margin="16,0,4,0" FontSize="11"/>
+                    <Button Content="Deselect All" Click="DeselectAll_Click" Style="{StaticResource SecondaryButton}"
+                            Padding="8,2" FontSize="11"/>
+                </StackPanel>
+
+                <ListBox Grid.Row="1" x:Name="MarkersList" BorderThickness="0" Background="Transparent"
+                         SelectionMode="Multiple" SelectionChanged="MarkersList_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4" Margin="0,2" Padding="8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <StackPanel Grid.Column="0">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                            <Border Background="#E65100" CornerRadius="3" Padding="6,1" Margin="8,0,4,0">
+                                                <TextBlock Text="API" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                            </Border>
+                                            <Border Background="#0277BD" CornerRadius="3" Padding="6,1">
+                                                <TextBlock Text="{Binding MapKey}" Foreground="White" FontSize="10"/>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <TextBlock Text="{Binding ObjectiveDescription}" FontSize="11"
+                                                   Foreground="{StaticResource TextDimBrush}" TextTrimming="CharacterEllipsis"
+                                                   Visibility="{Binding ObjectiveDescription, Converter={StaticResource BoolToVisibility}}"/>
+
+                                        <TextBlock Text="{Binding CoordinatesDisplay}" FontSize="11"
+                                                   Foreground="#4CAF50" FontFamily="Consolas"/>
+                                    </StackPanel>
+
+                                    <!-- Approved Badge -->
+                                    <Border Grid.Column="1" VerticalAlignment="Center" CornerRadius="3" Padding="6,2"
+                                            Visibility="{Binding IsApproved, Converter={StaticResource BoolToVisibility}}">
+                                        <Border.Background>
+                                            <SolidColorBrush Color="#2E7D32"/>
+                                        </Border.Background>
+                                        <TextBlock Text="Approved" Foreground="White" FontSize="10"/>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- Empty State -->
+                <TextBlock Grid.Row="1" x:Name="EmptyText" Text="No API markers available for this quest"
+                           Foreground="{StaticResource TextDimBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+
+        <!-- Info Text -->
+        <TextBlock Grid.Row="3" Margin="0,12,0,12" FontSize="11" Foreground="{StaticResource TextDimBrush}" TextWrapping="Wrap">
+            Selected markers will be converted to the objective's coordinate system and added as points.
+        </TextBlock>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" Click="Cancel_Click" Style="{StaticResource SecondaryButton}"
+                    Padding="16,8" Margin="0,0,8,0"/>
+            <Button x:Name="AddButton" Content="Add Points" Click="Add_Click" Style="{StaticResource PrimaryButton}"
+                    Padding="16,8" IsEnabled="False"/>
+        </StackPanel>
+    </Grid>
+</Window>

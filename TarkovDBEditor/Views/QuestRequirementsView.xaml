@@ -497,6 +497,173 @@
                                             </Border>
                                         </Grid>
                                     </Border>
+
+                                    <!-- Excluded Edition (NOT available for this edition) -->
+                                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4"
+                                            Margin="0,2" Padding="10,8"
+                                            Visibility="{Binding SelectedQuest.HasExcludedEdition, Converter={StaticResource BoolToVisibility}}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0" x:Name="ExcludedEditionCheckbox"
+                                                      IsChecked="{Binding SelectedQuest.ExcludedEditionApproved}"
+                                                      Margin="0,0,10,0" VerticalAlignment="Center"
+                                                      Checked="ExcludedEditionCheckbox_Changed" Unchecked="ExcludedEditionCheckbox_Changed"/>
+
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="Excluded Game Edition" FontWeight="SemiBold"/>
+                                                    <Border Background="#B71C1C" CornerRadius="3" Padding="6,1" Margin="8,0,0,0">
+                                                        <TextBlock Foreground="White" FontSize="10" Text="{Binding SelectedQuest.ExcludedEdition, Mode=OneWay}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="This quest is NOT available for this game edition"
+                                                           Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,4,0,0"/>
+                                            </StackPanel>
+
+                                            <Border Grid.Column="2" CornerRadius="3" Padding="6,2" Margin="2">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#C62828"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedQuest.ExcludedEditionApproved}" Value="True">
+                                                                <Setter Property="Background" Value="#2E7D32"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Foreground="White" FontSize="10">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Pending"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SelectedQuest.ExcludedEditionApproved}" Value="True">
+                                                                    <Setter Property="Text" Value="Approved"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Required Decode Count (DSP Radio Transmitter) -->
+                                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4"
+                                            Margin="0,2" Padding="10,8"
+                                            Visibility="{Binding SelectedQuest.HasRequiredDecodeCount, Converter={StaticResource BoolToVisibility}}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0" x:Name="RequiredDecodeCountCheckbox"
+                                                      IsChecked="{Binding SelectedQuest.RequiredDecodeCountApproved}"
+                                                      Margin="0,0,10,0" VerticalAlignment="Center"
+                                                      Checked="RequiredDecodeCountCheckbox_Changed" Unchecked="RequiredDecodeCountCheckbox_Changed"/>
+
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="DSP Radio Decode" FontWeight="SemiBold"/>
+                                                    <Border Background="#1565C0" CornerRadius="3" Padding="6,1" Margin="8,0,0,0">
+                                                        <TextBlock Foreground="White" FontSize="10" Text="{Binding SelectedQuest.DecodeCountLabel, Mode=OneWay}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,4,0,0">
+                                                    <Run Text="Digital secure DSP radio transmitter decoded the"/>
+                                                    <Run Text="{Binding SelectedQuest.DecodeCountLabel, Mode=OneWay}"/>
+                                                    <Run Text="time"/>
+                                                </TextBlock>
+                                            </StackPanel>
+
+                                            <Border Grid.Column="2" CornerRadius="3" Padding="6,2" Margin="2">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#C62828"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedQuest.RequiredDecodeCountApproved}" Value="True">
+                                                                <Setter Property="Background" Value="#2E7D32"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Foreground="White" FontSize="10">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Pending"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SelectedQuest.RequiredDecodeCountApproved}" Value="True">
+                                                                    <Setter Property="Text" Value="Approved"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Required Prestige Level -->
+                                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4"
+                                            Margin="0,2" Padding="10,8"
+                                            Visibility="{Binding SelectedQuest.HasRequiredPrestigeLevel, Converter={StaticResource BoolToVisibility}}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0" x:Name="RequiredPrestigeLevelCheckbox"
+                                                      IsChecked="{Binding SelectedQuest.RequiredPrestigeLevelApproved}"
+                                                      Margin="0,0,10,0" VerticalAlignment="Center"
+                                                      Checked="RequiredPrestigeLevelCheckbox_Changed" Unchecked="RequiredPrestigeLevelCheckbox_Changed"/>
+
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="Prestige Level" FontWeight="SemiBold"/>
+                                                    <Border Background="#9C27B0" CornerRadius="3" Padding="6,1" Margin="8,0,0,0">
+                                                        <TextBlock Foreground="White" FontSize="10" Text="{Binding SelectedQuest.PrestigeLevelLabel, Mode=OneWay}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,4,0,0">
+                                                    <Run Text="Player must have reached"/>
+                                                    <Run Text="{Binding SelectedQuest.PrestigeLevelLabel, Mode=OneWay}"/>
+                                                </TextBlock>
+                                            </StackPanel>
+
+                                            <Border Grid.Column="2" CornerRadius="3" Padding="6,2" Margin="2">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#C62828"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedQuest.RequiredPrestigeLevelApproved}" Value="True">
+                                                                <Setter Property="Background" Value="#2E7D32"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Foreground="White" FontSize="10">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Pending"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SelectedQuest.RequiredPrestigeLevelApproved}" Value="True">
+                                                                    <Setter Property="Text" Value="Approved"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
                                 </StackPanel>
 
                                 <TextBlock Grid.Row="1" Text="Previous Quest Requirements" FontWeight="Bold"
@@ -585,7 +752,21 @@
                         <!-- Objectives Tab -->
                         <TabItem Header="Objectives">
                             <Grid>
-                                <ListBox x:Name="ObjectivesList"
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Toolbar -->
+                                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,8,0,8">
+                                    <Button x:Name="AddApiPointsBtn" Content="Add API Points" Click="AddApiPoints_Click"
+                                            Style="{StaticResource PrimaryButton}" Padding="12,4" FontSize="11"
+                                            ToolTip="Add points from API markers to the selected objective"/>
+                                    <TextBlock x:Name="ObjectiveHintText" Text="  (Select an objective and click to add API marker points)"
+                                               Foreground="{StaticResource TextDimBrush}" VerticalAlignment="Center" FontSize="11"/>
+                                </StackPanel>
+
+                                <ListBox Grid.Row="1" x:Name="ObjectivesList"
                                          ItemsSource="{Binding SelectedQuestObjectives}"
                                          BorderThickness="0"
                                          Background="Transparent"
@@ -737,7 +918,7 @@
                                 </ListBox>
 
                                 <!-- Empty State -->
-                                <TextBlock Text="No objectives found for this quest"
+                                <TextBlock Grid.Row="1" Text="No objectives found for this quest"
                                            Foreground="{StaticResource TextDimBrush}"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                            Visibility="{Binding HasNoObjectives, Converter={StaticResource BoolToVisibility}}"/>

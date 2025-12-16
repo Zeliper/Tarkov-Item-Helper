@@ -423,11 +423,13 @@ namespace TarkovDBEditor.Services
                             // Infobox에서 트레이더 정보 추출
                             cached.Trader = ExtractTraderFromInfobox(content);
 
-                            // Requirements 섹션에서 MinLevel, MinScavKarma, Faction, RequiredEdition 추출
+                            // Requirements 섹션에서 MinLevel, MinScavKarma, Faction, RequiredEdition, ExcludedEdition, RequiredDecodeCount 추출
                             cached.MinLevel = ExtractMinLevel(content);
                             cached.MinScavKarma = ExtractMinScavKarma(content);
                             cached.Faction = ExtractFaction(content);
                             cached.RequiredEdition = ExtractRequiredEdition(content);
+                            cached.ExcludedEdition = ExtractExcludedEdition(content);
+                            cached.RequiredDecodeCount = ExtractRequiredDecodeCount(content);
                         }
 
                         completed++;
@@ -664,6 +666,7 @@ namespace TarkovDBEditor.Services
             string requirement = "Required";
             bool foundInRaid = false;
             int? dogtagMinLevel = null;
+            string? dogtagFaction = null;
 
             int columnIndex = 0;
             foreach (var rawCell in cells)
@@ -790,6 +793,19 @@ namespace TarkovDBEditor.Services
                 }
             }
 
+            // 도그태그 진영 파싱 (아이템 이름에서)
+            if (!string.IsNullOrEmpty(itemName))
+            {
+                if (Regex.IsMatch(itemName, @"\bBEAR\b", RegexOptions.IgnoreCase))
+                {
+                    dogtagFaction = "BEAR";
+                }
+                else if (Regex.IsMatch(itemName, @"\bUSEC\b", RegexOptions.IgnoreCase))
+                {
+                    dogtagFaction = "USEC";
+                }
+            }
+
             return new ParsedRequiredItem
             {
                 ItemId = itemId,
@@ -797,7 +813,8 @@ namespace TarkovDBEditor.Services
                 Count = amount > 0 ? amount : 1,
                 RequirementType = requirement,
                 RequiresFIR = foundInRaid,
-                DogtagMinLevel = dogtagMinLevel
+                DogtagMinLevel = dogtagMinLevel,
+                DogtagFaction = dogtagFaction
             };
         }
 
@@ -863,6 +880,19 @@ namespace TarkovDBEditor.Services
             obj.RequiresFIR = Regex.IsMatch(line, @"\bin\s+raid\b", RegexOptions.IgnoreCase);
 
             // 타입 및 상세 정보 파싱
+            // Kill 패턴 0: Eliminate any X targets/enemies (일반 대상)
+            // 예: "Eliminate any 20 targets"
+            // 예: "Eliminate any 10 enemies"
+            var killAnyMatch = Regex.Match(line, @"(?:Eliminate|Kill)\s+any\s+(\d+)\s+(?:targets?|enemies?|operators?)", RegexOptions.IgnoreCase);
+            if (killAnyMatch.Success)
+            {
+                obj.Type = ObjectiveType.Kill;
+                obj.TargetCount = int.Parse(killAnyMatch.Groups[1].Value);
+                obj.TargetType = "Any"; // 일반 대상
+                ExtractKillConditions(line, obj);
+                return obj;
+            }
+
             // Kill 패턴 1: Eliminate X [enemy] (숫자가 있는 경우)
             var killMatch = Regex.Match(line, @"(?:Eliminate|Kill)\s+(\d+)\s+(?:\[\[)?([^\]\s]+)", RegexOptions.IgnoreCase);
             if (killMatch.Success)
@@ -887,14 +917,40 @@ namespace TarkovDBEditor.Services
                 return obj;
             }
 
-            // HandOver 패턴: Hand over (the item:)? X [[item]]
+            // HandOver 패턴 1: 도그태그 특수 형식 (진영과 아이템이 별도 링크)
+            // 예: "Hand over the 5 found [[Found in raid|in raid]] [[BEAR]] [[Dogtag|PMC dogtags]]"
+            // 예: "Hand over the 5 found [[Found in raid|in raid]] [[USEC]] [[Dogtag|PMC dogtags]]"
+            var handOverDogtagMatch = Regex.Match(line, @"Hand\s+over\s+(?:the\s+)?(\d+)?\s*(?:found\s+)?(?:\[\[Found in raid[^\]]*\]\]\s*)?\[\[(BEAR|USEC)\]\]\s*\[\[(?:Dogtag|PMC dogtags?)(?:\|[^\]]+)?\]\]", RegexOptions.IgnoreCase);
+            if (handOverDogtagMatch.Success)
+            {
+                obj.Type = ObjectiveType.HandOver;
+                if (handOverDogtagMatch.Groups[1].Success && int.TryParse(handOverDogtagMatch.Groups[1].Value, out var count))
+                    obj.TargetCount = count;
+                else
+                    obj.TargetCount = 1;
+
+                // 진영에 따른 도그태그 이름 설정
+                var faction = handOverDogtagMatch.Groups[2].Value.Trim().ToUpper();
+                obj.ItemName = $"{faction} Dogtag";
+                obj.DogtagFaction = faction;
+
+                // 레벨 추출 (예: "level 15 or higher", "level 15+", "≥15")
+                var levelMatch = Regex.Match(line, @"level\s*(\d+)\s*(?:or\s+higher|\+)?", RegexOptions.IgnoreCase);
+                if (levelMatch.Success && int.TryParse(levelMatch.Groups[1].Value, out var minLevel))
+                    obj.DogtagMinLevel = minLevel;
+
+                return obj;
+            }
+
+            // HandOver 패턴 2: 일반 아이템
             // 예: "Hand over the item: 8 [[Bottle of Tarkovskaya vodka]]"
             // 예: "Hand over 3 [[Item Name|Display Name]]"
             // 예: "Hand over the found [[Found in raid|...]] item: [[SSD drive]]"
             // 예: "Hand over the 3 found [[Found in raid|...]] [[Iskra ration pack|...]]"
             // 예: "Hand over the found [[Ref dirt|info]]" (Found in raid 링크 없이)
             // 중요: "found"와 "[[Found in raid|...]]"를 각각 선택적으로 처리
-            var handOverMatch = Regex.Match(line, @"Hand\s+over\s+(?:the\s+)?(\d+)?\s*(?:found\s+)?(?:\[\[Found in raid[^\]]*\]\]\s*)?(?:item:?\s+)?(?:\d+)?\s*\[\[([^\]|]+)(?:\|[^\]]+)?\]\]", RegexOptions.IgnoreCase);
+            // 도그태그 예시: "Hand over 20 found in raid [[Dogtag|BEAR Dogtag]]"
+            var handOverMatch = Regex.Match(line, @"Hand\s+over\s+(?:the\s+)?(\d+)?\s*(?:found\s+)?(?:\[\[Found in raid[^\]]*\]\]\s*)?(?:item:?\s+)?(?:\d+)?\s*\[\[([^\]|]+)(?:\|([^\]]+))?\]\]", RegexOptions.IgnoreCase);
             if (handOverMatch.Success)
             {
                 obj.Type = ObjectiveType.HandOver;
@@ -902,7 +958,29 @@ namespace TarkovDBEditor.Services
                     obj.TargetCount = count;
                 else
                     obj.TargetCount = 1;
-                obj.ItemName = handOverMatch.Groups[2].Value.Trim();
+
+                // 아이템 이름 결정: display name이 있으면 사용, 없으면 링크 대상 사용
+                var linkTarget = handOverMatch.Groups[2].Value.Trim();
+                var displayName = handOverMatch.Groups[3].Success ? handOverMatch.Groups[3].Value.Trim() : null;
+                obj.ItemName = displayName ?? linkTarget;
+
+                // 도그태그 관련 정보 추출 (아이템 이름 또는 display name에서)
+                var nameToCheck = displayName ?? linkTarget;
+                if (nameToCheck.Contains("Dogtag", StringComparison.OrdinalIgnoreCase) ||
+                    linkTarget.Equals("Dogtag", StringComparison.OrdinalIgnoreCase))
+                {
+                    // 진영 추출 (아이템 이름에서)
+                    if (Regex.IsMatch(nameToCheck, @"\bBEAR\b", RegexOptions.IgnoreCase))
+                        obj.DogtagFaction = "BEAR";
+                    else if (Regex.IsMatch(nameToCheck, @"\bUSEC\b", RegexOptions.IgnoreCase))
+                        obj.DogtagFaction = "USEC";
+
+                    // 레벨 추출 (예: "level 15 or higher", "level 15+", "≥15")
+                    var levelMatch = Regex.Match(line, @"level\s*(\d+)\s*(?:or\s+higher|\+)?", RegexOptions.IgnoreCase);
+                    if (levelMatch.Success && int.TryParse(levelMatch.Groups[1].Value, out var minLevel))
+                        obj.DogtagMinLevel = minLevel;
+                }
+
                 return obj;
             }
 
@@ -1218,8 +1296,9 @@ namespace TarkovDBEditor.Services
         }
 
         /// <summary>
-        /// PageContent에서 ==Requirements== 섹션의 게임 에디션 요구사항 추출
+        /// PageContent에서 ==Requirements== 섹션의 게임 에디션 요구사항 추출 (긍정적 요구사항)
         /// 패턴: "This quest is only available to buyers of the "Edge of Darkness" edition of the game."
+        /// 패턴: "This quest is only available to owners of the "Unheard Edition" of the game."
         /// </summary>
         public static string? ExtractRequiredEdition(string content)
         {
@@ -1233,17 +1312,132 @@ namespace TarkovDBEditor.Services
 
             var requirementsSection = reqMatch.Groups[1].Value;
 
+            // "only available to" 패턴만 매칭 (긍정적 요구사항)
             // "Edge of Darkness" 에디션
-            if (Regex.IsMatch(requirementsSection, @"Edge of Darkness", RegexOptions.IgnoreCase))
+            if (Regex.IsMatch(requirementsSection, @"only\s+available\s+to\s+(?:buyers|owners)\s+of\s+(?:the\s+)?[""']?Edge of Darkness[""']?", RegexOptions.IgnoreCase))
             {
                 return "EOD";
             }
 
-            // "Unheard Edition" 도 추가 (향후 대비)
-            if (Regex.IsMatch(requirementsSection, @"Unheard Edition", RegexOptions.IgnoreCase))
+            // "Unheard Edition" (긍정적 요구사항 - 이 에디션만 가능)
+            if (Regex.IsMatch(requirementsSection, @"only\s+available\s+to\s+(?:buyers|owners)\s+of\s+(?:the\s+)?[""']?(?:The\s+)?Unheard(?:\s+Edition)?[""']?", RegexOptions.IgnoreCase))
             {
                 return "Unheard";
             }
+
+            return null;
+        }
+
+        /// <summary>
+        /// PageContent에서 게임 에디션 제외 조건 추출 (부정적 요구사항)
+        /// Requirements 또는 Notes 섹션에서 검색
+        /// 패턴: "This quest is not available to owners of the 'The Unheard' edition of the game."
+        /// </summary>
+        public static string? ExtractExcludedEdition(string content)
+        {
+            if (string.IsNullOrEmpty(content))
+                return null;
+
+            // ==Requirements== 섹션과 ==Notes== 섹션 모두 검색
+            var sectionsToSearch = new List<string>();
+
+            // Requirements 섹션
+            var reqMatch = Regex.Match(content, @"==\s*Requirements\s*==\s*(.*?)(?===|\z)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (reqMatch.Success)
+                sectionsToSearch.Add(reqMatch.Groups[1].Value);
+
+            // Notes 섹션 (에디션 제외 정보가 여기 있는 경우가 많음)
+            var notesMatch = Regex.Match(content, @"==\s*Notes\s*==\s*(.*?)(?===|\z)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (notesMatch.Success)
+                sectionsToSearch.Add(notesMatch.Groups[1].Value);
+
+            foreach (var section in sectionsToSearch)
+            {
+                // "not available to" 패턴 매칭 (부정적 요구사항 - 이 에디션은 불가)
+                // 패턴: "This quest is not available to owners of the 'The Unheard' edition of the game."
+                if (Regex.IsMatch(section, @"not\s+available\s+to\s+(?:buyers|owners)\s+of\s+(?:the\s+)?[""']?(?:The\s+)?Unheard[""']?(?:\s+edition)?", RegexOptions.IgnoreCase))
+                {
+                    return "Unheard";
+                }
+
+                // EOD 제외 (혹시 있을 경우 대비)
+                if (Regex.IsMatch(section, @"not\s+available\s+to\s+(?:buyers|owners)\s+of\s+(?:the\s+)?[""']?Edge of Darkness[""']?", RegexOptions.IgnoreCase))
+                {
+                    return "EOD";
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// PageContent에서 ==Requirements== 섹션의 DSP 라디오 해독 필요 횟수 추출
+        /// 패턴: "Getting the Digital secure DSP radio transmitter decoded the first time."
+        /// 패턴: "Getting the Digital secure DSP radio transmitter decoded the second time."
+        /// 패턴: "Getting the Digital secure DSP radio transmitter decoded the third time."
+        /// </summary>
+        public static int? ExtractRequiredDecodeCount(string content)
+        {
+            if (string.IsNullOrEmpty(content))
+                return null;
+
+            // ==Requirements== 섹션 찾기
+            var reqMatch = Regex.Match(content, @"==\s*Requirements\s*==\s*(.*?)(?===|\z)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (!reqMatch.Success)
+                return null;
+
+            var requirementsSection = reqMatch.Groups[1].Value;
+
+            // "DSP radio transmitter decoded the first/second/third time" 패턴 매칭
+            // Wiki 형식: [[Digital secure DSP radio transmitter]] <font color="red">decoded</font> the first time
+            // <font> 태그와 다양한 공백/줄바꿈을 고려한 패턴
+            var decodeMatch = Regex.Match(requirementsSection,
+                @"(?:\[\[)?Digital\s+secure\s+DSP\s+radio\s+transmitter(?:\]\])?\s*(?:<[^>]*>)?\s*decoded\s*(?:</[^>]*>)?\s+(?:the\s+)?(first|second|third|fourth|fifth|\d+(?:st|nd|rd|th)?)\s+time",
+                RegexOptions.IgnoreCase);
+
+            if (!decodeMatch.Success)
+                return null;
+
+            var ordinal = decodeMatch.Groups[1].Value.ToLowerInvariant();
+            return ordinal switch
+            {
+                "first" or "1st" => 1,
+                "second" or "2nd" => 2,
+                "third" or "3rd" => 3,
+                "fourth" or "4th" => 4,
+                "fifth" or "5th" => 5,
+                _ when int.TryParse(Regex.Match(ordinal, @"\d+").Value, out var num) => num,
+                _ => null
+            };
+        }
+
+        /// <summary>
+        /// PageContent에서 ==Requirements== 섹션의 Prestige 레벨 요구사항 추출
+        /// 패턴: "Must have [[Prestige]] level 1" 또는 "[[Prestige]] level 2" 등
+        /// </summary>
+        public static int? ExtractRequiredPrestigeLevel(string content)
+        {
+            if (string.IsNullOrEmpty(content))
+                return null;
+
+            // ==Requirements== 섹션 찾기
+            var reqMatch = Regex.Match(content, @"==\s*Requirements\s*==\s*(.*?)(?===|\z)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (!reqMatch.Success)
+                return null;
+
+            var requirementsSection = reqMatch.Groups[1].Value;
+
+            // "[[Prestige]] level N" 또는 "Prestige level N" 패턴 매칭
+            // Wiki 형식: Must have [[Prestige]] level 1
+            var prestigeMatch = Regex.Match(requirementsSection,
+                @"(?:\[\[)?Prestige(?:\]\])?\s+level\s+(\d+)",
+                RegexOptions.IgnoreCase);
+
+            if (!prestigeMatch.Success)
+                return null;
+
+            if (int.TryParse(prestigeMatch.Groups[1].Value, out var level))
+                return level;
 
             return null;
         }
@@ -1307,6 +1501,14 @@ namespace TarkovDBEditor.Services
             // HTML 엔티티 디코딩
             previousValue = System.Net.WebUtility.HtmlDecode(previousValue);
 
+            // "See requirements" 패턴 체크 - Requirements 섹션에서 파싱해야 하는 경우
+            // 예: [[Network Provider - Part 1#Requirements|See requirements]]
+            // 예: [[Collector#Requirements|See requirements]]
+            if (Regex.IsMatch(previousValue, @"\[\[[^\]]+#Requirements\|See requirements\]\]", RegexOptions.IgnoreCase))
+            {
+                return ExtractPreviousQuestsFromRequirementsSection(content);
+            }
+
             // OR 그룹 분리 (or<br/>or 또는 <br/>or<br/> 패턴)
             // 먼저 전체를 <br/>, <br>, </br>, <br /> 로 분리
             var parts = Regex.Split(previousValue, @"<br\s*/?>|</br>", RegexOptions.IgnoreCase);
@@ -1345,6 +1547,73 @@ namespace TarkovDBEditor.Services
                         quest.GroupId = groupId;
                     }
                     requirements.Add(quest);
+                }
+            }
+
+            return requirements;
+        }
+
+        /// <summary>
+        /// ==Requirements== 섹션에서 선행 퀘스트 목록 파싱
+        /// Network Provider - Part 1 등 |previous = 가 "See requirements"로 링크된 경우 사용
+        /// </summary>
+        private static List<ParsedQuestRequirement> ExtractPreviousQuestsFromRequirementsSection(string content)
+        {
+            var requirements = new List<ParsedQuestRequirement>();
+
+            // ==Requirements== 섹션 추출
+            var reqSectionMatch = Regex.Match(content, @"==\s*Requirements\s*==\s*(.*?)(?===|\z)", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (!reqSectionMatch.Success)
+                return requirements;
+
+            var reqSection = reqSectionMatch.Groups[1].Value;
+
+            // ** [[Quest Name]] 형태의 bullet point 추출 (중첩된 불릿 포인트)
+            // 각 라인에서 ** 로 시작하는 것들만 추출
+            var lines = reqSection.Split('\n');
+            int groupId = 0;
+
+            foreach (var line in lines)
+            {
+                var trimmedLine = line.Trim();
+
+                // ** 로 시작하는 불릿 포인트만 처리 (중첩 레벨 2)
+                if (!trimmedLine.StartsWith("**") || trimmedLine.StartsWith("***"))
+                    continue;
+
+                // ** 제거
+                var questLine = trimmedLine.Substring(2).Trim();
+                if (string.IsNullOrEmpty(questLine))
+                    continue;
+
+                // 인라인 OR 조건 처리: [[A]] or [[B]] or [[C]]
+                // " or " 로 분리
+                var orParts = Regex.Split(questLine, @"\s+or\s+", RegexOptions.IgnoreCase);
+
+                if (orParts.Length > 1)
+                {
+                    // OR 그룹 - 모두 같은 GroupId
+                    groupId++;
+                    foreach (var orPart in orParts)
+                    {
+                        var quests = ExtractQuestsFromPart(orPart.Trim());
+                        foreach (var quest in quests)
+                        {
+                            quest.GroupId = groupId;
+                            requirements.Add(quest);
+                        }
+                    }
+                }
+                else
+                {
+                    // 단일 퀘스트 - 새 그룹
+                    var quests = ExtractQuestsFromPart(questLine);
+                    foreach (var quest in quests)
+                    {
+                        groupId++;
+                        quest.GroupId = groupId;
+                        requirements.Add(quest);
+                    }
                 }
             }
 
@@ -1785,6 +2054,12 @@ namespace TarkovDBEditor.Services
         [JsonPropertyName("requiredEdition")]
         public string? RequiredEdition { get; set; }
 
+        [JsonPropertyName("excludedEdition")]
+        public string? ExcludedEdition { get; set; }
+
+        [JsonPropertyName("requiredDecodeCount")]
+        public int? RequiredDecodeCount { get; set; }
+
         [JsonPropertyName("cachedAt")]
         public DateTime CachedAt { get; set; }
 
@@ -1919,6 +2194,10 @@ namespace TarkovDBEditor.Services
 
         // 추가 조건
         public string? Conditions { get; set; }  // 추가 조건 (JSON 또는 텍스트)
+
+        // 도그태그 관련 정보
+        public int? DogtagMinLevel { get; set; }   // 도그태그 최소 레벨 (예: 15레벨 이상)
+        public string? DogtagFaction { get; set; } // 도그태그 진영: "BEAR", "USEC", or null
     }
 
     /// <summary>
@@ -1933,6 +2212,7 @@ namespace TarkovDBEditor.Services
         public bool RequiresFIR { get; set; }           // Found in Raid 필요 여부
         public string RequirementType { get; set; } = "Required";  // Handover, Required, Optional
         public int? DogtagMinLevel { get; set; }        // 도그태그 최소 레벨 (도그태그 아이템만)
+        public string? DogtagFaction { get; set; }      // 도그태그 진영: "BEAR", "USEC", or null
     }
 
     #endregion

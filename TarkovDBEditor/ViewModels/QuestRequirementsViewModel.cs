@@ -163,11 +163,14 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         // Migrate OptionalPoints column if not exists
         await MigrateOptionalPointsColumnAsync(connection);
 
-        // Load all quests with MinLevel, MinScavKarma, Location, Faction, KappaRequired, RequiredEdition, IsApproved
+        // Load all quests with MinLevel, MinScavKarma, Location, Faction, KappaRequired, RequiredEdition, ExcludedEdition, RequiredDecodeCount, IsApproved
         var questSql = @"SELECT Id, Name, NameEN, NameKO, NameJA, WikiPageLink, Trader, BsgId,
                          MinLevel, MinLevelApproved, MinLevelApprovedAt,
                          MinScavKarma, MinScavKarmaApproved, MinScavKarmaApprovedAt,
                          Location, Faction, KappaRequired, RequiredEdition, RequiredEditionApproved, RequiredEditionApprovedAt,
+                         ExcludedEdition, ExcludedEditionApproved, ExcludedEditionApprovedAt,
+                         RequiredDecodeCount, RequiredDecodeCountApproved, RequiredDecodeCountApprovedAt,
+                         RequiredPrestigeLevel, RequiredPrestigeLevelApproved, RequiredPrestigeLevelApprovedAt,
                          IsApproved, ApprovedAt
                          FROM Quests ORDER BY Name";
         await using var questCmd = new SqliteCommand(questSql, connection);
@@ -198,8 +201,17 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
                 RequiredEdition = questReader.IsDBNull(17) ? null : questReader.GetString(17),
                 RequiredEditionApproved = !questReader.IsDBNull(18) && questReader.GetInt64(18) != 0,
                 RequiredEditionApprovedAt = questReader.IsDBNull(19) ? null : DateTime.Parse(questReader.GetString(19)),
-                IsApproved = !questReader.IsDBNull(20) && questReader.GetInt64(20) != 0,
-                ApprovedAt = questReader.IsDBNull(21) ? null : DateTime.Parse(questReader.GetString(21))
+                ExcludedEdition = questReader.IsDBNull(20) ? null : questReader.GetString(20),
+                ExcludedEditionApproved = !questReader.IsDBNull(21) && questReader.GetInt64(21) != 0,
+                ExcludedEditionApprovedAt = questReader.IsDBNull(22) ? null : DateTime.Parse(questReader.GetString(22)),
+                RequiredDecodeCount = questReader.IsDBNull(23) ? null : questReader.GetInt32(23),
+                RequiredDecodeCountApproved = !questReader.IsDBNull(24) && questReader.GetInt64(24) != 0,
+                RequiredDecodeCountApprovedAt = questReader.IsDBNull(25) ? null : DateTime.Parse(questReader.GetString(25)),
+                RequiredPrestigeLevel = questReader.IsDBNull(26) ? null : questReader.GetInt32(26),
+                RequiredPrestigeLevelApproved = !questReader.IsDBNull(27) && questReader.GetInt64(27) != 0,
+                RequiredPrestigeLevelApprovedAt = questReader.IsDBNull(28) ? null : DateTime.Parse(questReader.GetString(28)),
+                IsApproved = !questReader.IsDBNull(29) && questReader.GetInt64(29) != 0,
+                ApprovedAt = questReader.IsDBNull(30) ? null : DateTime.Parse(questReader.GetString(30))
             });
         }
 
@@ -569,10 +581,15 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
             await using var connection = new SqliteConnection(connectionString);
             await connection.OpenAsync();
 
+            // Items 테이블과 JOIN하여 IconUrl 가져오기 (ItemId로 직접 매칭 또는 Name으로 매칭)
             var sql = @"
                 SELECT r.Id, r.QuestId, r.ItemId, r.ItemName, r.Count, r.RequiresFIR,
-                       r.RequirementType, r.SortOrder, r.DogtagMinLevel, r.IsApproved, r.ApprovedAt
+                       r.RequirementType, r.SortOrder, r.DogtagMinLevel, r.IsApproved, r.ApprovedAt,
+                       COALESCE(i1.Id, i2.Id) as MatchedItemId,
+                       COALESCE(i1.IconUrl, i2.IconUrl) as IconUrl
                 FROM QuestRequiredItems r
+                LEFT JOIN Items i1 ON r.ItemId = i1.Id
+                LEFT JOIN Items i2 ON r.ItemId IS NULL AND i2.Name = r.ItemName
                 WHERE r.QuestId = @QuestId
                 ORDER BY r.SortOrder";
 
@@ -594,7 +611,9 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
                     SortOrder = reader.GetInt32(7),
                     DogtagMinLevel = reader.IsDBNull(8) ? null : reader.GetInt32(8),
                     IsApproved = !reader.IsDBNull(9) && reader.GetInt64(9) != 0,
-                    ApprovedAt = reader.IsDBNull(10) ? null : DateTime.Parse(reader.GetString(10))
+                    ApprovedAt = reader.IsDBNull(10) ? null : DateTime.Parse(reader.GetString(10)),
+                    MatchedItemId = reader.IsDBNull(11) ? null : reader.GetString(11),
+                    IconUrl = reader.IsDBNull(12) ? null : reader.GetString(12)
                 };
                 SelectedRequiredItems.Add(item);
             }
@@ -782,6 +801,23 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         System.Diagnostics.Debug.WriteLine($"[ReplaceObjectiveLocationWithApiMarkerAsync] Replaced Objective {objective.Id}");
     }
 
+    /// <summary>
+    /// API 마커의 위치를 Objective의 OR Point (OptionalPoints)에 추가
+    /// </summary>
+    public async Task ApplyApiMarkerAsOrPointAsync(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
+    {
+        if (apiMarker == null || objective == null) return;
+
+        // API 마커 좌표를 Objective 좌표계로 변환
+        var newPoint = ConvertApiMarkerToObjectiveCoordinates(apiMarker);
+        objective.OptionalPoints.Add(newPoint);
+
+        // DB에 저장
+        await UpdateObjectiveOptionalPointsAsync(objective.Id, objective.OptionalPointsJson);
+
+        System.Diagnostics.Debug.WriteLine($"[ApplyApiMarkerAsOrPointAsync] Added OR point to Objective {objective.Id}");
+    }
+
     public async Task UpdateRequiredItemApprovalAsync(string requiredItemId, bool isApproved)
     {
         if (!_db.IsConnected)
@@ -945,6 +981,33 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         System.Diagnostics.Debug.WriteLine($"[UpdateObjectiveOptionalPointsAsync] Updated {rows} row(s) for ObjectiveId={objectiveId}, OptionalPointsJson={(optionalPointsJson ?? "null")}");
     }
 
+    /// <summary>
+    /// Objective의 MapName을 업데이트합니다. 다중 맵 퀘스트에서 특정 맵을 선택한 경우 사용.
+    /// </summary>
+    public async Task UpdateObjectiveMapNameAsync(string objectiveId, string? mapName)
+    {
+        if (!_db.IsConnected)
+        {
+            System.Diagnostics.Debug.WriteLine($"[UpdateObjectiveMapNameAsync] DB not connected!");
+            return;
+        }
+
+        var connectionString = $"Data Source={_db.DatabasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"UPDATE QuestObjectives
+                    SET MapName = @MapName, UpdatedAt = @UpdatedAt
+                    WHERE Id = @Id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@Id", objectiveId);
+        cmd.Parameters.AddWithValue("@MapName", (object?)mapName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@UpdatedAt", DateTime.UtcNow.ToString("o"));
+        var rows = await cmd.ExecuteNonQueryAsync();
+        System.Diagnostics.Debug.WriteLine($"[UpdateObjectiveMapNameAsync] Updated {rows} row(s) for ObjectiveId={objectiveId}, MapName={(mapName ?? "null")}");
+    }
+
     public async Task UpdateApprovalAsync(string requirementId, bool isApproved)
     {
         if (!_db.IsConnected)
@@ -1089,6 +1152,117 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task UpdateExcludedEditionApprovalAsync(string questId, bool isApproved)
+    {
+        if (!_db.IsConnected) return;
+
+        var connectionString = $"Data Source={_db.DatabasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = isApproved
+            ? "UPDATE Quests SET ExcludedEditionApproved = 1, ExcludedEditionApprovedAt = @ApprovedAt WHERE Id = @Id"
+            : "UPDATE Quests SET ExcludedEditionApproved = 0, ExcludedEditionApprovedAt = NULL WHERE Id = @Id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@Id", questId);
+        if (isApproved)
+        {
+            cmd.Parameters.AddWithValue("@ApprovedAt", DateTime.UtcNow.ToString("o"));
+        }
+        await cmd.ExecuteNonQueryAsync();
+
+        // Update local quest
+        if (_selectedQuest != null && _selectedQuest.Id == questId)
+        {
+            _selectedQuest.ExcludedEditionApproved = isApproved;
+            _selectedQuest.ExcludedEditionApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+
+        var questInList = _allQuests.FirstOrDefault(q => q.Id == questId);
+        if (questInList != null)
+        {
+            questInList.ExcludedEditionApproved = isApproved;
+            questInList.ExcludedEditionApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+    }
+
+    /// <summary>
+    /// DSP 라디오 해독 횟수 승인 상태 업데이트
+    /// </summary>
+    public async Task UpdateRequiredDecodeCountApprovalAsync(string questId, bool isApproved)
+    {
+        if (!_db.IsConnected) return;
+
+        var connectionString = $"Data Source={_db.DatabasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = isApproved
+            ? "UPDATE Quests SET RequiredDecodeCountApproved = 1, RequiredDecodeCountApprovedAt = @ApprovedAt WHERE Id = @Id"
+            : "UPDATE Quests SET RequiredDecodeCountApproved = 0, RequiredDecodeCountApprovedAt = NULL WHERE Id = @Id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@Id", questId);
+        if (isApproved)
+        {
+            cmd.Parameters.AddWithValue("@ApprovedAt", DateTime.UtcNow.ToString("o"));
+        }
+        await cmd.ExecuteNonQueryAsync();
+
+        // Update local quest
+        if (_selectedQuest != null && _selectedQuest.Id == questId)
+        {
+            _selectedQuest.RequiredDecodeCountApproved = isApproved;
+            _selectedQuest.RequiredDecodeCountApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+
+        var questInList = _allQuests.FirstOrDefault(q => q.Id == questId);
+        if (questInList != null)
+        {
+            questInList.RequiredDecodeCountApproved = isApproved;
+            questInList.RequiredDecodeCountApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+    }
+
+    /// <summary>
+    /// Prestige 레벨 요구사항 승인 상태 업데이트
+    /// </summary>
+    public async Task UpdateRequiredPrestigeLevelApprovalAsync(string questId, bool isApproved)
+    {
+        if (!_db.IsConnected) return;
+
+        var connectionString = $"Data Source={_db.DatabasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = isApproved
+            ? "UPDATE Quests SET RequiredPrestigeLevelApproved = 1, RequiredPrestigeLevelApprovedAt = @ApprovedAt WHERE Id = @Id"
+            : "UPDATE Quests SET RequiredPrestigeLevelApproved = 0, RequiredPrestigeLevelApprovedAt = NULL WHERE Id = @Id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@Id", questId);
+        if (isApproved)
+        {
+            cmd.Parameters.AddWithValue("@ApprovedAt", DateTime.UtcNow.ToString("o"));
+        }
+        await cmd.ExecuteNonQueryAsync();
+
+        // Update local quest
+        if (_selectedQuest != null && _selectedQuest.Id == questId)
+        {
+            _selectedQuest.RequiredPrestigeLevelApproved = isApproved;
+            _selectedQuest.RequiredPrestigeLevelApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+
+        var questInList = _allQuests.FirstOrDefault(q => q.Id == questId);
+        if (questInList != null)
+        {
+            questInList.RequiredPrestigeLevelApproved = isApproved;
+            questInList.RequiredPrestigeLevelApprovedAt = isApproved ? DateTime.UtcNow : null;
+        }
+    }
+
     /// <summary>
     /// 퀘스트 자체 승인 상태 업데이트
     /// </summary>
@@ -1169,6 +1343,12 @@ public class QuestItem : INotifyPropertyChanged
     private string? _faction;
     private string? _requiredEdition;
     private bool _requiredEditionApproved;
+    private string? _excludedEdition;
+    private bool _excludedEditionApproved;
+    private int? _requiredDecodeCount;
+    private bool _requiredDecodeCountApproved;
+    private int? _requiredPrestigeLevel;
+    private bool _requiredPrestigeLevelApproved;
     private bool _isApproved;
 
     public string Id { get; set; } = "";
@@ -1266,6 +1446,83 @@ public class QuestItem : INotifyPropertyChanged
     public bool IsUnheardOnly => string.Equals(RequiredEdition, "Unheard", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// 게임 에디션 제외 조건 (Unheard, EOD 등 - 이 에디션은 불가)
+    /// </summary>
+    public string? ExcludedEdition
+    {
+        get => _excludedEdition;
+        set { _excludedEdition = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasExcludedEdition)); OnPropertyChanged(nameof(IsUnheardExcluded)); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(TotalRequirements)); }
+    }
+
+    public bool ExcludedEditionApproved
+    {
+        get => _excludedEditionApproved;
+        set { _excludedEditionApproved = value; OnPropertyChanged(); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(ApprovedCount)); }
+    }
+
+    public DateTime? ExcludedEditionApprovedAt { get; set; }
+
+    public bool HasExcludedEdition => !string.IsNullOrEmpty(ExcludedEdition);
+    public bool IsUnheardExcluded => string.Equals(ExcludedEdition, "Unheard", StringComparison.OrdinalIgnoreCase);
+    public bool IsEODExcluded => string.Equals(ExcludedEdition, "EOD", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// DSP 라디오 해독 필요 횟수 (Make Amends 퀘스트 등)
+    /// </summary>
+    public int? RequiredDecodeCount
+    {
+        get => _requiredDecodeCount;
+        set { _requiredDecodeCount = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasRequiredDecodeCount)); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(TotalRequirements)); }
+    }
+
+    public bool RequiredDecodeCountApproved
+    {
+        get => _requiredDecodeCountApproved;
+        set { _requiredDecodeCountApproved = value; OnPropertyChanged(); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(ApprovedCount)); }
+    }
+
+    public DateTime? RequiredDecodeCountApprovedAt { get; set; }
+
+    public bool HasRequiredDecodeCount => RequiredDecodeCount.HasValue && RequiredDecodeCount.Value > 0;
+
+    /// <summary>
+    /// 해독 횟수 표시 라벨 - "1st", "2nd", "3rd" 형식
+    /// </summary>
+    public string DecodeCountLabel => RequiredDecodeCount switch
+    {
+        1 => "1st",
+        2 => "2nd",
+        3 => "3rd",
+        _ => $"{RequiredDecodeCount}th"
+    };
+
+    /// <summary>
+    /// Prestige 레벨 요구사항 (New Beginning 퀘스트 등)
+    /// </summary>
+    public int? RequiredPrestigeLevel
+    {
+        get => _requiredPrestigeLevel;
+        set { _requiredPrestigeLevel = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasRequiredPrestigeLevel)); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(TotalRequirements)); }
+    }
+
+    public bool RequiredPrestigeLevelApproved
+    {
+        get => _requiredPrestigeLevelApproved;
+        set { _requiredPrestigeLevelApproved = value; OnPropertyChanged(); OnPropertyChanged(nameof(ApprovalStatus)); OnPropertyChanged(nameof(ApprovedCount)); }
+    }
+
+    public DateTime? RequiredPrestigeLevelApprovedAt { get; set; }
+
+    public bool HasRequiredPrestigeLevel => RequiredPrestigeLevel.HasValue && RequiredPrestigeLevel.Value > 0;
+
+    /// <summary>
+    /// Prestige 레벨 표시 라벨
+    /// </summary>
+    public string PrestigeLevelLabel => RequiredPrestigeLevel.HasValue
+        ? $"Prestige {RequiredPrestigeLevel.Value}"
+        : "";
+
+    /// <summary>
     /// 퀘스트 자체 승인 상태
     /// </summary>
     public bool IsApproved
@@ -1308,6 +1565,9 @@ public class QuestItem : INotifyPropertyChanged
             if (HasMinLevel) total++;
             if (HasMinScavKarma) total++;
             if (HasRequiredEdition) total++;
+            if (HasExcludedEdition) total++;
+            if (HasRequiredDecodeCount) total++;
+            if (HasRequiredPrestigeLevel) total++;
             // 퀘스트 자체도 1개로 카운트 (항상 포함)
             total++;
             return total;
@@ -1323,6 +1583,9 @@ public class QuestItem : INotifyPropertyChanged
             if (HasMinLevel && MinLevelApproved) count++;
             if (HasMinScavKarma && MinScavKarmaApproved) count++;
             if (HasRequiredEdition && RequiredEditionApproved) count++;
+            if (HasExcludedEdition && ExcludedEditionApproved) count++;
+            if (HasRequiredDecodeCount && RequiredDecodeCountApproved) count++;
+            if (HasRequiredPrestigeLevel && RequiredPrestigeLevelApproved) count++;
             // 퀘스트 자체 승인 상태도 카운트
             if (IsApproved) count++;
             return count;
@@ -1488,6 +1751,8 @@ public class QuestRequiredItemViewModel : INotifyPropertyChanged
     public string Id { get; set; } = "";
     public string QuestId { get; set; } = "";
     public string? ItemId { get; set; }
+    public string? MatchedItemId { get; set; }  // Items 테이블에서 매칭된 ID (ItemId 또는 Name으로 매칭)
+    public string? IconUrl { get; set; }        // Items 테이블에서 가져온 아이콘 URL
     public string ItemName { get; set; } = "";
     public int Count { get; set; } = 1;
     public bool RequiresFIR { get; set; }
@@ -1514,7 +1779,7 @@ public class QuestRequiredItemViewModel : INotifyPropertyChanged
 
     public string DogtagLevelDisplay => DogtagMinLevel.HasValue ? $"Lv.{DogtagMinLevel}+" : "";
 
-    public bool HasItem => !string.IsNullOrEmpty(ItemId) || !string.IsNullOrEmpty(ItemName);
+    public bool HasItem => !string.IsNullOrEmpty(ItemId) || !string.IsNullOrEmpty(MatchedItemId) || !string.IsNullOrEmpty(ItemName);
 
     public string ApprovedAtDisplay
     {
@@ -1525,12 +1790,18 @@ public class QuestRequiredItemViewModel : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// 아이콘에 사용할 유효한 아이템 ID (ItemId > MatchedItemId 순서로 fallback)
+    /// </summary>
+    private string? EffectiveItemId => !string.IsNullOrEmpty(ItemId) ? ItemId : MatchedItemId;
+
     // 아이템 아이콘 경로 (wiki_data/icons/{ItemId}.png)
     public string? ItemIconPath
     {
         get
         {
-            if (string.IsNullOrEmpty(ItemId))
+            var effectiveId = EffectiveItemId;
+            if (string.IsNullOrEmpty(effectiveId))
                 return null;
 
             var basePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wiki_data", "icons");
@@ -1538,7 +1809,7 @@ public class QuestRequiredItemViewModel : INotifyPropertyChanged
 
             foreach (var ext in extensions)
             {
-                var path = System.IO.Path.Combine(basePath, $"{ItemId}{ext}");
+                var path = System.IO.Path.Combine(basePath, $"{effectiveId}{ext}");
                 if (System.IO.File.Exists(path))
                     return path;
             }
@@ -1553,7 +1824,11 @@ public class QuestRequiredItemViewModel : INotifyPropertyChanged
     {
         get
         {
-            if (_itemIcon == null && !string.IsNullOrEmpty(ItemIconPath))
+            if (_itemIcon != null)
+                return _itemIcon;
+
+            // 1. 로컬 파일에서 아이콘 로드 시도
+            if (!string.IsNullOrEmpty(ItemIconPath))
             {
                 try
                 {
@@ -1564,12 +1839,34 @@ public class QuestRequiredItemViewModel : INotifyPropertyChanged
                     _itemIcon.DecodePixelWidth = 64;
                     _itemIcon.EndInit();
                     _itemIcon.Freeze();
+                    return _itemIcon;
                 }
                 catch
                 {
                     _itemIcon = null;
                 }
             }
+
+            // 2. IconUrl에서 아이콘 로드 시도 (웹 URL)
+            if (!string.IsNullOrEmpty(IconUrl))
+            {
+                try
+                {
+                    _itemIcon = new System.Windows.Media.Imaging.BitmapImage();
+                    _itemIcon.BeginInit();
+                    _itemIcon.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    _itemIcon.UriSource = new Uri(IconUrl);
+                    _itemIcon.DecodePixelWidth = 64;
+                    _itemIcon.EndInit();
+                    _itemIcon.Freeze();
+                    return _itemIcon;
+                }
+                catch
+                {
+                    _itemIcon = null;
+                }
+            }
+
             return _itemIcon;
         }
     }
