@@ -19,6 +19,7 @@ public class SettingsService
 
     // Setting keys
     private const string KeyLogFolderPath = "app.logFolderPath";
+    private const string KeyLogMonitoringEnabled = "app.logMonitoringEnabled";
     private const string KeyPlayerLevel = "app.playerLevel";
     private const string KeyScavRep = "app.scavRep";
     private const string KeyShowLevelLockedQuests = "app.showLevelLockedQuests";
@@ -82,6 +83,7 @@ public class SettingsService
 
     // Cached values
     private string? _logFolderPath;
+    private bool? _logMonitoringEnabled;
     private int? _playerLevel;
     private double? _scavRep;
     private bool? _showLevelLockedQuests;
@@ -277,6 +279,26 @@ public class SettingsService
     /// How the log folder was detected
     /// </summary>
     public string? DetectionMethod => _detectionMethod;
+
+    /// <summary>
+    /// Whether log monitoring is enabled (auto-start on app launch)
+    /// </summary>
+    public bool LogMonitoringEnabled
+    {
+        get
+        {
+            if (!_settingsLoaded) LoadSettings();
+            return _logMonitoringEnabled ?? true;  // Default: enabled
+        }
+        set
+        {
+            if (_logMonitoringEnabled != value)
+            {
+                _logMonitoringEnabled = value;
+                SaveSetting(KeyLogMonitoringEnabled, value.ToString());
+            }
+        }
+    }
 
     /// <summary>
     /// Check if log folder is valid
@@ -1642,6 +1664,9 @@ public class SettingsService
             // Load from DB
             _logFolderPath = _userDataDb.GetSetting(KeyLogFolderPath);
             if (string.IsNullOrEmpty(_logFolderPath)) _logFolderPath = null;
+
+            if (bool.TryParse(_userDataDb.GetSetting(KeyLogMonitoringEnabled), out var logMonitoring))
+                _logMonitoringEnabled = logMonitoring;
 
             if (int.TryParse(_userDataDb.GetSetting(KeyPlayerLevel), out var level))
                 _playerLevel = level;

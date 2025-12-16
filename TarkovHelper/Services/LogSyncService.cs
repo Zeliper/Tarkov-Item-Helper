@@ -12,16 +12,42 @@ namespace TarkovHelper.Services
         private static LogSyncService? _instance;
         public static LogSyncService Instance => _instance ??= new LogSyncService();
 
+        private static readonly string DebugLogPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "TarkovHelper", "logsync_debug.log");
+
+        private static void DebugLog(string message)
+        {
+            try
+            {
+                var dir = Path.GetDirectoryName(DebugLogPath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+                File.AppendAllText(DebugLogPath, $"[{DateTime.Now:HH:mm:ss.fff}] {message}\n");
+            }
+            catch { }
+        }
+
         private FileSystemWatcher? _logWatcher;
+        private FileSystemWatcher? _applicationLogWatcher;
         private readonly object _watcherLock = new();
         private DateTime _lastEventTime = DateTime.MinValue;
+        private DateTime _lastMapEventTime = DateTime.MinValue;
         private string? _lastModifiedFile;
+        private string? _lastMapModifiedFile;
         private bool _isWatching;
+        private long _lastApplicationLogPosition;
+        private string? _currentMapKey;
 
         /// <summary>
         /// Event fired when a quest event is detected from logs
         /// </summary>
         public event EventHandler<QuestLogEvent>? QuestEventDetected;
+
+        /// <summary>
+        /// Event fired when a map change is detected from logs
+        /// </summary>
+        public event EventHandler<MapDetectedEventArgs>? MapDetected;
 
         /// <summary>
         /// Event fired when log monitoring status changes
@@ -33,17 +59,143 @@ namespace TarkovHelper.Services
         /// </summary>
         public bool IsMonitoring => _isWatching;
 
+        /// <summary>
+        /// Currently detected map key
+        /// </summary>
+        public string? CurrentMapKey => _currentMapKey;
+
         // Message type codes from logs
         private const int MSG_TYPE_STARTED = 10;
         private const int MSG_TYPE_FAILED = 11;
         private const int MSG_TYPE_COMPLETED = 12;
+
+        // Map name to key mapping (EFT log name -> map_configs.json key)
+        // All keys are stored in lowercase for case-insensitive matching
+        // Use TryGetMapKey() method for lookups instead of direct dictionary access
+        //
+        // EFT uses two patterns in logs:
+        // 1. scene preset path:maps/<name>.bundle (e.g., "maps/shoreline_preset.bundle")
+        // 2. [Transit] Locations:<name> (e.g., "Locations:Shoreline")
+        private static readonly Dictionary<string, string> MapNameToKey = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Woods
+            // Transit: "Woods", Preset: "woods_preset"
+            { "woods", "Woods" },
+            { "woods_preset", "Woods" },
+
+            // Customs
+            // Transit: "bigmap", Preset: "customs_preset"
+            { "customs", "Customs" },
+            { "customs_preset", "Customs" },
+            { "bigmap", "Customs" },
+            { "bigmap_preset", "Customs" },
+
+            // Shoreline
+            // Transit: "Shoreline", Preset: "shoreline_preset"
+            { "shoreline", "Shoreline" },
+            { "shoreline_preset", "Shoreline" },
+
+            // Interchange
+            // Transit: "Interchange", Preset: "shopping_mall"
+            { "interchange", "Interchange" },
+            { "interchange_preset", "Interchange" },
+            { "shopping_mall", "Interchange" },
+            { "shopping_mall_preset", "Interchange" },
+
+            // Reserve
+            // Transit: "RezervBase", Preset: "rezerv_base_preset"
+            { "reserve", "Reserve" },
+            { "rezervbase", "Reserve" },
+            { "rezerv_base", "Reserve" },
+            { "rezerv_base_preset", "Reserve" },
+            { "rezervbase_preset", "Reserve" },
+
+            // Lighthouse
+            // Transit: "Lighthouse", Preset: "lighthouse_preset"
+            { "lighthouse", "Lighthouse" },
+            { "lighthouse_preset", "Lighthouse" },
+
+            // Streets of Tarkov
+            // Transit: "TarkovStreets", Preset: "city_preset"
+            { "streetsoftarkov", "StreetsOfTarkov" },
+            { "streets", "StreetsOfTarkov" },
+            { "tarkovstreets", "StreetsOfTarkov" },
+            { "tarkovstreets_preset", "StreetsOfTarkov" },
+            { "city", "StreetsOfTarkov" },
+            { "city_preset", "StreetsOfTarkov" },
+
+            // Factory (Day/Night variants)
+            // Transit: "factory4_day", "factory4_night", Preset: "factory_day_preset", "factory_night_preset"
+            { "factory", "Factory" },
+            { "factory4", "Factory" },
+            { "factory4_day", "Factory" },
+            { "factory4_night", "Factory" },
+            { "factory_day", "Factory" },
+            { "factory_night", "Factory" },
+            { "factory_day_preset", "Factory" },
+            { "factory_night_preset", "Factory" },
+            { "factory4_day_preset", "Factory" },
+            { "factory4_night_preset", "Factory" },
+
+            // Ground Zero (Sandbox_start for level 1-20, Sandbox_high for level 21+)
+            // Transit: "Sandbox_high", "Sandbox_start", Preset: "sandbox_high_preset", "sandbox_start_preset"
+            { "groundzero", "GroundZero" },
+            { "sandbox", "GroundZero" },
+            { "sandbox_high", "GroundZero" },
+            { "sandbox_start", "GroundZero" },
+            { "sandbox_preset", "GroundZero" },
+            { "sandbox_high_preset", "GroundZero" },
+            { "sandbox_start_preset", "GroundZero" },
+
+            // Labs
+            // Transit: "laboratory", Preset: "laboratory_preset"
+            { "labs", "Labs" },
+            { "lab", "Labs" },
+            { "laboratory", "Labs" },
+            { "thelab", "Labs" },
+            { "laboratory_preset", "Labs" },
+
+            // Labyrinth (if available)
+            { "labyrinth", "Labyrinth" },
+            { "thelabyrinth", "Labyrinth" },
+            { "labyrinth_preset", "Labyrinth" },
+        };
+
+        /// <summary>
+        /// Try to get the map key from a map name (case-insensitive)
+        /// </summary>
+        private static bool TryGetMapKey(string mapName, out string? mapKey)
+        {
+            mapKey = null;
+            if (string.IsNullOrEmpty(mapName))
+                return false;
+
+            // Direct lookup (case-insensitive due to StringComparer.OrdinalIgnoreCase)
+            if (MapNameToKey.TryGetValue(mapName, out mapKey))
+                return true;
+
+            // Try removing common suffixes and prefixes
+            var cleanedName = mapName
+                .Replace("_preset", "")
+                .Replace("preset_", "")
+                .Replace("_high", "")
+                .Replace("_low", "")
+                .Replace("_day", "")
+                .Replace("_night", "")
+                .Trim();
+
+            if (!string.IsNullOrEmpty(cleanedName) && MapNameToKey.TryGetValue(cleanedName, out mapKey))
+                return true;
+
+            return false;
+        }
 
         private LogSyncService() { }
 
         #region Log File Monitoring
 
         /// <summary>
-        /// Start monitoring log folder for quest events
+        /// Start monitoring log folder for quest events and map detection
         /// </summary>
         public void StartMonitoring(string logFolderPath)
         {
@@ -51,11 +203,17 @@ namespace TarkovHelper.Services
             {
                 StopMonitoring();
 
+                DebugLog($"StartMonitoring called with path: {logFolderPath}");
+
                 if (string.IsNullOrEmpty(logFolderPath) || !Directory.Exists(logFolderPath))
+                {
+                    DebugLog($"Invalid path or directory does not exist");
                     return;
+                }
 
                 try
                 {
+                    // Quest event watcher (push-notifications logs)
                     _logWatcher = new FileSystemWatcher(logFolderPath)
                     {
                         NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
@@ -67,6 +225,21 @@ namespace TarkovHelper.Services
                     _logWatcher.Changed += OnLogFileChanged;
                     _logWatcher.Created += OnLogFileChanged;
 
+                    // Map detection watcher (application logs)
+                    _applicationLogWatcher = new FileSystemWatcher(logFolderPath)
+                    {
+                        NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size,
+                        Filter = "application*.log",
+                        IncludeSubdirectories = true,
+                        EnableRaisingEvents = true
+                    };
+
+                    _applicationLogWatcher.Changed += OnApplicationLogChanged;
+                    _applicationLogWatcher.Created += OnApplicationLogChanged;
+
+                    // Initialize position for latest application log
+                    InitializeLatestApplicationLogPosition(logFolderPath);
+
                     _isWatching = true;
                     MonitoringStatusChanged?.Invoke(this, true);
                 }
@@ -75,6 +248,30 @@ namespace TarkovHelper.Services
                     _isWatching = false;
                     MonitoringStatusChanged?.Invoke(this, false);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Initialize position to end of latest application log file
+        /// </summary>
+        private void InitializeLatestApplicationLogPosition(string logFolderPath)
+        {
+            try
+            {
+                var latestLog = Directory.GetFiles(logFolderPath, "application*.log", SearchOption.AllDirectories)
+                    .OrderByDescending(f => File.GetLastWriteTime(f))
+                    .FirstOrDefault();
+
+                if (latestLog != null && File.Exists(latestLog))
+                {
+                    var fileInfo = new FileInfo(latestLog);
+                    _lastApplicationLogPosition = fileInfo.Length;
+                    _lastMapModifiedFile = latestLog;
+                }
+            }
+            catch
+            {
+                _lastApplicationLogPosition = 0;
             }
         }
 
@@ -94,6 +291,18 @@ namespace TarkovHelper.Services
                     _logWatcher = null;
                 }
 
+                if (_applicationLogWatcher != null)
+                {
+                    _applicationLogWatcher.EnableRaisingEvents = false;
+                    _applicationLogWatcher.Changed -= OnApplicationLogChanged;
+                    _applicationLogWatcher.Created -= OnApplicationLogChanged;
+                    _applicationLogWatcher.Dispose();
+                    _applicationLogWatcher = null;
+                }
+
+                _lastApplicationLogPosition = 0;
+                _currentMapKey = null;
+
                 _isWatching = false;
                 MonitoringStatusChanged?.Invoke(this, false);
             }
@@ -111,6 +320,197 @@ namespace TarkovHelper.Services
 
             // Process new events from the modified file
             Task.Run(() => ProcessLatestLogEvents(e.FullPath));
+        }
+
+        private void OnApplicationLogChanged(object sender, FileSystemEventArgs e)
+        {
+            DebugLog($"OnApplicationLogChanged: {e.FullPath}");
+
+            // Debounce events
+            var now = DateTime.Now;
+            if ((now - _lastMapEventTime).TotalMilliseconds < 300 && e.FullPath == _lastMapModifiedFile)
+            {
+                DebugLog($"Debounced - skipping");
+                return;
+            }
+
+            _lastMapEventTime = now;
+            _lastMapModifiedFile = e.FullPath;
+
+            // Process new lines for map detection
+            Task.Run(() => ProcessApplicationLogForMap(e.FullPath));
+        }
+
+        private async Task ProcessApplicationLogForMap(string filePath)
+        {
+            try
+            {
+                await Task.Delay(100); // Small delay for file write completion
+
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var fileLength = stream.Length;
+
+                DebugLog($"ProcessApplicationLogForMap: fileLength={fileLength}, lastPos={_lastApplicationLogPosition}");
+
+                // Only read new content
+                if (fileLength <= _lastApplicationLogPosition)
+                {
+                    DebugLog($"No new content to read");
+                    return;
+                }
+
+                stream.Seek(_lastApplicationLogPosition, SeekOrigin.Begin);
+                using var reader = new StreamReader(stream);
+                var newContent = await reader.ReadToEndAsync();
+                _lastApplicationLogPosition = fileLength;
+
+                DebugLog($"Read {newContent.Length} chars of new content");
+
+                // Parse for map loading events
+                var detectedMap = ParseMapFromLogContent(newContent);
+                DebugLog($"ParseMapFromLogContent result: {detectedMap ?? "null"}");
+
+                if (!string.IsNullOrEmpty(detectedMap) && detectedMap != _currentMapKey)
+                {
+                    _currentMapKey = detectedMap;
+                    DebugLog($"Map changed! Firing MapDetected event: {detectedMap}");
+                    MapDetected?.Invoke(this, new MapDetectedEventArgs(detectedMap, DateTime.Now));
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLog($"Error reading application log: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Parse map name from log content using multiple detection patterns
+        /// </summary>
+        private string? ParseMapFromLogContent(string content)
+        {
+            // Pattern 1 (most reliable): [Transit] Locations:MapName ->
+            // Example: "[Transit] Flag:None, RaidId:..., Locations:Shoreline ->"
+            // This appears after map is fully loaded and raid starts
+            var transitMatch = System.Text.RegularExpressions.Regex.Match(
+                content,
+                @"\[Transit\].*Locations:([a-zA-Z0-9_]+)\s*->",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (transitMatch.Success)
+            {
+                var mapName = transitMatch.Groups[1].Value;
+                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Transit pattern matched: {mapName}");
+                if (TryGetMapKey(mapName, out var mapKey))
+                {
+                    return mapKey;
+                }
+            }
+
+            // Pattern 2: scene preset path:maps/<mapname>.bundle
+            // Examples:
+            //   "scene preset path:maps/shoreline_preset.bundle"
+            //   "scene preset path:maps/shopping_mall.bundle"
+            //   "scene preset path:maps/city_preset.bundle"
+            // This appears when map loading starts
+            var scenePresetMatch = System.Text.RegularExpressions.Regex.Match(
+                content,
+                @"scene preset path:maps/([a-zA-Z0-9_]+)\.bundle",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (scenePresetMatch.Success)
+            {
+                var mapName = scenePresetMatch.Groups[1].Value;
+                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Scene preset pattern matched: {mapName}");
+                if (TryGetMapKey(mapName, out var mapKey))
+                {
+                    return mapKey;
+                }
+            }
+
+            // Pattern 3: LocationLoaded (backup pattern, less specific about which map)
+            // This just confirms a location was loaded but Transit pattern is preferred
+
+            return null;
+        }
+
+        /// <summary>
+        /// Find the last map from application logs (for initial map selection)
+        /// </summary>
+        /// <param name="logFolderPath">Log folder path</param>
+        /// <returns>Last detected map key, or null if not found</returns>
+        public string? FindLastMapFromLogs(string? logFolderPath = null)
+        {
+            var path = logFolderPath ?? SettingsService.Instance.LogFolderPath;
+            if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+                return null;
+
+            try
+            {
+                // Find the most recent application log file
+                var logFiles = Directory.GetFiles(path, "application*.log", SearchOption.AllDirectories)
+                    .OrderByDescending(f => File.GetLastWriteTime(f))
+                    .Take(3)  // Check last 3 log files
+                    .ToList();
+
+                if (logFiles.Count == 0)
+                    return null;
+
+                foreach (var logFile in logFiles)
+                {
+                    var mapKey = FindLastMapInFile(logFile);
+                    if (!string.IsNullOrEmpty(mapKey))
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[LogSyncService] Found last map from logs: {mapKey}");
+                        return mapKey;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Error finding last map: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Find the last map mentioned in a single log file (reads from end)
+        /// </summary>
+        private string? FindLastMapInFile(string filePath)
+        {
+            try
+            {
+                using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+
+                // Read last 200KB of file (should be enough to find recent map)
+                var readSize = Math.Min(stream.Length, 200 * 1024);
+                if (readSize <= 0) return null;
+
+                stream.Seek(-readSize, SeekOrigin.End);
+                using var reader = new StreamReader(stream);
+                var content = reader.ReadToEnd();
+
+                // Split into lines and search from end
+                var lines = content.Split('\n');
+                string? lastFoundMap = null;
+
+                // Search through all lines to find the LAST map reference
+                foreach (var line in lines)
+                {
+                    var mapKey = ParseMapFromLogContent(line);
+                    if (!string.IsNullOrEmpty(mapKey))
+                    {
+                        lastFoundMap = mapKey;
+                    }
+                }
+
+                return lastFoundMap;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Error reading log file {filePath}: {ex.Message}");
+                return null;
+            }
         }
 
         private async Task ProcessLatestLogEvents(string filePath)
@@ -773,6 +1173,28 @@ namespace TarkovHelper.Services
         {
             StopMonitoring();
             GC.SuppressFinalize(this);
+        }
+    }
+
+    /// <summary>
+    /// Event arguments for map detection
+    /// </summary>
+    public class MapDetectedEventArgs : EventArgs
+    {
+        /// <summary>
+        /// Detected map key (matches map_configs.json key)
+        /// </summary>
+        public string MapKey { get; }
+
+        /// <summary>
+        /// Time when map was detected
+        /// </summary>
+        public DateTime DetectedAt { get; }
+
+        public MapDetectedEventArgs(string mapKey, DateTime detectedAt)
+        {
+            MapKey = mapKey;
+            DetectedAt = detectedAt;
         }
     }
 }

@@ -38,10 +38,10 @@ public sealed class MapTrackerService : IDisposable
 
     /// <summary>
     /// Default pattern for EFT screenshot filenames.
-    /// Format: "2025-12-0309-35_-123.42_2.40_114.27_-0.09544_-0.29115_0.02904_-0.95146_7.17_0.png"
+    /// Format: "2025-12-16[23-56]_-252.24, -3.10, -97.97_-0.24273, 0.06540, -0.01455, -0.96778_11.54 (0).png"
     /// </summary>
     public const string DefaultPattern =
-        @"\d{4}-\d{2}-\d{2}\d{2}-\d{2}_(?<x>-?\d+\.?\d*)_(?<y>-?\d+\.?\d*)_(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*)_(?<qy>-?\d+\.?\d*)_(?<qz>-?\d+\.?\d*)_(?<qw>-?\d+\.?\d*)_";
+        @"\d{4}-\d{2}-\d{2}\[\d{2}-\d{2}\]_(?<x>-?\d+\.?\d*),\s*(?<y>-?\d+\.?\d*),\s*(?<z>-?\d+\.?\d*)_(?<qx>-?\d+\.?\d*),\s*(?<qy>-?\d+\.?\d*),\s*(?<qz>-?\d+\.?\d*),\s*(?<qw>-?\d+\.?\d*)_";
 
     /// <summary>
     /// Debounce delay in milliseconds
@@ -88,8 +88,13 @@ public sealed class MapTrackerService : IDisposable
     /// </summary>
     public bool StartWatching(string folderPath)
     {
+        System.Diagnostics.Debug.WriteLine($"[MapTrackerService] StartWatching called with path: {folderPath}");
+
         if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            System.Diagnostics.Debug.WriteLine("[MapTrackerService] Path is empty");
             return false;
+        }
 
         if (!Directory.Exists(folderPath))
         {
@@ -117,6 +122,7 @@ public sealed class MapTrackerService : IDisposable
                 _watcher.EnableRaisingEvents = true;
                 CurrentWatchPath = folderPath;
 
+                System.Diagnostics.Debug.WriteLine($"[MapTrackerService] Watcher started successfully for: {folderPath}");
                 OnStateChanged(true, folderPath);
                 return true;
             }
@@ -195,13 +201,17 @@ public sealed class MapTrackerService : IDisposable
     private void ProcessFile(string filePath)
     {
         var fileName = Path.GetFileName(filePath);
+        System.Diagnostics.Debug.WriteLine($"[MapTrackerService] ProcessFile called: {fileName}");
 
         // Debouncing
         var now = DateTime.UtcNow;
         if (_recentFiles.TryGetValue(fileName, out var lastProcessed))
         {
             if ((now - lastProcessed).TotalMilliseconds < DebounceDelayMs)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MapTrackerService] Debounced: {fileName}");
                 return;
+            }
         }
 
         _recentFiles[fileName] = now;
@@ -218,10 +228,16 @@ public sealed class MapTrackerService : IDisposable
                     return;
                 }
 
+                System.Diagnostics.Debug.WriteLine($"[MapTrackerService] Parsing position from: {fileName}");
                 if (TryParsePosition(fileName, out var position) && position != null)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[MapTrackerService] Position parsed: X={position.X}, Y={position.Y}, Z={position.Z}");
                     CurrentPosition = position;
                     OnPositionDetected(position, filePath);
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MapTrackerService] Failed to parse position from: {fileName}");
                 }
             }
             catch (Exception ex)

@@ -16,6 +16,9 @@
 
     <!-- AutoUpdater.NET 다국어 리소스 제한 (en, ko, ja만 유지) -->
     <SatelliteResourceLanguages>en;ko;ja-jp</SatelliteResourceLanguages>
+
+    <!-- Run as Administrator -->
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
   <ItemGroup>

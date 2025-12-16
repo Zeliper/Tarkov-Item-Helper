@@ -290,7 +290,7 @@
         <!-- ==================== MAIN MAP AREA ==================== -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition x:Name="QuestPanelColumn" Width="260" MinWidth="180" MaxWidth="450"/>
+                <ColumnDefinition x:Name="QuestPanelColumn" Width="380" MinWidth="250" MaxWidth="600"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
@@ -466,7 +466,7 @@
                                             <!-- Objectives List (Expandable) -->
                                             <ItemsControl ItemsSource="{Binding Objectives}"
                                                           Visibility="{Binding ObjectivesVisibility}"
-                                                          Margin="0,12,0,0">
+                                                          Margin="16,12,0,0">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
                                                         <Border x:Name="ObjBorder"
@@ -566,21 +566,25 @@
             </Border>
 
             <!-- GridSplitter for resizing Quest Panel -->
-            <Grid Grid.Column="1" x:Name="QuestPanelSplitterArea">
-                <GridSplitter x:Name="QuestPanelSplitter" Width="4" HorizontalAlignment="Center"
-                              Background="{StaticResource BorderSubtle}"
-                              Cursor="SizeWE"/>
-                <!-- Close button on splitter -->
-                <Border HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Width="20" Height="60" Margin="0,0,0,0"
-                        Background="#E0141414" CornerRadius="0,4,4,0"
-                        Cursor="Hand"
-                        MouseLeftButtonDown="BtnLeftToggleQuestPanel_Click"
-                        ToolTip="Hide Quest Panel (Q)">
-                    <TextBlock Text="◀" FontSize="10" Foreground="{StaticResource TextSecondary}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-            </Grid>
+            <GridSplitter x:Name="QuestPanelSplitter" Grid.Column="1"
+                          Width="6"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch"
+                          ResizeDirection="Columns"
+                          ResizeBehavior="PreviousAndNext"
+                          Background="{StaticResource BorderSubtle}"
+                          Cursor="SizeWE"/>
+            <!-- Close button on splitter -->
+            <Border x:Name="QuestPanelSplitterButton" Grid.Column="1"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="20" Height="60"
+                    Background="#E0141414" CornerRadius="0,4,4,0"
+                    Cursor="Hand"
+                    MouseLeftButtonDown="BtnLeftToggleQuestPanel_Click"
+                    ToolTip="Hide Quest Panel (Q)">
+                <TextBlock Text="◀" FontSize="10" Foreground="{StaticResource TextSecondary}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
 
             <!-- Map Viewer Area -->
             <Grid Grid.Column="2" x:Name="MapViewerGrid" Background="{StaticResource BgL1}"
@@ -987,7 +991,8 @@
                     <ToggleButton x:Name="BtnAutoFollow" Width="48" Height="24" Margin="8,0,0,0" Cursor="Hand"
                                   Background="{StaticResource BgL3}" Foreground="{StaticResource TextSecondary}"
                                   BorderBrush="{StaticResource BorderSubtle}" BorderThickness="1"
-                                  Checked="BtnAutoFollow_Checked" Unchecked="BtnAutoFollow_Unchecked" ToolTip="A">
+                                  Checked="BtnAutoFollow_Checked" Unchecked="BtnAutoFollow_Unchecked"
+                                  ToolTip="Auto-follow: Center map on player position (A)">
                         <TextBlock Text="Auto" FontSize="10"/>
                     </ToggleButton>
                 </StackPanel>

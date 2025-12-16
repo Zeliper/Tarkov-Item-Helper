@@ -199,7 +199,7 @@ internal sealed class QuestCardDisplay : System.ComponentModel.INotifyPropertyCh
         ? new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0))  // Teal for completed
         : new SolidColorBrush(Color.FromRgb(0x00, 0xB4, 0xD8)); // Accent blue for active
 
-    private bool _isExpanded;
+    private bool _isExpanded = true;
     public bool IsExpanded
     {
         get => _isExpanded;
@@ -574,8 +574,10 @@ public partial class MapTrackerPage : UserControl
 
         if (MapSelector.Items.Count > 0)
         {
-            // Try to restore last selected map
-            var lastMap = _settings.MapLastSelectedMap;
+            // Priority: 1) Last map from game logs, 2) Last selected map from settings
+            var lastMapFromLogs = LogSyncService.Instance.FindLastMapFromLogs();
+            var lastMap = !string.IsNullOrEmpty(lastMapFromLogs) ? lastMapFromLogs : _settings.MapLastSelectedMap;
+
             if (!string.IsNullOrEmpty(lastMap))
             {
                 var mapIndex = -1;
@@ -588,6 +590,11 @@ public partial class MapTrackerPage : UserControl
                     }
                 }
                 MapSelector.SelectedIndex = mapIndex >= 0 ? mapIndex : 0;
+
+                if (!string.IsNullOrEmpty(lastMapFromLogs))
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MapTrackerPage] Auto-selected map from logs: {lastMapFromLogs}");
+                }
             }
             else
             {
@@ -618,6 +625,13 @@ public partial class MapTrackerPage : UserControl
         {
             window.PreviewKeyDown += Window_PreviewKeyDown;
         }
+
+        // Subscribe to global keyboard hook for floor selection when Tarkov is in foreground
+        GlobalKeyboardHookService.Instance.FloorKeyPressed += OnGlobalFloorKeyPressed;
+        GlobalKeyboardHookService.Instance.IsEnabled = true;
+
+        // Subscribe to map detection events from game logs
+        LogSyncService.Instance.MapDetected += OnMapDetected;
     }
 
     /// <summary>
@@ -679,6 +693,44 @@ public partial class MapTrackerPage : UserControl
         {
             window.PreviewKeyDown -= Window_PreviewKeyDown;
         }
+
+        // Unsubscribe from global keyboard hook
+        GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnGlobalFloorKeyPressed;
+        GlobalKeyboardHookService.Instance.IsEnabled = false;
+
+        // Unsubscribe from map detection events
+        LogSyncService.Instance.MapDetected -= OnMapDetected;
+    }
+
+    /// <summary>
+    /// Handle global floor key press from NumPad when Tarkov is in foreground
+    /// </summary>
+    private void OnGlobalFloorKeyPressed(int floorIndex)
+    {
+        SelectFloorByIndex(floorIndex);
+    }
+
+    /// <summary>
+    /// Handle map detection from game logs - automatically switch to detected map
+    /// </summary>
+    private void OnMapDetected(object? sender, MapDetectedEventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            // Find and select the detected map in the MapSelector
+            for (int i = 0; i < MapSelector.Items.Count; i++)
+            {
+                if (MapSelector.Items[i] is MapConfig config && config.Key == e.MapKey)
+                {
+                    if (MapSelector.SelectedIndex != i)
+                    {
+                        MapSelector.SelectedIndex = i;
+                        System.Diagnostics.Debug.WriteLine($"[MapTrackerPage] Auto-switched to map: {e.MapKey}");
+                    }
+                    break;
+                }
+            }
+        });
     }
 
     private void OnLanguageChanged(object? sender, AppLanguage e)
@@ -1350,10 +1402,11 @@ public partial class MapTrackerPage : UserControl
         {
             // Restore panel
             QuestPanelColumn.Width = _lastQuestPanelWidth;
-            QuestPanelColumn.MinWidth = 180;
-            QuestPanelColumn.MaxWidth = 450;
+            QuestPanelColumn.MinWidth = 250;
+            QuestPanelColumn.MaxWidth = 600;
             QuestPanel.Visibility = Visibility.Visible;
-            QuestPanelSplitterArea.Visibility = Visibility.Visible;
+            QuestPanelSplitter.Visibility = Visibility.Visible;
+            QuestPanelSplitterButton.Visibility = Visibility.Visible;
             BtnLeftToggleQuestPanel.Visibility = Visibility.Collapsed;
         }
         else
@@ -1365,7 +1418,8 @@ public partial class MapTrackerPage : UserControl
             QuestPanelColumn.MaxWidth = 0;
             QuestPanelColumn.Width = new GridLength(0);
             QuestPanel.Visibility = Visibility.Collapsed;
-            QuestPanelSplitterArea.Visibility = Visibility.Collapsed;
+            QuestPanelSplitter.Visibility = Visibility.Collapsed;
+            QuestPanelSplitterButton.Visibility = Visibility.Collapsed;
             BtnLeftToggleQuestPanel.Visibility = Visibility.Visible;
         }
         TxtQuestPanelToggle.Text = _questPanelVisible ? "◀" : "▶";
@@ -4444,8 +4498,12 @@ public partial class MapTrackerPage : UserControl
             return;
 
         var detectedFloorId = _floorDetectionService.DetectFloor(_currentMapConfig.Key, y);
+
+        // If no floor detected from boundaries, default to "main" (Ground Floor)
         if (detectedFloorId == null)
-            return;
+        {
+            detectedFloorId = "main";
+        }
 
         // Only change floor if different from current
         if (string.Equals(_currentFloorId, detectedFloorId, StringComparison.OrdinalIgnoreCase))

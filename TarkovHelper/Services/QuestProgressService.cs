@@ -468,8 +468,6 @@ namespace TarkovHelper.Services
                     .GroupBy(r => r.GroupId)
                     .ToList();
 
-                System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet] Quest: {task.Ids?.FirstOrDefault()} ({task.Name})");
-                System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet] AND requirements: {andRequirements.Count}, OR groups: {orGroups.Count}");
 
                 // Check AND requirements (GroupId = 0): ALL must be satisfied
                 foreach (var req in andRequirements)
@@ -480,14 +478,10 @@ namespace TarkovHelper.Services
                         : GetTask(req.TaskNormalizedName);
 
                     if (reqTask == null)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet] AND req task not found: TaskId={req.TaskId}, NormalizedName={req.TaskNormalizedName}");
                         continue;
-                    }
 
                     var reqStatus = GetStatus(reqTask);
                     var satisfied = IsStatusSatisfied(reqStatus, req.Status);
-                    System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet] AND: {reqTask.Name} status={reqStatus}, required={string.Join(",", req.Status ?? new List<string>())}, satisfied={satisfied}");
                     if (!satisfied)
                         return false;
                 }
@@ -496,7 +490,6 @@ namespace TarkovHelper.Services
                 foreach (var group in orGroups)
                 {
                     bool anyInGroupSatisfied = false;
-                    System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet] OR Group {group.Key}: {group.Count()} items");
 
                     foreach (var req in group)
                     {
@@ -506,14 +499,10 @@ namespace TarkovHelper.Services
                             : GetTask(req.TaskNormalizedName);
 
                         if (reqTask == null)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet]   OR req task not found: TaskId={req.TaskId}, NormalizedName={req.TaskNormalizedName}");
                             continue;
-                        }
 
                         var reqStatus = GetStatus(reqTask);
                         var satisfied = IsStatusSatisfied(reqStatus, req.Status);
-                        System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet]   OR: {reqTask.Name} status={reqStatus}, required={string.Join(",", req.Status ?? new List<string>())}, satisfied={satisfied}");
                         if (satisfied)
                         {
                             anyInGroupSatisfied = true;
@@ -523,14 +512,9 @@ namespace TarkovHelper.Services
 
                     // If no requirement in this OR group is satisfied, prerequisites are not met
                     if (!anyInGroupSatisfied)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet] OR Group {group.Key} NOT satisfied - returning false");
                         return false;
-                    }
-                    System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet] OR Group {group.Key} satisfied");
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[ArePrerequisitesMet] All prerequisites met for {task.Name}");
                 return true;
             }
 

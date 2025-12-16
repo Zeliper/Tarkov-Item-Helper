@@ -115,6 +115,41 @@ public partial class MainWindow : Window
 
         // Load and show quest data from DB
         await CheckAndRefreshDataAsync();
+
+        // Auto-start log monitoring if enabled
+        AutoStartLogMonitoring();
+    }
+
+    /// <summary>
+    /// Automatically start log monitoring on app launch if enabled
+    /// </summary>
+    private void AutoStartLogMonitoring()
+    {
+        if (!_settingsService.LogMonitoringEnabled)
+            return;
+
+        // Try to get log folder path (auto-detect if not set)
+        var logPath = _settingsService.LogFolderPath;
+
+        // If no path and auto-detect failed, try to save auto-detected path
+        if (string.IsNullOrEmpty(logPath))
+        {
+            logPath = _settingsService.AutoDetectLogFolder();
+            if (!string.IsNullOrEmpty(logPath))
+            {
+                _settingsService.LogFolderPath = logPath;
+            }
+        }
+
+        if (!string.IsNullOrEmpty(logPath) && Directory.Exists(logPath))
+        {
+            _logSyncService.StartMonitoring(logPath);
+            _logSyncService.QuestEventDetected -= OnQuestEventDetected;
+            _logSyncService.QuestEventDetected += OnQuestEventDetected;
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Auto-started log monitoring: {logPath}");
+        }
+
+        UpdateQuestSyncUI();
     }
 
     /// <summary>
