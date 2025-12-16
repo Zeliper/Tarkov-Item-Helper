@@ -497,6 +497,60 @@
                                             </Border>
                                         </Grid>
                                     </Border>
+
+                                    <!-- Excluded Edition (NOT available for this edition) -->
+                                    <Border Background="{StaticResource PrimaryBrush}" CornerRadius="4"
+                                            Margin="0,2" Padding="10,8"
+                                            Visibility="{Binding SelectedQuest.HasExcludedEdition, Converter={StaticResource BoolToVisibility}}">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <CheckBox Grid.Column="0" x:Name="ExcludedEditionCheckbox"
+                                                      IsChecked="{Binding SelectedQuest.ExcludedEditionApproved}"
+                                                      Margin="0,0,10,0" VerticalAlignment="Center"
+                                                      Checked="ExcludedEditionCheckbox_Changed" Unchecked="ExcludedEditionCheckbox_Changed"/>
+
+                                            <StackPanel Grid.Column="1">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <TextBlock Text="Excluded Game Edition" FontWeight="SemiBold"/>
+                                                    <Border Background="#B71C1C" CornerRadius="3" Padding="6,1" Margin="8,0,0,0">
+                                                        <TextBlock Foreground="White" FontSize="10" Text="{Binding SelectedQuest.ExcludedEdition, Mode=OneWay}"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="This quest is NOT available for this game edition"
+                                                           Foreground="{StaticResource TextDimBrush}" FontSize="11" Margin="0,4,0,0"/>
+                                            </StackPanel>
+
+                                            <Border Grid.Column="2" CornerRadius="3" Padding="6,2" Margin="2">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="#C62828"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding SelectedQuest.ExcludedEditionApproved}" Value="True">
+                                                                <Setter Property="Background" Value="#2E7D32"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <TextBlock Foreground="White" FontSize="10">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Pending"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding SelectedQuest.ExcludedEditionApproved}" Value="True">
+                                                                    <Setter Property="Text" Value="Approved"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </Border>
+                                        </Grid>
+                                    </Border>
                                 </StackPanel>
 
                                 <TextBlock Grid.Row="1" Text="Previous Quest Requirements" FontWeight="Bold"

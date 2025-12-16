@@ -494,6 +494,20 @@ public partial class QuestRequirementsView : Window
             : $"Unapproved RequiredEdition requirement for {_viewModel.SelectedQuest.Name}";
     }
 
+    private async void ExcludedEditionCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedQuest == null) return;
+        if (sender is not CheckBox cb) return;
+
+        var isApproved = cb.IsChecked ?? false;
+        _viewModel.SelectedQuest.ExcludedEditionApproved = isApproved; // Update model immediately
+        await _viewModel.UpdateExcludedEditionApprovalAsync(_viewModel.SelectedQuest.Id, isApproved);
+        UpdateProgressText();
+        StatusText.Text = isApproved
+            ? $"Approved ExcludedEdition ({_viewModel.SelectedQuest.ExcludedEdition}) for {_viewModel.SelectedQuest.Name}"
+            : $"Unapproved ExcludedEdition requirement for {_viewModel.SelectedQuest.Name}";
+    }
+
     private async void QuestApprovalCheckbox_Changed(object sender, RoutedEventArgs e)
     {
         if (_viewModel.SelectedQuest == null) return;
@@ -533,6 +547,13 @@ public partial class QuestRequirementsView : Window
         {
             currentQuest.RequiredEditionApproved = true;
             await _viewModel.UpdateRequiredEditionApprovalAsync(currentQuest.Id, true);
+        }
+
+        // Approve ExcludedEdition if exists
+        if (currentQuest.HasExcludedEdition && !currentQuest.ExcludedEditionApproved)
+        {
+            currentQuest.ExcludedEditionApproved = true;
+            await _viewModel.UpdateExcludedEditionApprovalAsync(currentQuest.Id, true);
         }
 
         // Approve quest requirements
