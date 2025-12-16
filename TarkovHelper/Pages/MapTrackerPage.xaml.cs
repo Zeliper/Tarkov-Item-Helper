@@ -459,6 +459,20 @@ public partial class MapTrackerPage : UserControl
         };
     }
 
+    /// <summary>
+    /// Get floor display name from floor ID
+    /// </summary>
+    private string? GetFloorDisplayName(string? floorId)
+    {
+        if (string.IsNullOrEmpty(floorId) || _sortedFloors == null || _sortedFloors.Count <= 1)
+            return null;  // Don't show floor info for single-floor maps
+
+        var floor = _sortedFloors.FirstOrDefault(f =>
+            string.Equals(f.LayerId, floorId, StringComparison.OrdinalIgnoreCase));
+
+        return floor?.DisplayName ?? floorId;
+    }
+
     private void LoadMapConfigs()
     {
         try
@@ -3082,15 +3096,28 @@ public partial class MapTrackerPage : UserControl
 
             TooltipClusterTypes.Text = "";  // No type summary for quests
 
-            // Hide single-marker details
-            TooltipDetails.Visibility = Visibility.Collapsed;
-
-            // Use primary objective coordinates
+            // Use primary objective coordinates and show floor info
             var primaryObj = hitRegion.Objective;
             if (primaryObj.HasCoordinates)
             {
                 var pt = primaryObj.LocationPoints[0];
                 TooltipCoords.Text = $"X: {pt.X:F1}, Z: {pt.Z:F1}";
+
+                // Show floor info if available
+                var floorName = GetFloorDisplayName(pt.FloorId);
+                if (!string.IsNullOrEmpty(floorName))
+                {
+                    TooltipDetails.Text = $"🏢 {floorName}";
+                    TooltipDetails.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    TooltipDetails.Visibility = Visibility.Collapsed;
+                }
+            }
+            else
+            {
+                TooltipDetails.Visibility = Visibility.Collapsed;
             }
         }
         else
@@ -3106,7 +3133,20 @@ public partial class MapTrackerPage : UserControl
                 // Show description explaining optional points
                 var obj = hitRegion.Objective;
                 var baseDescription = !string.IsNullOrEmpty(obj.Description) ? obj.Description + "\n\n" : "";
-                TooltipDetails.Text = $"{baseDescription}📍 {hitRegion.OptionalPointTotal}개 위치 중 1곳만 방문하면 됩니다";
+
+                // Add floor info if available
+                string floorInfo = "";
+                if (obj.OptionalPoints != null && hitRegion.OptionalPointIndex < obj.OptionalPoints.Count)
+                {
+                    var pt = obj.OptionalPoints[hitRegion.OptionalPointIndex];
+                    var floorName = GetFloorDisplayName(pt.FloorId);
+                    if (!string.IsNullOrEmpty(floorName))
+                    {
+                        floorInfo = $"🏢 {floorName}\n\n";
+                    }
+                }
+
+                TooltipDetails.Text = $"{floorInfo}{baseDescription}📍 {hitRegion.OptionalPointTotal}개 위치 중 1곳만 방문하면 됩니다";
                 TooltipDetails.Visibility = Visibility.Visible;
 
                 // Set coordinates from OptionalPoints array
@@ -3120,11 +3160,30 @@ public partial class MapTrackerPage : UserControl
             {
                 TooltipType.Text = "Quest Objective";
 
-                // Show quest details
+                // Show quest details with floor info
                 var obj = hitRegion.Objective;
+                var details = new List<string>();
+
+                // Add floor info if available
+                if (obj.HasCoordinates)
+                {
+                    var pt = obj.LocationPoints[0];
+                    var floorName = GetFloorDisplayName(pt.FloorId);
+                    if (!string.IsNullOrEmpty(floorName))
+                    {
+                        details.Add($"🏢 {floorName}");
+                    }
+                }
+
+                // Add description
                 if (!string.IsNullOrEmpty(obj.Description))
                 {
-                    TooltipDetails.Text = obj.Description;
+                    details.Add(obj.Description);
+                }
+
+                if (details.Count > 0)
+                {
+                    TooltipDetails.Text = string.Join("\n\n", details);
                     TooltipDetails.Visibility = Visibility.Visible;
                 }
                 else
