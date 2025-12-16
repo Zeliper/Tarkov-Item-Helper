@@ -955,6 +955,26 @@ public partial class QuestRequirementsView : Window
             return;
         }
 
+        var effectiveMapName = selectedObj.EffectiveMapName;
+
+        // If the objective has multi-map location (e.g., "Shoreline, Interchange"), let user select one
+        if (SelectMapDialog.IsMultiMapLocation(effectiveMapName))
+        {
+            var mapDialog = new SelectMapDialog(effectiveMapName!,
+                "This quest has multiple maps. Select the map for location points:");
+            mapDialog.Owner = this;
+
+            if (mapDialog.ShowDialog() != true || string.IsNullOrEmpty(mapDialog.SelectedMap))
+                return;
+
+            // Update objective's MapName to the selected map
+            selectedObj.MapName = mapDialog.SelectedMap;
+            await _viewModel.UpdateObjectiveMapNameAsync(selectedObj.Id, mapDialog.SelectedMap);
+            effectiveMapName = mapDialog.SelectedMap;
+
+            StatusText.Text = $"Set objective map to: {mapDialog.SelectedMap}";
+        }
+
         // Show the dialog
         var dialog = new AddApiPointsDialog(selectedObj, apiMarkers);
         dialog.Owner = this;
@@ -969,10 +989,10 @@ public partial class QuestRequirementsView : Window
         foreach (var marker in dialog.SelectedMarkers)
         {
             // Check map match (warning only)
-            if (!string.IsNullOrEmpty(selectedObj.EffectiveMapName) &&
-                !MapConfig.AreMapNamesEqual(selectedObj.EffectiveMapName, marker.MapKey))
+            if (!string.IsNullOrEmpty(effectiveMapName) &&
+                !MapConfig.AreMapNamesEqual(effectiveMapName, marker.MapKey))
             {
-                System.Diagnostics.Debug.WriteLine($"[AddApiPoints] Map mismatch: Objective={selectedObj.EffectiveMapName}, Marker={marker.MapKey}");
+                System.Diagnostics.Debug.WriteLine($"[AddApiPoints] Map mismatch: Objective={effectiveMapName}, Marker={marker.MapKey}");
             }
 
             if (dialog.IsOrPoint)
@@ -1008,12 +1028,32 @@ public partial class QuestRequirementsView : Window
 
     private async Task ApplyMarkerToObjective(ApiReferenceMarkerItem apiMarker, QuestObjectiveItem objective)
     {
+        var effectiveMapName = objective.EffectiveMapName;
+
+        // If the objective has multi-map location (e.g., "Shoreline, Interchange"), let user select one
+        if (SelectMapDialog.IsMultiMapLocation(effectiveMapName))
+        {
+            var mapDialog = new SelectMapDialog(effectiveMapName!,
+                "This quest has multiple maps. Select the map for this location point:");
+            mapDialog.Owner = this;
+
+            if (mapDialog.ShowDialog() != true || string.IsNullOrEmpty(mapDialog.SelectedMap))
+                return;
+
+            // Update objective's MapName to the selected map
+            objective.MapName = mapDialog.SelectedMap;
+            await _viewModel.UpdateObjectiveMapNameAsync(objective.Id, mapDialog.SelectedMap);
+            effectiveMapName = mapDialog.SelectedMap;
+
+            StatusText.Text = $"Set objective map to: {mapDialog.SelectedMap}";
+        }
+
         // Check if the objective's map matches the marker's map (using normalized comparison)
-        if (!string.IsNullOrEmpty(objective.EffectiveMapName) &&
-            !MapConfig.AreMapNamesEqual(objective.EffectiveMapName, apiMarker.MapKey))
+        if (!string.IsNullOrEmpty(effectiveMapName) &&
+            !MapConfig.AreMapNamesEqual(effectiveMapName, apiMarker.MapKey))
         {
             var result = MessageBox.Show(
-                $"The objective's map ({objective.EffectiveMapName}) differs from the marker's map ({apiMarker.MapKey}).\n\nDo you want to apply anyway?",
+                $"The objective's map ({effectiveMapName}) differs from the marker's map ({apiMarker.MapKey}).\n\nDo you want to apply anyway?",
                 "Map Mismatch",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);

@@ -981,6 +981,33 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         System.Diagnostics.Debug.WriteLine($"[UpdateObjectiveOptionalPointsAsync] Updated {rows} row(s) for ObjectiveId={objectiveId}, OptionalPointsJson={(optionalPointsJson ?? "null")}");
     }
 
+    /// <summary>
+    /// Objective의 MapName을 업데이트합니다. 다중 맵 퀘스트에서 특정 맵을 선택한 경우 사용.
+    /// </summary>
+    public async Task UpdateObjectiveMapNameAsync(string objectiveId, string? mapName)
+    {
+        if (!_db.IsConnected)
+        {
+            System.Diagnostics.Debug.WriteLine($"[UpdateObjectiveMapNameAsync] DB not connected!");
+            return;
+        }
+
+        var connectionString = $"Data Source={_db.DatabasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"UPDATE QuestObjectives
+                    SET MapName = @MapName, UpdatedAt = @UpdatedAt
+                    WHERE Id = @Id";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@Id", objectiveId);
+        cmd.Parameters.AddWithValue("@MapName", (object?)mapName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("@UpdatedAt", DateTime.UtcNow.ToString("o"));
+        var rows = await cmd.ExecuteNonQueryAsync();
+        System.Diagnostics.Debug.WriteLine($"[UpdateObjectiveMapNameAsync] Updated {rows} row(s) for ObjectiveId={objectiveId}, MapName={(mapName ?? "null")}");
+    }
+
     public async Task UpdateApprovalAsync(string requirementId, bool isApproved)
     {
         if (!_db.IsConnected)
