@@ -107,6 +107,11 @@ internal sealed class QuestHitRegion
     public string LocalizedQuestName { get; set; } = "";
     public int Priority { get; set; }  // Higher = more important
 
+    // Optional point information (for OR markers)
+    public bool IsOptionalPoint { get; init; }
+    public int OptionalPointIndex { get; init; }  // 0-based index
+    public int OptionalPointTotal { get; init; }  // Total count of optional points
+
     public bool IsCluster => ClusterObjectives != null && ClusterObjectives.Count > 1;
 
     public bool Contains(double x, double y)
@@ -2549,8 +2554,9 @@ public partial class MapTrackerPage : UserControl
 
         var questName = GetLocalizedQuestName(objective);
         bool showLabels = _showMarkerLabels && _zoomLevel >= _labelShowZoomThreshold;
+        int totalPoints = objective.OptionalPoints.Count;
 
-        for (int i = 0; i < objective.OptionalPoints.Count; i++)
+        for (int i = 0; i < totalPoints; i++)
         {
             var point = objective.OptionalPoints[i];
 
@@ -2566,9 +2572,9 @@ public partial class MapTrackerPage : UserControl
 
             var color = Color.FromArgb((byte)(opacity * 255), optionalColor.R, optionalColor.G, optionalColor.B);
             var (sx, sy) = _currentMapConfig!.GameToScreen(point.X, point.Z);
-            var markerSize = 24 * inverseScale;  // Slightly larger to fit "OR" text
+            var markerSize = 26 * inverseScale;  // Slightly larger to fit number format
 
-            // Circular marker with "OR" text inside
+            // Circular marker with number format inside
             var circle = new Ellipse
             {
                 Width = markerSize,
@@ -2581,22 +2587,23 @@ public partial class MapTrackerPage : UserControl
             Canvas.SetTop(circle, sy - markerSize / 2);
             ObjectivesCanvas.Children.Add(circle);
 
-            // "OR" text label inside the marker
-            var orFontSize = Math.Max(8, 12 * inverseScale);
-            var orLabel = new TextBlock
+            // Number format label inside the marker (e.g., "1/8")
+            var numberText = $"{i + 1}/{totalPoints}";
+            var fontSize = Math.Max(7, 10 * inverseScale);
+            var numberLabel = new TextBlock
             {
-                Text = "OR",
-                FontSize = orFontSize,
+                Text = numberText,
+                FontSize = fontSize,
                 FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 0xFF, 0xFF, 0xFF)),
                 TextAlignment = TextAlignment.Center
             };
-            orLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(orLabel, sx - orLabel.DesiredSize.Width / 2);
-            Canvas.SetTop(orLabel, sy - orLabel.DesiredSize.Height / 2);
-            ObjectivesCanvas.Children.Add(orLabel);
+            numberLabel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            Canvas.SetLeft(numberLabel, sx - numberLabel.DesiredSize.Width / 2);
+            Canvas.SetTop(numberLabel, sy - numberLabel.DesiredSize.Height / 2);
+            ObjectivesCanvas.Children.Add(numberLabel);
 
-            // Add hit region for tooltip and click (same as regular quest markers)
+            // Add hit region for tooltip and click (with optional point info)
             _questHitRegions.Add(new QuestHitRegion
             {
                 Objective = objective,
@@ -2605,14 +2612,17 @@ public partial class MapTrackerPage : UserControl
                 ScreenY = sy,
                 Radius = markerSize / 2 + 5,
                 LocalizedQuestName = questName,
-                Priority = 0  // Lower priority than required objectives
+                Priority = 0,  // Lower priority than required objectives
+                IsOptionalPoint = true,
+                OptionalPointIndex = i,
+                OptionalPointTotal = totalPoints
             });
 
             // Quest name label (only for first optional point when zoomed in)
             if (showLabels && i == 0 && !string.IsNullOrEmpty(questName))
             {
-                var fontSize = Math.Max(10, 24 * inverseScale * _labelScale);
-                DrawQuestNameLabel(sx + markerSize / 2 + 8 * inverseScale, sy - fontSize / 2, questName, color, fontSize, opacity);
+                var labelFontSize = Math.Max(10, 24 * inverseScale * _labelScale);
+                DrawQuestNameLabel(sx + markerSize / 2 + 8 * inverseScale, sy - labelFontSize / 2, questName, color, labelFontSize, opacity);
             }
         }
     }
@@ -2925,30 +2935,53 @@ public partial class MapTrackerPage : UserControl
         else
         {
             TooltipTitle.Text = hitRegion.LocalizedQuestName;
-            TooltipType.Text = "Quest Objective";
+
+            // Check if this is an optional point (OR marker)
+            if (hitRegion.IsOptionalPoint)
+            {
+                // Show optional point info in type line
+                TooltipType.Text = $"가능한 위치 {hitRegion.OptionalPointIndex + 1}/{hitRegion.OptionalPointTotal}";
+
+                // Show description explaining optional points
+                var obj = hitRegion.Objective;
+                var baseDescription = !string.IsNullOrEmpty(obj.Description) ? obj.Description + "\n\n" : "";
+                TooltipDetails.Text = $"{baseDescription}📍 {hitRegion.OptionalPointTotal}개 위치 중 1곳만 방문하면 됩니다";
+                TooltipDetails.Visibility = Visibility.Visible;
+
+                // Set coordinates from OptionalPoints array
+                if (obj.OptionalPoints != null && hitRegion.OptionalPointIndex < obj.OptionalPoints.Count)
+                {
+                    var pt = obj.OptionalPoints[hitRegion.OptionalPointIndex];
+                    TooltipCoords.Text = $"X: {pt.X:F1}, Z: {pt.Z:F1}";
+                }
+            }
+            else
+            {
+                TooltipType.Text = "Quest Objective";
+
+                // Show quest details
+                var obj = hitRegion.Objective;
+                if (!string.IsNullOrEmpty(obj.Description))
+                {
+                    TooltipDetails.Text = obj.Description;
+                    TooltipDetails.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    TooltipDetails.Visibility = Visibility.Collapsed;
+                }
+
+                // Set coordinates
+                if (obj.HasCoordinates)
+                {
+                    var pt = obj.LocationPoints[0];
+                    TooltipCoords.Text = $"X: {pt.X:F1}, Z: {pt.Z:F1}";
+                }
+            }
 
             // Hide cluster info
             TooltipClusterInfo.Visibility = Visibility.Collapsed;
             TooltipClusterList.ItemsSource = null;
-
-            // Show quest details
-            var obj = hitRegion.Objective;
-            if (!string.IsNullOrEmpty(obj.Description))
-            {
-                TooltipDetails.Text = obj.Description;
-                TooltipDetails.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                TooltipDetails.Visibility = Visibility.Collapsed;
-            }
-
-            // Set coordinates
-            if (obj.HasCoordinates)
-            {
-                var pt = obj.LocationPoints[0];
-                TooltipCoords.Text = $"X: {pt.X:F1}, Z: {pt.Z:F1}";
-            }
         }
 
         // Set border color to quest amber
