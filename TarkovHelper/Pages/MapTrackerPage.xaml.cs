@@ -189,6 +189,16 @@ internal sealed class QuestCardDisplay : System.ComponentModel.INotifyPropertyCh
     public string TraderName { get; set; } = "";
     public bool IsKappaRequired { get; set; }
 
+    // Quest completion state (all objectives completed)
+    public bool IsQuestCompleted => CompletedCount >= TotalCount && TotalCount > 0;
+    public double CardOpacity => IsQuestCompleted ? 0.6 : 1.0;
+    public SolidColorBrush QuestNameForeground => IsQuestCompleted
+        ? new SolidColorBrush(Color.FromRgb(0x80, 0x80, 0x80))  // Gray for completed
+        : new SolidColorBrush(Color.FromRgb(0xE8, 0xE8, 0xE8)); // White for active
+    public SolidColorBrush ProgressArcColor => IsQuestCompleted
+        ? new SolidColorBrush(Color.FromRgb(0x4E, 0xC9, 0xB0))  // Teal for completed
+        : new SolidColorBrush(Color.FromRgb(0x00, 0xB4, 0xD8)); // Accent blue for active
+
     private bool _isExpanded;
     public bool IsExpanded
     {
@@ -213,6 +223,42 @@ internal sealed class QuestCardDisplay : System.ComponentModel.INotifyPropertyCh
     public int TotalCount { get; set; }
     public double ProgressPercent => TotalCount > 0 ? (double)CompletedCount / TotalCount : 0;
     public string ProgressText => $"{CompletedCount}/{TotalCount}";
+
+    /// <summary>
+    /// SVG path data for circular progress arc (40x40 size)
+    /// </summary>
+    public string ProgressArcData
+    {
+        get
+        {
+            var percent = ProgressPercent;
+            if (percent <= 0) return "";
+
+            const double size = 40;
+            const double strokeWidth = 3.5;
+            const double radius = (size - strokeWidth) / 2;
+            const double centerX = size / 2;
+            const double centerY = size / 2;
+
+            if (percent >= 1)
+            {
+                // Near-complete circle (avoid rendering issues with full circle)
+                return $"M {centerX.ToString(System.Globalization.CultureInfo.InvariantCulture)},{(centerY - radius).ToString(System.Globalization.CultureInfo.InvariantCulture)} " +
+                       $"A {radius.ToString(System.Globalization.CultureInfo.InvariantCulture)},{radius.ToString(System.Globalization.CultureInfo.InvariantCulture)} 0 1 1 " +
+                       $"{(centerX - 0.01).ToString(System.Globalization.CultureInfo.InvariantCulture)},{(centerY - radius).ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            }
+
+            var angle = percent * 360;
+            var angleRad = (angle - 90) * Math.PI / 180; // Start from top (-90 degrees)
+            var endX = centerX + radius * Math.Cos(angleRad);
+            var endY = centerY + radius * Math.Sin(angleRad);
+            var largeArc = angle > 180 ? 1 : 0;
+
+            return $"M {centerX.ToString(System.Globalization.CultureInfo.InvariantCulture)},{(centerY - radius).ToString(System.Globalization.CultureInfo.InvariantCulture)} " +
+                   $"A {radius.ToString(System.Globalization.CultureInfo.InvariantCulture)},{radius.ToString(System.Globalization.CultureInfo.InvariantCulture)} 0 {largeArc} 1 " +
+                   $"{endX.ToString(System.Globalization.CultureInfo.InvariantCulture)},{endY.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+        }
+    }
 
     // Objectives
     public List<QuestObjectiveItem> Objectives { get; set; } = new();
@@ -273,6 +319,21 @@ internal sealed class QuestObjectiveItem
     public TextDecorationCollection? CompletedDecoration => IsCompleted
         ? TextDecorations.Strikethrough
         : null;
+    public double CompletedOpacity => IsCompleted ? 0.5 : 1.0;
+
+    // Location info for objective details
+    public bool HasLocation => X != 0 || Z != 0;
+    public Visibility LocationVisibility => HasLocation ? Visibility.Visible : Visibility.Collapsed;
+    public string LocationText
+    {
+        get
+        {
+            if (!HasLocation) return "";
+            var floor = string.IsNullOrEmpty(FloorId) ? "" : $"[{FloorId}] ";
+            return $"{floor}({X:F0}, {Z:F0})";
+        }
+    }
+    public string FocusButtonTooltip => HasLocation ? "Click to focus on map" : "";
 }
 
 /// <summary>
@@ -369,6 +430,7 @@ public partial class MapTrackerPage : UserControl
     private bool _showActiveQuestsOnly = false;     // Show only active quests
     private bool _showKappaHighlight = true;        // Highlight Kappa-required quests
     private string _traderFilter = "";              // Trader filter (empty = all)
+    private bool _hideCompletedObjectives = false;  // Hide individually completed objectives
 
     // LOD thresholds
     private const double LOD_CLUSTER_ONLY_THRESHOLD = 0.3;
@@ -436,6 +498,9 @@ public partial class MapTrackerPage : UserControl
 
     private async void MapTrackerPage_Loaded(object sender, RoutedEventArgs e)
     {
+        // Pre-load quest objective icons
+        PreloadQuestIcons();
+
         // Load markers from database
         await MapMarkerDbService.Instance.LoadMarkersAsync();
 
@@ -508,6 +573,7 @@ public partial class MapTrackerPage : UserControl
         _questStatusColorsEnabled = _settings.MapQuestStatusColors;
         _hideCompletedQuests = _settings.MapHideCompletedQuests;
         _showActiveQuestsOnly = _settings.MapShowActiveOnly;
+        _hideCompletedObjectives = _settings.MapHideCompletedObjectives;
         _showKappaHighlight = _settings.MapShowKappaHighlight;
         _traderFilter = _settings.MapTraderFilter;
 
@@ -720,12 +786,7 @@ public partial class MapTrackerPage : UserControl
         FloorSelector.SelectedIndex = index;
     }
 
-    private void ChkAutoFloor_CheckedChanged(object sender, RoutedEventArgs e)
-    {
-        _autoFloorEnabled = ChkAutoFloor.IsChecked == true;
-        if (_isInitialized) _settings.MapAutoFloorEnabled = _autoFloorEnabled;  // Save to settings
-        // Floor will be auto-detected on next position update
-    }
+    // Auto floor setting is managed via stored settings (no UI control currently)
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -962,127 +1023,41 @@ public partial class MapTrackerPage : UserControl
 
     private void SyncSettingsUI()
     {
-        // Sync Display settings
-        SliderMarkerSize.Value = _markerScale * 100;
-        SliderLabelSize.Value = _labelScale * 100;
-        TxtLabelSize.Text = $"{_labelScale * 100:F0}%";
-        ChkShowLabels.IsChecked = _showMarkerLabels;
-        ChkEnableClustering.IsChecked = _clusteringEnabled;
-        SliderClusterZoom.Value = _clusterZoomThreshold * 100;
-        ChkAutoFloor.IsChecked = _autoFloorEnabled;
-
-        // Sync Quest display settings
-        ChkQuestStatusColors.IsChecked = _questStatusColorsEnabled;
-        ChkHideCompletedQuests.IsChecked = _hideCompletedQuests;
-        ChkShowActiveOnly.IsChecked = _showActiveQuestsOnly;
-        ChkShowKappaHighlight.IsChecked = _showKappaHighlight;
-
-        // Sync trader filter combobox
-        SelectTraderFilterItem(_traderFilter);
+        // Sync Settings panel UI
+        ChkHideCompletedObjectives.IsChecked = _hideCompletedObjectives;
     }
 
-    /// <summary>
-    /// Select the trader filter combobox item by tag value
-    /// </summary>
-    private void SelectTraderFilterItem(string traderTag)
+    private void ChkHideCompletedObjectives_Changed(object sender, RoutedEventArgs e)
     {
-        foreach (ComboBoxItem item in CmbTraderFilter.Items)
-        {
-            if ((item.Tag as string ?? "") == traderTag)
-            {
-                CmbTraderFilter.SelectedItem = item;
-                return;
-            }
-        }
-        // Default to first item (All Traders)
-        CmbTraderFilter.SelectedIndex = 0;
-    }
-
-    private void SliderMarkerSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtMarkerSize == null) return;
-        _markerScale = SliderMarkerSize.Value / 100.0;
-        TxtMarkerSize.Text = $"{SliderMarkerSize.Value:F0}%";
-        if (_isInitialized) _settings.MapMarkerScale = _markerScale;  // Save to settings
-        RedrawMarkers();
-    }
-
-    private void SliderLabelSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtLabelSize == null) return;
-        _labelScale = SliderLabelSize.Value / 100.0;
-        TxtLabelSize.Text = $"{SliderLabelSize.Value:F0}%";
-        if (_isInitialized) _settings.MapLabelScale = _labelScale;  // Save to settings
-        RedrawMarkers();
+        _hideCompletedObjectives = ChkHideCompletedObjectives.IsChecked == true;
+        if (_isInitialized) _settings.MapHideCompletedObjectives = _hideCompletedObjectives;
         RedrawObjectives();
     }
 
-    private void ChkShowLabels_Changed(object sender, RoutedEventArgs e)
+    private void CmbPanelTraderFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        _showMarkerLabels = ChkShowLabels.IsChecked == true;
-        if (_isInitialized) _settings.MapShowLabels = _showMarkerLabels;  // Save to settings
-        RedrawMarkers();
-        RedrawObjectives();
-    }
-
-    private void ChkQuestStatusColors_Changed(object sender, RoutedEventArgs e)
-    {
-        _questStatusColorsEnabled = ChkQuestStatusColors.IsChecked == true;
-        if (_isInitialized) _settings.MapQuestStatusColors = _questStatusColorsEnabled;
-        RedrawObjectives();
-    }
-
-    private void ChkHideCompletedQuests_Changed(object sender, RoutedEventArgs e)
-    {
-        _hideCompletedQuests = ChkHideCompletedQuests.IsChecked == true;
-        if (_isInitialized) _settings.MapHideCompletedQuests = _hideCompletedQuests;
-        RedrawObjectives();
-        UpdateCounts();
-        RefreshQuestCards();
-    }
-
-    private void ChkShowActiveOnly_Changed(object sender, RoutedEventArgs e)
-    {
-        _showActiveQuestsOnly = ChkShowActiveOnly.IsChecked == true;
-        if (_isInitialized) _settings.MapShowActiveOnly = _showActiveQuestsOnly;
-        RedrawObjectives();
-        UpdateCounts();
-        RefreshQuestCards();
-    }
-
-    private void ChkShowKappaHighlight_Changed(object sender, RoutedEventArgs e)
-    {
-        _showKappaHighlight = ChkShowKappaHighlight.IsChecked == true;
-        if (_isInitialized) _settings.MapShowKappaHighlight = _showKappaHighlight;
-        RedrawObjectives();
-    }
-
-    private void CmbTraderFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (CmbTraderFilter.SelectedItem is ComboBoxItem selectedItem)
+        if (!_isInitialized) return;
+        if (CmbPanelTraderFilter.SelectedItem is ComboBoxItem selectedItem)
         {
             _traderFilter = selectedItem.Tag as string ?? "";
-            if (_isInitialized) _settings.MapTraderFilter = _traderFilter;
+            _settings.MapTraderFilter = _traderFilter;
             RedrawObjectives();
             UpdateCounts();
             RefreshQuestCards();
         }
     }
 
-    private void ChkEnableClustering_Changed(object sender, RoutedEventArgs e)
+    private void SyncPanelTraderFilter(string trader)
     {
-        _clusteringEnabled = ChkEnableClustering.IsChecked == true;
-        if (_isInitialized) _settings.MapClusteringEnabled = _clusteringEnabled;  // Save to settings
-        RedrawMarkers();
-    }
-
-    private void SliderClusterZoom_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtClusterZoom == null) return;
-        _clusterZoomThreshold = SliderClusterZoom.Value / 100.0;
-        TxtClusterZoom.Text = $"{SliderClusterZoom.Value:F0}%";
-        if (_isInitialized) _settings.MapClusterZoomThreshold = SliderClusterZoom.Value;  // Save to settings (0-100)
-        RedrawMarkers();
+        if (CmbPanelTraderFilter == null) return;
+        foreach (ComboBoxItem item in CmbPanelTraderFilter.Items)
+        {
+            if ((item.Tag as string ?? "") == trader)
+            {
+                CmbPanelTraderFilter.SelectedItem = item;
+                break;
+            }
+        }
     }
 
     #endregion
@@ -1211,15 +1186,45 @@ public partial class MapTrackerPage : UserControl
         if (_isInitialized) _settings.QuestPanelVisible = _questPanelVisible;
     }
 
+    // Store the last quest panel width for restore
+    private GridLength _lastQuestPanelWidth = new GridLength(260);
+
     private void UpdateQuestPanelState()
     {
-        QuestPanel.Visibility = _questPanelVisible ? Visibility.Visible : Visibility.Collapsed;
+        if (_questPanelVisible)
+        {
+            // Restore panel
+            QuestPanelColumn.Width = _lastQuestPanelWidth;
+            QuestPanelColumn.MinWidth = 180;
+            QuestPanelColumn.MaxWidth = 450;
+            QuestPanel.Visibility = Visibility.Visible;
+            QuestPanelSplitterArea.Visibility = Visibility.Visible;
+            BtnLeftToggleQuestPanel.Visibility = Visibility.Collapsed;
+        }
+        else
+        {
+            // Save current width before hiding
+            _lastQuestPanelWidth = QuestPanelColumn.Width;
+            // Hide panel
+            QuestPanelColumn.MinWidth = 0;
+            QuestPanelColumn.MaxWidth = 0;
+            QuestPanelColumn.Width = new GridLength(0);
+            QuestPanel.Visibility = Visibility.Collapsed;
+            QuestPanelSplitterArea.Visibility = Visibility.Collapsed;
+            BtnLeftToggleQuestPanel.Visibility = Visibility.Visible;
+        }
         TxtQuestPanelToggle.Text = _questPanelVisible ? "◀" : "▶";
     }
 
     private void BtnToggleQuestPanel_Click(object sender, RoutedEventArgs e)
     {
         ToggleQuestPanel();
+    }
+
+    private void BtnLeftToggleQuestPanel_Click(object sender, MouseButtonEventArgs e)
+    {
+        ToggleQuestPanel();
+        e.Handled = true;
     }
 
     private void BtnCollapseQuests_Click(object sender, RoutedEventArgs e)
@@ -1431,6 +1436,7 @@ public partial class MapTrackerPage : UserControl
 
         if (!System.IO.File.Exists(iconPath))
         {
+            System.Diagnostics.Debug.WriteLine($"SVG icon not found: {iconPath}");
             _questIconCache[type] = null;
             return null;
         }
@@ -1440,26 +1446,123 @@ public partial class MapTrackerPage : UserControl
             var settings = new WpfDrawingSettings
             {
                 IncludeRuntime = true,
-                TextAsGeometry = false
+                TextAsGeometry = true,
+                OptimizePath = true
             };
 
-            using var reader = new FileSvgReader(settings);
+            var reader = new FileSvgReader(settings);
             var drawing = reader.Read(iconPath);
             if (drawing != null)
             {
+                // Ensure the drawing is frozen for thread safety
+                if (drawing.CanFreeze && !drawing.IsFrozen)
+                    drawing.Freeze();
+
                 var image = new DrawingImage(drawing);
-                image.Freeze();
+                if (image.CanFreeze && !image.IsFrozen)
+                    image.Freeze();
+
                 _questIconCache[type] = image;
+                System.Diagnostics.Debug.WriteLine($"SVG icon loaded successfully: {iconName}");
                 return image;
             }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"SVG reader returned null for: {iconPath}");
+            }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore SVG loading errors
+            System.Diagnostics.Debug.WriteLine($"SVG loading error for {iconPath}: {ex.Message}");
         }
 
         _questIconCache[type] = null;
         return null;
+    }
+
+    /// <summary>
+    /// Pre-load all quest objective icons into cache
+    /// </summary>
+    private void PreloadQuestIcons()
+    {
+        System.Diagnostics.Debug.WriteLine("Preloading quest icons...");
+
+        var allTypes = new[]
+        {
+            QuestObjectiveType.Mark,
+            QuestObjectiveType.Visit,
+            QuestObjectiveType.Stash,
+            QuestObjectiveType.Kill,
+            QuestObjectiveType.Survive,
+            QuestObjectiveType.HandOver,
+            QuestObjectiveType.Collect,
+            QuestObjectiveType.Build,
+            QuestObjectiveType.Task,
+            QuestObjectiveType.Custom
+        };
+
+        int loadedCount = 0;
+        foreach (var type in allTypes)
+        {
+            var icon = GetQuestObjectiveIcon(type);
+            if (icon != null)
+            {
+                loadedCount++;
+                System.Diagnostics.Debug.WriteLine($"  Loaded: {type}");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"  FAILED: {type}");
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"Preloaded {loadedCount}/{allTypes.Length} quest icons");
+    }
+
+    /// <summary>
+    /// Create an SvgViewbox for quest objective type marker
+    /// </summary>
+    private SvgViewbox? CreateQuestIconViewbox(QuestObjectiveType type, double size, double opacity)
+    {
+        var iconName = type switch
+        {
+            QuestObjectiveType.Mark => "Quest_Mark",
+            QuestObjectiveType.Visit => "Quest_Visit",
+            QuestObjectiveType.Stash => "Quest_Stash",
+            QuestObjectiveType.Kill => "Quest_Kill",
+            QuestObjectiveType.Survive => "Quest_Survive",
+            QuestObjectiveType.HandOver => "Quest_HandOver",
+            QuestObjectiveType.Collect => "Quest_Collect",
+            QuestObjectiveType.Build => "Quest_Build",
+            QuestObjectiveType.Task => "Quest_Task",
+            _ => "Quest_Custom"
+        };
+
+        var iconPath = System.IO.Path.Combine(
+            AppDomain.CurrentDomain.BaseDirectory,
+            "Assets", "DB", "Icons", $"{iconName}.svg");
+
+        if (!System.IO.File.Exists(iconPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var svgViewbox = new SvgViewbox
+            {
+                Source = new Uri(iconPath, UriKind.Absolute),
+                Width = size,
+                Height = size,
+                Stretch = Stretch.Uniform,
+                Opacity = opacity
+            };
+            return svgViewbox;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -1568,9 +1671,53 @@ public partial class MapTrackerPage : UserControl
         {
             if (objItem.X != 0 || objItem.Z != 0)
             {
+                // Go to objective's floor if different
+                if (!string.IsNullOrEmpty(objItem.FloorId) &&
+                    !string.Equals(objItem.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) &&
+                    _sortedFloors != null)
+                {
+                    var floorIndex = _sortedFloors.FindIndex(f =>
+                        string.Equals(f.LayerId, objItem.FloorId, StringComparison.OrdinalIgnoreCase));
+                    if (floorIndex >= 0)
+                    {
+                        FloorSelector.SelectedIndex = floorIndex;
+                    }
+                }
+
                 FocusOnCoordinates(objItem.X, objItem.Z);
             }
             e.Handled = true;  // Prevent card click
+        }
+    }
+
+    /// <summary>
+    /// Handle objective completion toggle click
+    /// </summary>
+    private void ObjectiveToggle_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.Tag is QuestObjectiveItem objItem)
+        {
+            // Toggle completion status
+            var progressService = QuestProgressService.Instance;
+            var currentStatus = progressService.IsObjectiveCompletedById(objItem.ObjectiveId);
+            progressService.SetObjectiveCompletedById(objItem.ObjectiveId, !currentStatus);
+
+            // Save expanded quest IDs before refresh
+            var expandedQuestIds = _questCards.Where(c => c.IsExpanded).Select(c => c.QuestId).ToHashSet();
+
+            // Refresh the quest cards to update UI
+            RefreshQuestCards();
+
+            // Restore expanded state
+            foreach (var card in _questCards)
+            {
+                if (expandedQuestIds.Contains(card.QuestId))
+                    card.IsExpanded = true;
+            }
+
+            RedrawObjectives();
+
+            e.Handled = true;  // Prevent propagation
         }
     }
 
@@ -1583,6 +1730,19 @@ public partial class MapTrackerPage : UserControl
         {
             if (objItem.X != 0 || objItem.Z != 0)
             {
+                // Go to objective's floor if different
+                if (!string.IsNullOrEmpty(objItem.FloorId) &&
+                    !string.Equals(objItem.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) &&
+                    _sortedFloors != null)
+                {
+                    var floorIndex = _sortedFloors.FindIndex(f =>
+                        string.Equals(f.LayerId, objItem.FloorId, StringComparison.OrdinalIgnoreCase));
+                    if (floorIndex >= 0)
+                    {
+                        FloorSelector.SelectedIndex = floorIndex;
+                    }
+                }
+
                 FocusOnCoordinates(objItem.X, objItem.Z);
             }
             e.Handled = true;
@@ -2172,20 +2332,18 @@ public partial class MapTrackerPage : UserControl
         try
         {
             var iconFileName = GetIconFileName(markerType);
-            var iconPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "DB", "Icons", iconFileName);
+            // Use pack URI for embedded resources
+            var packUri = new Uri($"pack://application:,,,/Assets/DB/Icons/{iconFileName}", UriKind.Absolute);
 
-            if (File.Exists(iconPath))
-            {
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.UriSource = new Uri(iconPath, UriKind.Absolute);
-                bitmap.DecodePixelWidth = 64;
-                bitmap.EndInit();
-                bitmap.Freeze();
-                _iconCache[markerType] = bitmap;
-                return bitmap;
-            }
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.UriSource = packUri;
+            bitmap.DecodePixelWidth = 64;
+            bitmap.EndInit();
+            bitmap.Freeze();
+            _iconCache[markerType] = bitmap;
+            return bitmap;
         }
         catch
         {
@@ -2588,6 +2746,7 @@ public partial class MapTrackerPage : UserControl
         // Collect single-point objectives for clustering
         var singlePointObjectives = new List<(QuestObjective Obj, double SX, double SY, int Priority, string Name, double Opacity, QuestStatus Status, bool IsKappa)>();
 
+        var progressService = QuestProgressService.Instance;
         int count = 0;
         foreach (var objective in objectives)
         {
@@ -2605,6 +2764,11 @@ public partial class MapTrackerPage : UserControl
             if (!string.IsNullOrEmpty(_traderFilter) && !MatchesTraderFilter(objective))
                 continue;
 
+            // Check if individual objective is completed
+            var isObjectiveCompleted = progressService.IsObjectiveCompletedById(objective.Id);
+            if (_hideCompletedObjectives && isObjectiveCompleted)
+                continue;
+
             count++;
 
             var questName = GetLocalizedQuestName(objective);
@@ -2616,6 +2780,10 @@ public partial class MapTrackerPage : UserControl
             {
                 var points = objective.LocationPoints;
                 double opacity = GetObjectiveOpacity(points[0].FloorId, hasFloors);
+
+                // Reduce opacity for completed objectives
+                if (isObjectiveCompleted)
+                    opacity *= 0.4;
 
                 if (points.Count == 1)
                 {
@@ -2831,20 +2999,12 @@ public partial class MapTrackerPage : UserControl
             var objectiveColor = GetObjectiveTypeColor(primary.Objective.ObjectiveType, opacity);
 
             // Draw marker using SVG icon or fallback to circle
-            var icon = GetQuestObjectiveIcon(primary.Objective.ObjectiveType);
-            if (icon != null)
+            var svgViewbox = CreateQuestIconViewbox(primary.Objective.ObjectiveType, markerSize, opacity);
+            if (svgViewbox != null)
             {
-                // SVG icon marker
-                var iconImage = new Image
-                {
-                    Source = icon,
-                    Width = markerSize,
-                    Height = markerSize,
-                    Opacity = opacity
-                };
-                Canvas.SetLeft(iconImage, sx - markerSize / 2);
-                Canvas.SetTop(iconImage, sy - markerSize / 2);
-                ObjectivesCanvas.Children.Add(iconImage);
+                Canvas.SetLeft(svgViewbox, sx - markerSize / 2);
+                Canvas.SetTop(svgViewbox, sy - markerSize / 2);
+                ObjectivesCanvas.Children.Add(svgViewbox);
             }
             else
             {
@@ -3086,21 +3246,13 @@ public partial class MapTrackerPage : UserControl
             var halfSize = markerSize / 2;
 
             // Draw marker using SVG icon or fallback to diamond
-            var icon = GetQuestObjectiveIcon(objective.ObjectiveType);
-            if (icon != null)
+            var iconSize = markerSize * 0.85;
+            var svgViewbox = CreateQuestIconViewbox(objective.ObjectiveType, iconSize, opacity * 0.8);
+            if (svgViewbox != null)
             {
-                // SVG icon marker (slightly smaller for optional points)
-                var iconSize = markerSize * 0.85;
-                var iconImage = new Image
-                {
-                    Source = icon,
-                    Width = iconSize,
-                    Height = iconSize,
-                    Opacity = opacity * 0.8  // Slightly transparent for optional
-                };
-                Canvas.SetLeft(iconImage, sx - iconSize / 2);
-                Canvas.SetTop(iconImage, sy - iconSize / 2);
-                ObjectivesCanvas.Children.Add(iconImage);
+                Canvas.SetLeft(svgViewbox, sx - iconSize / 2);
+                Canvas.SetTop(svgViewbox, sy - iconSize / 2);
+                ObjectivesCanvas.Children.Add(svgViewbox);
             }
             else
             {

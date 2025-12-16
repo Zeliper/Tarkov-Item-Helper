@@ -288,31 +288,18 @@
         </Border>
 
         <!-- ==================== MAIN MAP AREA ==================== -->
-        <Grid Grid.Row="1" x:Name="MapViewerGrid" Background="{StaticResource BgL1}"
-              ClipToBounds="True"
-              MouseLeftButtonDown="MapViewer_MouseLeftButtonDown"
-              MouseLeftButtonUp="MapViewer_MouseLeftButtonUp"
-              MouseMove="MapViewer_MouseMove"
-              MouseWheel="MapViewer_MouseWheel">
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="QuestPanelColumn" Width="260" MinWidth="180" MaxWidth="450"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
 
-            <!-- Map Canvas -->
-            <Canvas x:Name="MapCanvas" RenderTransformOrigin="0,0">
-                <Canvas.RenderTransform>
-                    <TransformGroup>
-                        <ScaleTransform x:Name="MapScale" ScaleX="1" ScaleY="1"/>
-                        <TranslateTransform x:Name="MapTranslate" X="0" Y="0"/>
-                    </TransformGroup>
-                </Canvas.RenderTransform>
-                <svgc:SvgViewbox x:Name="MapSvg" Stretch="None" Canvas.Left="0" Canvas.Top="0"/>
-                <Canvas x:Name="MarkersCanvas"/>
-                <Canvas x:Name="ObjectivesCanvas"/>
-                <Canvas x:Name="PlayerCanvas"/>
-            </Canvas>
-
-            <!-- ===== FLOATING: Quest Panel (Left) ===== -->
-            <Border x:Name="QuestPanel" Style="{StaticResource FloatingPanelStyle}"
-                    HorizontalAlignment="Left" VerticalAlignment="Top"
-                    Margin="8,8,0,0" Width="240" MaxHeight="400">
+            <!-- ===== DOCKED: Quest Panel (Left) ===== -->
+            <Border x:Name="QuestPanel" Grid.Column="0"
+                    Background="{StaticResource BgL1}"
+                    BorderBrush="{StaticResource BorderSubtle}"
+                    BorderThickness="0,0,1,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -321,102 +308,247 @@
                     </Grid.RowDefinitions>
 
                     <!-- Quest Panel Header -->
-                    <Grid Grid.Row="0" Margin="12,10,12,8">
+                    <Grid Grid.Row="0" Margin="12,12,12,10">
                         <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="QUESTS" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
-                            <TextBlock x:Name="TxtQuestCount" Text="(0)" FontSize="11"
-                                       Foreground="{StaticResource Accent}" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="QUESTS" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtQuestCount" Text="(0)" FontSize="13" FontWeight="Medium"
+                                       Foreground="{StaticResource Accent}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                         <Button x:Name="BtnCollapseQuests" HorizontalAlignment="Right"
-                                Style="{StaticResource IconButtonStyle}" Width="24" Height="24"
+                                Style="{StaticResource IconButtonStyle}" Width="28" Height="28"
                                 Click="BtnCollapseQuests_Click">
-                            <TextBlock x:Name="TxtQuestCollapseIcon" Text="&#x25BC;" FontSize="8"/>
+                            <TextBlock x:Name="TxtQuestCollapseIcon" Text="&#x25BC;" FontSize="10"/>
                         </Button>
                     </Grid>
 
                     <!-- Quest Filters -->
-                    <StackPanel x:Name="QuestFilters" Grid.Row="1" Margin="12,0,12,8">
+                    <StackPanel x:Name="QuestFilters" Grid.Row="1" Margin="12,0,12,10">
+                        <!-- Trader Filter Dropdown -->
+                        <ComboBox x:Name="CmbPanelTraderFilter" FontSize="11" Padding="8,6"
+                                  Background="{StaticResource BgL1}" Foreground="{StaticResource TextPrimary}"
+                                  BorderBrush="{StaticResource BorderSubtle}" Margin="0,0,0,8"
+                                  SelectionChanged="CmbPanelTraderFilter_SelectionChanged">
+                            <ComboBoxItem Content="All Traders" Tag="" IsSelected="True"/>
+                            <ComboBoxItem Content="Prapor" Tag="Prapor"/>
+                            <ComboBoxItem Content="Therapist" Tag="Therapist"/>
+                            <ComboBoxItem Content="Fence" Tag="Fence"/>
+                            <ComboBoxItem Content="Skier" Tag="Skier"/>
+                            <ComboBoxItem Content="Peacekeeper" Tag="Peacekeeper"/>
+                            <ComboBoxItem Content="Mechanic" Tag="Mechanic"/>
+                            <ComboBoxItem Content="Ragman" Tag="Ragman"/>
+                            <ComboBoxItem Content="Jaeger" Tag="Jaeger"/>
+                            <ComboBoxItem Content="Lightkeeper" Tag="Lightkeeper"/>
+                        </ComboBox>
+                        <!-- Filter Checkboxes -->
                         <CheckBox x:Name="ChkIncompleteOnly" Content="Incomplete only" IsChecked="False"
-                                  Foreground="{StaticResource TextSecondary}" FontSize="10"
+                                  Foreground="{StaticResource TextSecondary}" FontSize="11"
                                   Checked="QuestFilter_Changed" Unchecked="QuestFilter_Changed"/>
                         <CheckBox x:Name="ChkCurrentMapOnly" Content="This map only" IsChecked="True"
-                                  Foreground="{StaticResource TextSecondary}" FontSize="10" Margin="0,4,0,0"
+                                  Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,4,0,0"
                                   Checked="QuestFilter_Changed" Unchecked="QuestFilter_Changed"/>
                     </StackPanel>
 
                     <!-- Quest List (Card-based) -->
                     <ScrollViewer x:Name="QuestListScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto"
-                                  Padding="8,0" MaxHeight="280">
+                                  Padding="10,0">
                         <ItemsControl x:Name="QuestList">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border x:Name="CardBorder" Background="#2A2A2A" CornerRadius="4" Padding="10,8" Margin="0,0,0,5"
+                                    <Border x:Name="CardBorder"
+                                            Background="{StaticResource BgL2}"
+                                            CornerRadius="8"
+                                            Padding="12"
+                                            Margin="0,0,0,8"
+                                            BorderThickness="1"
+                                            BorderBrush="Transparent"
+                                            Opacity="{Binding CardOpacity}"
                                             MouseLeftButtonDown="QuestCard_Click"
                                             MouseEnter="QuestCard_MouseEnter"
                                             MouseLeave="QuestCard_MouseLeave"
-                                            Tag="{Binding}">
+                                            Tag="{Binding}"
+                                            Cursor="Hand">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="{StaticResource BgL3}"/>
+                                                        <Setter Property="BorderBrush" Value="{StaticResource BorderSubtle}"/>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
                                         <StackPanel>
-                                            <!-- Card Header -->
+                                            <!-- Card Header: Circular Progress + Quest Info + Expand -->
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="22"/>   <!-- Icon -->
-                                                    <ColumnDefinition Width="*"/>    <!-- Name -->
-                                                    <ColumnDefinition Width="Auto"/> <!-- Progress -->
-                                                    <ColumnDefinition Width="18"/>   <!-- Expand -->
+                                                    <ColumnDefinition Width="52"/>   <!-- Circular Progress -->
+                                                    <ColumnDefinition Width="*"/>    <!-- Name + Trader -->
+                                                    <ColumnDefinition Width="24"/>   <!-- Expand Icon -->
                                                 </Grid.ColumnDefinitions>
 
-                                                <!-- Type Icon -->
-                                                <Image Grid.Column="0" Source="{Binding TypeIcon}" Width="16" Height="16"
-                                                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                <!-- Circular Progress Gauge -->
+                                                <Grid Grid.Column="0" Width="40" Height="40" VerticalAlignment="Center">
+                                                    <!-- Background Track Circle -->
+                                                    <Ellipse Stroke="{StaticResource BgL0}"
+                                                             StrokeThickness="3.5"
+                                                             Fill="Transparent"/>
 
-                                                <!-- Quest Name -->
-                                                <TextBlock Grid.Column="1" Text="{Binding QuestName}" FontSize="11" FontWeight="Medium"
-                                                           Foreground="#F0F0F0" TextTrimming="CharacterEllipsis"
+                                                    <!-- Progress Arc -->
+                                                    <Path Stroke="{Binding ProgressArcColor}"
+                                                          StrokeThickness="3.5"
+                                                          StrokeStartLineCap="Round"
+                                                          StrokeEndLineCap="Round"
+                                                          Fill="Transparent"
+                                                          Data="{Binding ProgressArcData}"/>
+
+                                                    <!-- Type Icon (Centered) -->
+                                                    <Image Source="{Binding TypeIcon}"
+                                                           Width="18" Height="18"
+                                                           HorizontalAlignment="Center"
                                                            VerticalAlignment="Center"/>
+                                                </Grid>
 
-                                                <!-- Progress Bar + Text -->
-                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="8,0">
-                                                    <Grid Width="36" Height="4" Margin="0,0,6,0">
-                                                        <Border Background="#1A1A1A" CornerRadius="2"/>
-                                                        <Border Background="#00B4D8" CornerRadius="2" HorizontalAlignment="Left"
-                                                                Width="{Binding ProgressPercent, Converter={StaticResource ProgressToWidthConverter}}"/>
-                                                    </Grid>
-                                                    <TextBlock Text="{Binding ProgressText}" FontSize="10" Foreground="#A0A0A0"/>
+                                                <!-- Quest Name + Trader Subtitle -->
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                                                    <!-- Quest Name -->
+                                                    <TextBlock Text="{Binding QuestName}"
+                                                               FontSize="13"
+                                                               FontWeight="SemiBold"
+                                                               Foreground="{Binding QuestNameForeground}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               LineHeight="18"/>
+
+                                                    <!-- Trader + Progress Subtitle -->
+                                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                        <TextBlock Text="{Binding TraderName}"
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource TextSecondary}"
+                                                                   VerticalAlignment="Center"/>
+
+                                                        <TextBlock Text=" · "
+                                                                   FontSize="11"
+                                                                   Foreground="{StaticResource TextMuted}"
+                                                                   VerticalAlignment="Center"/>
+                                                        <TextBlock Text="{Binding ProgressText}"
+                                                                   FontSize="11"
+                                                                   FontWeight="Medium"
+                                                                   Foreground="{Binding ProgressArcColor}"
+                                                                   VerticalAlignment="Center"/>
+
+                                                        <!-- Kappa Badge -->
+                                                        <Border Padding="5,2"
+                                                                CornerRadius="3"
+                                                                Background="#9C27B0"
+                                                                Margin="8,0,0,0"
+                                                                Visibility="{Binding IsKappaRequired, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                                VerticalAlignment="Center">
+                                                            <TextBlock Text="K"
+                                                                       FontSize="9"
+                                                                       FontWeight="Bold"
+                                                                       Foreground="White"/>
+                                                        </Border>
+                                                    </StackPanel>
                                                 </StackPanel>
 
                                                 <!-- Expand/Collapse Icon -->
-                                                <TextBlock Grid.Column="3" Text="{Binding ExpandIcon}" FontSize="9"
-                                                           Foreground="#888888" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding ExpandIcon}"
+                                                           FontSize="10"
+                                                           Foreground="{StaticResource TextMuted}"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center"/>
                                             </Grid>
 
                                             <!-- Objectives List (Expandable) -->
                                             <ItemsControl ItemsSource="{Binding Objectives}"
                                                           Visibility="{Binding ObjectivesVisibility}"
-                                                          Margin="22,8,0,0">
+                                                          Margin="0,12,0,0">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate>
-                                                        <Border Padding="6,4" Margin="0,2" CornerRadius="3"
-                                                                Background="#222222" Cursor="Hand"
+                                                        <Border x:Name="ObjBorder"
+                                                                Padding="10,8"
+                                                                Margin="0,4"
+                                                                CornerRadius="6"
+                                                                Background="{StaticResource BgL1}"
+                                                                Cursor="Hand"
                                                                 MouseLeftButtonDown="ObjectiveItem_Click"
-                                                                Tag="{Binding}">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="16"/>
-                                                                    <ColumnDefinition Width="*"/>
-                                                                </Grid.ColumnDefinitions>
+                                                                Tag="{Binding}"
+                                                                ToolTip="{Binding FocusButtonTooltip}">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Style.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter Property="Background" Value="{StaticResource BgHover}"/>
+                                                                        </Trigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <StackPanel>
+                                                                <!-- Main objective row -->
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="24"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="20"/>
+                                                                    </Grid.ColumnDefinitions>
 
-                                                                <!-- Objective Icon -->
-                                                                <Image Grid.Column="0" Source="{Binding TypeIcon}" Width="12" Height="12"
-                                                                       VerticalAlignment="Center"/>
+                                                                    <!-- Objective Type Icon -->
+                                                                    <Image Grid.Column="0"
+                                                                           Source="{Binding TypeIcon}"
+                                                                           Width="16" Height="16"
+                                                                           VerticalAlignment="Center"
+                                                                           Opacity="{Binding CompletedOpacity}"/>
 
-                                                                <!-- Objective Description -->
-                                                                <TextBlock Grid.Column="1" Text="{Binding Description}" FontSize="10"
-                                                                           Foreground="{Binding CompletedForeground}"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           TextDecorations="{Binding CompletedDecoration}"
-                                                                           Margin="6,0,0,0"/>
-                                                            </Grid>
+                                                                    <!-- Objective Description -->
+                                                                    <TextBlock Grid.Column="1"
+                                                                               Text="{Binding Description}"
+                                                                               FontSize="11"
+                                                                               Foreground="{Binding CompletedForeground}"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               TextDecorations="{Binding CompletedDecoration}"
+                                                                               Margin="8,0,0,0"
+                                                                               VerticalAlignment="Center"
+                                                                               LineHeight="16"/>
+
+                                                                    <!-- Completion Toggle Button -->
+                                                                    <Border Grid.Column="2"
+                                                                            Width="20" Height="20"
+                                                                            CornerRadius="10"
+                                                                            Background="Transparent"
+                                                                            Cursor="Hand"
+                                                                            MouseLeftButtonDown="ObjectiveToggle_Click"
+                                                                            Tag="{Binding}"
+                                                                            ToolTip="Toggle completion">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Style.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter Property="Background" Value="{StaticResource BgL3}"/>
+                                                                                    </Trigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <TextBlock Text="{Binding CompletionIcon}"
+                                                                                   FontSize="12"
+                                                                                   Foreground="{Binding CompletionColor}"
+                                                                                   HorizontalAlignment="Center"
+                                                                                   VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                </Grid>
+
+                                                                <!-- Location info row (if has coordinates) -->
+                                                                <StackPanel Orientation="Horizontal"
+                                                                            Margin="32,4,0,0"
+                                                                            Visibility="{Binding LocationVisibility}">
+                                                                    <TextBlock Text="📍" FontSize="9" VerticalAlignment="Center"/>
+                                                                    <TextBlock Text="{Binding LocationText}"
+                                                                               FontSize="9"
+                                                                               Foreground="{StaticResource TextMuted}"
+                                                                               Margin="4,0,0,0"
+                                                                               VerticalAlignment="Center"/>
+                                                                </StackPanel>
+                                                            </StackPanel>
                                                         </Border>
                                                     </DataTemplate>
                                                 </ItemsControl.ItemTemplate>
@@ -430,7 +562,58 @@
                 </Grid>
             </Border>
 
-            <!-- ===== FLOATING: Layer Chip Bar (Bottom Center) ===== -->
+            <!-- GridSplitter for resizing Quest Panel -->
+            <Grid Grid.Column="1" x:Name="QuestPanelSplitterArea">
+                <GridSplitter x:Name="QuestPanelSplitter" Width="4" HorizontalAlignment="Center"
+                              Background="{StaticResource BorderSubtle}"
+                              Cursor="SizeWE"/>
+                <!-- Close button on splitter -->
+                <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Width="20" Height="60" Margin="0,0,0,0"
+                        Background="#E0141414" CornerRadius="0,4,4,0"
+                        Cursor="Hand"
+                        MouseLeftButtonDown="BtnLeftToggleQuestPanel_Click"
+                        ToolTip="Hide Quest Panel (Q)">
+                    <TextBlock Text="◀" FontSize="10" Foreground="{StaticResource TextSecondary}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+            </Grid>
+
+            <!-- Map Viewer Area -->
+            <Grid Grid.Column="2" x:Name="MapViewerGrid" Background="{StaticResource BgL1}"
+                  ClipToBounds="True"
+                  MouseLeftButtonDown="MapViewer_MouseLeftButtonDown"
+                  MouseLeftButtonUp="MapViewer_MouseLeftButtonUp"
+                  MouseMove="MapViewer_MouseMove"
+                  MouseWheel="MapViewer_MouseWheel">
+
+                <!-- Map Canvas -->
+                <Canvas x:Name="MapCanvas" RenderTransformOrigin="0,0">
+                    <Canvas.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform x:Name="MapScale" ScaleX="1" ScaleY="1"/>
+                            <TranslateTransform x:Name="MapTranslate" X="0" Y="0"/>
+                        </TransformGroup>
+                    </Canvas.RenderTransform>
+                    <svgc:SvgViewbox x:Name="MapSvg" Stretch="None" Canvas.Left="0" Canvas.Top="0"/>
+                    <Canvas x:Name="MarkersCanvas"/>
+                    <Canvas x:Name="ObjectivesCanvas"/>
+                    <Canvas x:Name="PlayerCanvas"/>
+                </Canvas>
+
+                <!-- ===== FLOATING: Quest Panel Toggle Button (Left) ===== -->
+                <Border x:Name="BtnLeftToggleQuestPanel"
+                        HorizontalAlignment="Left" VerticalAlignment="Center"
+                        Width="20" Height="60" Margin="0,0,0,0"
+                        Background="#E0141414" CornerRadius="0,4,4,0"
+                        Cursor="Hand" Visibility="Collapsed"
+                        MouseLeftButtonDown="BtnLeftToggleQuestPanel_Click"
+                        ToolTip="Show Quest Panel (Q)">
+                    <TextBlock Text="▶" FontSize="10" Foreground="{StaticResource TextSecondary}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- ===== FLOATING: Layer Chip Bar (Bottom Center) ===== -->
             <Border x:Name="LayerChipBar"
                     HorizontalAlignment="Center" VerticalAlignment="Bottom"
                     Margin="0,0,0,12" Padding="8,6" CornerRadius="20"
@@ -442,42 +625,72 @@
                     <ToggleButton x:Name="ChipBoss" Style="{StaticResource LayerChipStyle}"
                                   IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
                         <StackPanel Orientation="Horizontal">
-                            <Image Source="Assets/DB/Icons/BOSS Spawn.webp" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <Border Width="16" Height="16" Margin="0,0,5,0" CornerRadius="8">
+                                <Border.Clip>
+                                    <EllipseGeometry Center="8,8" RadiusX="8" RadiusY="8"/>
+                                </Border.Clip>
+                                <Image Source="/Assets/DB/Icons/BOSS Spawn.webp" Stretch="UniformToFill"/>
+                            </Border>
                             <TextBlock Text="Boss" FontSize="10" Foreground="{StaticResource TextPrimary}"/>
                         </StackPanel>
                     </ToggleButton>
                     <ToggleButton x:Name="ChipExtract" Style="{StaticResource LayerChipStyle}"
                                   IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
                         <StackPanel Orientation="Horizontal">
-                            <Image Source="Assets/DB/Icons/PMC Extraction.webp" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <Border Width="16" Height="16" Margin="0,0,5,0" CornerRadius="8">
+                                <Border.Clip>
+                                    <EllipseGeometry Center="8,8" RadiusX="8" RadiusY="8"/>
+                                </Border.Clip>
+                                <Image Source="/Assets/DB/Icons/PMC Extraction.webp" Stretch="UniformToFill"/>
+                            </Border>
                             <TextBlock Text="Extract" FontSize="10" Foreground="{StaticResource TextPrimary}"/>
                         </StackPanel>
                     </ToggleButton>
                     <ToggleButton x:Name="ChipTransit" Style="{StaticResource LayerChipStyle}"
                                   IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
                         <StackPanel Orientation="Horizontal">
-                            <Image Source="Assets/DB/Icons/Transit.webp" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <Border Width="16" Height="16" Margin="0,0,5,0" CornerRadius="8">
+                                <Border.Clip>
+                                    <EllipseGeometry Center="8,8" RadiusX="8" RadiusY="8"/>
+                                </Border.Clip>
+                                <Image Source="/Assets/DB/Icons/Transit.webp" Stretch="UniformToFill"/>
+                            </Border>
                             <TextBlock Text="Transit" FontSize="10" Foreground="{StaticResource TextPrimary}"/>
                         </StackPanel>
                     </ToggleButton>
                     <ToggleButton x:Name="ChipSpawn" Style="{StaticResource LayerChipStyle}"
                                   IsChecked="False" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
                         <StackPanel Orientation="Horizontal">
-                            <Image Source="Assets/DB/Icons/PMC Spawn.webp" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <Border Width="16" Height="16" Margin="0,0,5,0" CornerRadius="8">
+                                <Border.Clip>
+                                    <EllipseGeometry Center="8,8" RadiusX="8" RadiusY="8"/>
+                                </Border.Clip>
+                                <Image Source="/Assets/DB/Icons/PMC Spawn.webp" Stretch="UniformToFill"/>
+                            </Border>
                             <TextBlock Text="Spawn" FontSize="10" Foreground="{StaticResource TextPrimary}"/>
                         </StackPanel>
                     </ToggleButton>
                     <ToggleButton x:Name="ChipLever" Style="{StaticResource LayerChipStyle}"
                                   IsChecked="True" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
                         <StackPanel Orientation="Horizontal">
-                            <Image Source="Assets/DB/Icons/Lever.webp" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <Border Width="16" Height="16" Margin="0,0,5,0" CornerRadius="8">
+                                <Border.Clip>
+                                    <EllipseGeometry Center="8,8" RadiusX="8" RadiusY="8"/>
+                                </Border.Clip>
+                                <Image Source="/Assets/DB/Icons/Lever.webp" Stretch="UniformToFill"/>
+                            </Border>
                             <TextBlock Text="Lever" FontSize="10" Foreground="{StaticResource TextPrimary}"/>
                         </StackPanel>
                     </ToggleButton>
                     <ToggleButton x:Name="ChipKeys" Style="{StaticResource LayerChipStyle}"
                                   IsChecked="False" Checked="LayerChip_Changed" Unchecked="LayerChip_Changed">
                         <StackPanel Orientation="Horizontal">
-                            <Image Source="Assets/DB/Icons/Keys.webp" Width="16" Height="16" Margin="0,0,5,0"/>
+                            <Border Width="16" Height="16" Margin="0,0,5,0" CornerRadius="8">
+                                <Border.Clip>
+                                    <EllipseGeometry Center="8,8" RadiusX="8" RadiusY="8"/>
+                                </Border.Clip>
+                                <Image Source="/Assets/DB/Icons/Keys.webp" Stretch="UniformToFill"/>
+                            </Border>
                             <TextBlock Text="Keys" FontSize="10" Foreground="{StaticResource TextPrimary}"/>
                         </StackPanel>
                     </ToggleButton>
@@ -684,121 +897,21 @@
                     </Border>
                     <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="12">
                         <StackPanel>
-                            <TextBlock Text="DISPLAY" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8"/>
-                            <Grid Margin="0,0,0,12">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="80"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="36"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Marker Size" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
-                                <Slider x:Name="SliderMarkerSize" Grid.Column="1" Minimum="50" Maximum="200" Value="100"
-                                        VerticalAlignment="Center" ValueChanged="SliderMarkerSize_ValueChanged"/>
-                                <TextBlock x:Name="TxtMarkerSize" Grid.Column="2" Text="100%" FontSize="10"
-                                           Foreground="{StaticResource Accent}" TextAlignment="Right" VerticalAlignment="Center"/>
-                            </Grid>
-                            <CheckBox x:Name="ChkShowLabels" Content="Show marker labels" IsChecked="False" Margin="0,4"
+                            <TextBlock Text="QUEST OBJECTIVES" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,12"/>
+                            <CheckBox x:Name="ChkHideCompletedObjectives" Content="Hide completed objectives" IsChecked="False" Margin="0,4"
                                       Foreground="{StaticResource TextPrimary}" FontSize="11"
-                                      Checked="ChkShowLabels_Changed" Unchecked="ChkShowLabels_Changed"/>
-
-                            <!-- Label Size Slider -->
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="80"/>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="36"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="Label Size" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
-                                <Slider x:Name="SliderLabelSize" Grid.Column="1" Minimum="50" Maximum="150" Value="100"
-                                        VerticalAlignment="Center" ValueChanged="SliderLabelSize_ValueChanged"/>
-                                <TextBlock x:Name="TxtLabelSize" Grid.Column="2" Text="100%" FontSize="10"
-                                           Foreground="{StaticResource Accent}" TextAlignment="Right" VerticalAlignment="Center"/>
-                            </Grid>
-
-                            <Separator Background="{StaticResource BorderSubtle}" Margin="0,12"/>
-
-                            <!-- QUEST DISPLAY Section -->
-                            <TextBlock Text="QUEST DISPLAY" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8"/>
-                            <CheckBox x:Name="ChkQuestStatusColors" Content="Color by quest status" IsChecked="True" Margin="0,4"
-                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
-                                      Checked="ChkQuestStatusColors_Changed" Unchecked="ChkQuestStatusColors_Changed"/>
-                            <StackPanel Margin="20,4,0,0">
-                                <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <Ellipse Width="10" Height="10" Fill="#4CAF50" Margin="0,0,6,0"/>
-                                    <TextBlock Text="Active (green)" FontSize="10" Foreground="{StaticResource TextMuted}"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <Ellipse Width="10" Height="10" Fill="#F5A623" Margin="0,0,6,0"/>
-                                    <TextBlock Text="Locked (amber)" FontSize="10" Foreground="{StaticResource TextMuted}"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <Ellipse Width="10" Height="10" Fill="#9E9E9E" Margin="0,0,6,0"/>
-                                    <TextBlock Text="Done (grey)" FontSize="10" Foreground="{StaticResource TextMuted}"/>
-                                </StackPanel>
-                            </StackPanel>
-                            <CheckBox x:Name="ChkHideCompletedQuests" Content="Hide completed quests" IsChecked="False" Margin="0,8,0,4"
-                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
-                                      Checked="ChkHideCompletedQuests_Changed" Unchecked="ChkHideCompletedQuests_Changed"/>
-                            <CheckBox x:Name="ChkShowActiveOnly" Content="Show active quests only" IsChecked="False" Margin="0,4"
-                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
-                                      Checked="ChkShowActiveOnly_Changed" Unchecked="ChkShowActiveOnly_Changed"/>
-                            <CheckBox x:Name="ChkShowKappaHighlight" Content="Highlight Kappa quests ⭐" IsChecked="True" Margin="0,4"
-                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
-                                      Checked="ChkShowKappaHighlight_Changed" Unchecked="ChkShowKappaHighlight_Changed"/>
-
-                            <!-- Trader Filter -->
-                            <TextBlock Text="Trader Filter" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,10,0,4"/>
-                            <ComboBox x:Name="CmbTraderFilter" FontSize="11" Padding="8,4"
-                                      Background="{StaticResource BgL1}" Foreground="{StaticResource TextPrimary}"
-                                      BorderBrush="{StaticResource BorderSubtle}"
-                                      SelectionChanged="CmbTraderFilter_SelectionChanged">
-                                <ComboBoxItem Content="All Traders" Tag="" IsSelected="True"/>
-                                <ComboBoxItem Content="Prapor" Tag="Prapor"/>
-                                <ComboBoxItem Content="Therapist" Tag="Therapist"/>
-                                <ComboBoxItem Content="Fence" Tag="Fence"/>
-                                <ComboBoxItem Content="Skier" Tag="Skier"/>
-                                <ComboBoxItem Content="Peacekeeper" Tag="Peacekeeper"/>
-                                <ComboBoxItem Content="Mechanic" Tag="Mechanic"/>
-                                <ComboBoxItem Content="Ragman" Tag="Ragman"/>
-                                <ComboBoxItem Content="Jaeger" Tag="Jaeger"/>
-                                <ComboBoxItem Content="Lightkeeper" Tag="Lightkeeper"/>
-                            </ComboBox>
-
-                            <Separator Background="{StaticResource BorderSubtle}" Margin="0,12"/>
-
-                            <TextBlock Text="CLUSTERING" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondary}" Margin="0,0,0,8"/>
-                            <CheckBox x:Name="ChkEnableClustering" Content="Enable clustering" IsChecked="True" Margin="0,4"
-                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
-                                      Checked="ChkEnableClustering_Changed" Unchecked="ChkEnableClustering_Changed"/>
-                            <TextBlock Text="Zoom threshold" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,8,0,4"/>
-                            <Grid Margin="0,0,0,8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="36"/>
-                                </Grid.ColumnDefinitions>
-                                <Slider x:Name="SliderClusterZoom" Minimum="10" Maximum="100" Value="50"
-                                        ValueChanged="SliderClusterZoom_ValueChanged"/>
-                                <TextBlock x:Name="TxtClusterZoom" Grid.Column="1" Text="50%"
-                                           Foreground="{StaticResource Accent}" FontSize="10" TextAlignment="Right" VerticalAlignment="Center"/>
-                            </Grid>
-
-                            <Separator Background="{StaticResource BorderSubtle}" Margin="0,8"/>
-
-                            <TextBlock Text="TRACKING" FontSize="10" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextSecondary}" Margin="0,12,0,8"/>
-                            <CheckBox x:Name="ChkAutoFloor" Content="Auto floor detection" IsChecked="True" Margin="0,4"
-                                      Foreground="{StaticResource TextPrimary}" FontSize="11"
-                                      Checked="ChkAutoFloor_CheckedChanged" Unchecked="ChkAutoFloor_CheckedChanged"/>
+                                      Checked="ChkHideCompletedObjectives_Changed" Unchecked="ChkHideCompletedObjectives_Changed"/>
+                            <TextBlock Text="Completed objectives will be hidden from the map"
+                                       FontSize="10" Foreground="{StaticResource TextMuted}" Margin="20,4,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
             </Border>
 
-            <!-- Hidden: Layer Menu Popup (for backward compatibility) -->
-            <Border x:Name="LayerMenuPopup" Visibility="Collapsed"/>
+                <!-- Hidden: Layer Menu Popup (for backward compatibility) -->
+                <Border x:Name="LayerMenuPopup" Visibility="Collapsed"/>
+            </Grid>
         </Grid>
 
         <!-- ==================== COMPACT STATUS BAR (32px) ==================== -->
