@@ -174,33 +174,42 @@ public partial class MainWindow : Window
     private async Task LoadAndShowQuestListAsync()
     {
         var progressService = QuestProgressService.Instance;
-        var userDataDb = UserDataDbService.Instance;
+        var migrationService = ConfigMigrationService.Instance;
 
         List<TarkovTask>? tasks = null;
+        ConfigMigrationService.MigrationResult? migrationResult = null;
 
-        // 마이그레이션 필요 여부 확인 및 진행 표시
-        bool needsMigration = userDataDb.NeedsMigration();
+        // 자동 마이그레이션 필요 여부 확인 (3.5 버전 등에서 업데이트 시)
+        bool needsMigration = migrationService.NeedsAutoMigration();
         if (needsMigration)
         {
-            ShowLoadingOverlay("데이터 마이그레이션 준비 중...");
-            userDataDb.MigrationProgress += OnMigrationProgress;
+            ShowLoadingOverlay(_loc.CurrentLanguage switch
+            {
+                AppLanguage.KO => "데이터 마이그레이션 중...",
+                AppLanguage.JA => "データ移行中...",
+                _ => "Migrating data..."
+            });
 
             try
             {
-                // 마이그레이션을 먼저 수행 (UI 업데이트가 가능하도록 await)
-                await userDataDb.MigrateFromJsonAsync();
+                var progress = new Progress<string>(message =>
+                {
+                    Dispatcher.BeginInvoke(() => UpdateLoadingStatus(message));
+                });
+
+                // ConfigMigrationService를 사용하여 마이그레이션 수행
+                migrationResult = await migrationService.MigrateFromCurrentConfigAsync(progress);
             }
             catch (Exception ex)
             {
                 // 마이그레이션 실패 시 로그 파일에 기록
                 var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "migration_error.log");
                 File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Migration failed:\n{ex}\n\nStack trace:\n{ex.StackTrace}");
-                throw;
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] Migration failed: {ex.Message}");
             }
             finally
             {
-                userDataDb.MigrationProgress -= OnMigrationProgress;
-                HideLoadingOverlay();
+                LoadingOverlay.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -291,6 +300,12 @@ public partial class MainWindow : Window
             TxtWelcome.Text = "No quest data available. Please refresh data.";
             TxtWelcome.Visibility = Visibility.Visible;
             TabContentArea.Visibility = Visibility.Collapsed;
+        }
+
+        // 마이그레이션 결과가 있으면 팝업 표시 (자동 마이그레이션 후)
+        if (migrationResult != null && migrationResult.TotalCount > 0)
+        {
+            ShowMigrationResultDialog(migrationResult);
         }
     }
 
@@ -2529,6 +2544,278 @@ public partial class MainWindow : Window
             WindowStyle = WindowStyle.SingleBorderWindow;
             WindowState = WindowState.Normal;
         }
+    }
+
+    #endregion
+
+    #region Data Migration
+
+    /// <summary>
+    /// Open folder dialog to select Config folder for migration
+    /// </summary>
+    private async void BtnDataMigration_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFolderDialog
+        {
+            Title = _loc.CurrentLanguage switch
+            {
+                AppLanguage.KO => "이전 버전 Config 폴더 선택",
+                AppLanguage.JA => "以前のバージョンのConfigフォルダを選択",
+                _ => "Select Previous Version Config Folder"
+            }
+        };
+
+        if (dialog.ShowDialog() != true) return;
+
+        var selectedPath = dialog.FolderName;
+        var migrationService = ConfigMigrationService.Instance;
+
+        // Validate folder
+        if (!migrationService.IsValidConfigFolder(selectedPath))
+        {
+            MessageBox.Show(
+                _loc.CurrentLanguage switch
+                {
+                    AppLanguage.KO => "유효한 Config 폴더가 아닙니다.\nquest_progress.json, hideout_progress.json, item_inventory.json 또는 app_settings.json 파일이 필요합니다.",
+                    AppLanguage.JA => "有効なConfigフォルダではありません。\nquest_progress.json、hideout_progress.json、item_inventory.json、またはapp_settings.jsonファイルが必要です。",
+                    _ => "Invalid Config folder.\nMust contain quest_progress.json, hideout_progress.json, item_inventory.json, or app_settings.json."
+                },
+                _loc.CurrentLanguage switch { AppLanguage.KO => "오류", AppLanguage.JA => "エラー", _ => "Error" },
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        // Preview migration
+        var preview = migrationService.PreviewMigration(selectedPath);
+
+        // Show confirmation
+        var confirmMessage = _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => $"다음 데이터를 가져올 수 있습니다:\n\n" +
+                              $"- 퀘스트 진행: {preview.QuestProgressCount}개\n" +
+                              $"- 하이드아웃 진행: {preview.HideoutProgressCount}개\n" +
+                              $"- 아이템 인벤토리: {preview.ItemInventoryCount}개\n" +
+                              $"- 설정: {preview.SettingsCount}개\n\n" +
+                              "가져오기를 진행하시겠습니까?\n(기존 데이터를 덮어씁니다)",
+            AppLanguage.JA => $"以下のデータをインポートできます:\n\n" +
+                              $"- クエスト進行: {preview.QuestProgressCount}件\n" +
+                              $"- ハイドアウト進行: {preview.HideoutProgressCount}件\n" +
+                              $"- アイテムインベントリ: {preview.ItemInventoryCount}件\n" +
+                              $"- 設定: {preview.SettingsCount}件\n\n" +
+                              "インポートを続行しますか？\n(既存のデータは上書きされます)",
+            _ => $"The following data can be imported:\n\n" +
+                 $"- Quest Progress: {preview.QuestProgressCount}\n" +
+                 $"- Hideout Progress: {preview.HideoutProgressCount}\n" +
+                 $"- Item Inventory: {preview.ItemInventoryCount}\n" +
+                 $"- Settings: {preview.SettingsCount}\n\n" +
+                 "Do you want to proceed?\n(Existing data will be overwritten)"
+        };
+
+        var confirmResult = MessageBox.Show(
+            confirmMessage,
+            _loc.CurrentLanguage switch { AppLanguage.KO => "데이터 가져오기", AppLanguage.JA => "データのインポート", _ => "Import Data" },
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirmResult != MessageBoxResult.Yes) return;
+
+        // Hide settings overlay
+        HideSettingsOverlay();
+
+        // Show loading overlay
+        ShowLoadingOverlay(_loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => "데이터 마이그레이션 중...",
+            AppLanguage.JA => "データ移行中...",
+            _ => "Migrating data..."
+        });
+
+        try
+        {
+            var progress = new Progress<string>(message =>
+            {
+                Dispatcher.Invoke(() => UpdateLoadingStatus(message));
+            });
+
+            var result = await migrationService.MigrateFromConfigFolderAsync(selectedPath, progress);
+
+            // 즉시 LoadingOverlay 숨기기 (애니메이션 충돌 방지)
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+
+            // Show result popup
+            ShowMigrationResultDialog(result);
+
+            // Reload pages to reflect new data
+            await LoadAndShowQuestListAsync();
+        }
+        catch (Exception ex)
+        {
+            HideLoadingOverlay();
+            MessageBox.Show(
+                $"Migration failed: {ex.Message}",
+                "Error",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    /// <summary>
+    /// Show migration result dialog
+    /// </summary>
+    private void ShowMigrationResultDialog(ConfigMigrationService.MigrationResult result)
+    {
+        // Update localized text
+        UpdateMigrationResultLocalizedText(result);
+
+        // Update counts
+        TxtMigrationQuestCount.Text = result.QuestProgressCount.ToString();
+        TxtMigrationHideoutCount.Text = result.HideoutProgressCount.ToString();
+        TxtMigrationInventoryCount.Text = result.ItemInventoryCount.ToString();
+        TxtMigrationSettingsCount.Text = result.SettingsCount.ToString();
+
+        TxtMigrationTotalCount.Text = _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => $"{result.TotalCount}개 항목",
+            AppLanguage.JA => $"{result.TotalCount}件",
+            _ => $"{result.TotalCount} items"
+        };
+
+        // Show warnings if any
+        if (result.HasWarnings || result.HasErrors)
+        {
+            var allMessages = result.Errors.Concat(result.Warnings).ToList();
+            MigrationWarningsList.ItemsSource = allMessages;
+            MigrationWarningsSection.Visibility = Visibility.Visible;
+
+            TxtMigrationWarningsHeader.Text = result.HasErrors
+                ? _loc.CurrentLanguage switch
+                {
+                    AppLanguage.KO => "오류 및 경고",
+                    AppLanguage.JA => "エラーと警告",
+                    _ => "Errors & Warnings"
+                }
+                : _loc.CurrentLanguage switch
+                {
+                    AppLanguage.KO => "경고",
+                    AppLanguage.JA => "警告",
+                    _ => "Warnings"
+                };
+
+            TxtMigrationWarningsHeader.Foreground = result.HasErrors
+                ? new SolidColorBrush(Color.FromRgb(239, 83, 80)) // Red
+                : new SolidColorBrush(Color.FromRgb(255, 167, 38)); // Orange
+        }
+        else
+        {
+            MigrationWarningsSection.Visibility = Visibility.Collapsed;
+        }
+
+        // Update icon based on result
+        if (result.HasErrors)
+        {
+            TxtMigrationResultIcon.Text = "";
+            TxtMigrationResultTitle.Foreground = new SolidColorBrush(Color.FromRgb(239, 83, 80));
+        }
+        else if (result.HasWarnings)
+        {
+            TxtMigrationResultIcon.Text = "";
+            TxtMigrationResultTitle.Foreground = new SolidColorBrush(Color.FromRgb(255, 167, 38));
+        }
+        else
+        {
+            TxtMigrationResultIcon.Text = "";
+            TxtMigrationResultTitle.Foreground = (Brush)FindResource("AccentBrush");
+        }
+
+        MigrationResultOverlay.Visibility = Visibility.Visible;
+
+        var blurAnimation = new DoubleAnimation(0, 8, TimeSpan.FromMilliseconds(200));
+        BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
+    }
+
+    /// <summary>
+    /// Hide migration result dialog
+    /// </summary>
+    private void HideMigrationResultDialog()
+    {
+        var blurAnimation = new DoubleAnimation(8, 0, TimeSpan.FromMilliseconds(200));
+        blurAnimation.Completed += (s, e) =>
+        {
+            MigrationResultOverlay.Visibility = Visibility.Collapsed;
+        };
+        BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
+    }
+
+    /// <summary>
+    /// Update migration result dialog localized text
+    /// </summary>
+    private void UpdateMigrationResultLocalizedText(ConfigMigrationService.MigrationResult result)
+    {
+        TxtMigrationResultTitle.Text = result.HasErrors
+            ? _loc.CurrentLanguage switch
+            {
+                AppLanguage.KO => "마이그레이션 실패",
+                AppLanguage.JA => "移行失敗",
+                _ => "Migration Failed"
+            }
+            : _loc.CurrentLanguage switch
+            {
+                AppLanguage.KO => "마이그레이션 완료",
+                AppLanguage.JA => "移行完了",
+                _ => "Migration Complete"
+            };
+
+        TxtMigrationQuestLabel.Text = _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => "퀘스트 진행",
+            AppLanguage.JA => "クエスト進行",
+            _ => "Quest Progress"
+        };
+
+        TxtMigrationHideoutLabel.Text = _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => "하이드아웃 진행",
+            AppLanguage.JA => "ハイドアウト進行",
+            _ => "Hideout Progress"
+        };
+
+        TxtMigrationInventoryLabel.Text = _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => "아이템 인벤토리",
+            AppLanguage.JA => "アイテムインベントリ",
+            _ => "Item Inventory"
+        };
+
+        TxtMigrationSettingsLabel.Text = _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => "설정",
+            AppLanguage.JA => "設定",
+            _ => "Settings"
+        };
+
+        TxtMigrationTotalLabel.Text = _loc.CurrentLanguage switch
+        {
+            AppLanguage.KO => "총 가져온 항목: ",
+            AppLanguage.JA => "インポート合計: ",
+            _ => "Total imported: "
+        };
+    }
+
+    /// <summary>
+    /// Close button click
+    /// </summary>
+    private void BtnCloseMigrationResult_Click(object sender, RoutedEventArgs e)
+    {
+        HideMigrationResultDialog();
+    }
+
+    /// <summary>
+    /// OK button click
+    /// </summary>
+    private void BtnMigrationResultOk_Click(object sender, RoutedEventArgs e)
+    {
+        HideMigrationResultDialog();
     }
 
     #endregion

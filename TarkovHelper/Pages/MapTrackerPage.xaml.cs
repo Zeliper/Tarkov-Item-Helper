@@ -1095,6 +1095,7 @@ public partial class MapTrackerPage : UserControl
     {
         // Sync Settings panel UI
         ChkHideCompletedObjectives.IsChecked = _hideCompletedObjectives;
+        ChkActiveOnly.IsChecked = _showActiveQuestsOnly;
 
         // Sync screenshot path UI
         var customPath = _settings.MapScreenshotPath;
@@ -1394,6 +1395,15 @@ public partial class MapTrackerPage : UserControl
     {
         if (!_isInitialized) return;
         RefreshQuestCards();
+    }
+
+    private void ChkActiveOnly_Changed(object sender, RoutedEventArgs e)
+    {
+        if (!_isInitialized) return;
+        _showActiveQuestsOnly = ChkActiveOnly.IsChecked == true;
+        _settings.MapShowActiveOnly = _showActiveQuestsOnly;
+        RefreshQuestCards();
+        RedrawObjectives();
     }
 
     private void QuestItem_Click(object sender, MouseButtonEventArgs e)

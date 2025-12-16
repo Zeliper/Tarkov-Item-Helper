@@ -517,6 +517,28 @@
                                                 Click="BtnResetFontSize_Click"/>
                                     </StackPanel>
                                 </Border>
+
+                                <!-- Data Migration Section -->
+                                <Border BorderThickness="0,1,0,0" BorderBrush="{StaticResource BorderBrush}"
+                                        Margin="0,12,0,0" Padding="0,16,0,0">
+                                    <StackPanel>
+                                        <TextBlock x:Name="TxtDataMigrationLabel" Text="Data Migration"
+                                                   FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                                   Margin="0,0,0,8"/>
+
+                                        <TextBlock x:Name="TxtDataMigrationDesc"
+                                                   Text="Import data from an older version of TarkovHelper (3.5 or earlier). Select the Config folder from your previous installation."
+                                                   FontSize="{DynamicResource FontSizeXSmall}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   TextWrapping="Wrap"
+                                                   Margin="0,0,0,12"/>
+
+                                        <Button x:Name="BtnDataMigration" Content="Import from Config..."
+                                                Padding="12,8" HorizontalAlignment="Left"
+                                                Click="BtnDataMigration_Click"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Grid>
                     </ScrollViewer>
@@ -1046,6 +1068,144 @@
                                 Background="{StaticResource AccentBrush}"
                                 Foreground="{StaticResource BackgroundDarkBrush}"/>
                     </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Migration Result Overlay -->
+        <Grid x:Name="MigrationResultOverlay" Visibility="Collapsed" Background="#AA1A1A1A" Grid.RowSpan="2">
+            <Border Background="{StaticResource BackgroundDarkBrush}"
+                    CornerRadius="8" Padding="24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    MinWidth="500" MaxWidth="600">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+                </Border.Effect>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Grid Grid.Row="0" Margin="0,0,0,16">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="TxtMigrationResultIcon" Text="" FontSize="{DynamicResource FontSizeHeader}"
+                                       VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <TextBlock x:Name="TxtMigrationResultTitle" Text="Migration Complete"
+                                       FontSize="{DynamicResource FontSizeXLarge}" FontWeight="SemiBold"
+                                       Foreground="{StaticResource AccentBrush}" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Button x:Name="BtnCloseMigrationResult" Content="X"
+                                HorizontalAlignment="Right"
+                                Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
+                                Click="BtnCloseMigrationResult_Click"/>
+                    </Grid>
+
+                    <!-- Summary Stats -->
+                    <Border Grid.Row="1" Background="{StaticResource BackgroundMediumBrush}"
+                            CornerRadius="4" Padding="16" Margin="0,0,0,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Quest Progress -->
+                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,8,8">
+                                <TextBlock x:Name="TxtMigrationQuestLabel" Text="Quest Progress"
+                                           FontSize="{DynamicResource FontSizeTiny}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtMigrationQuestCount" Text="0"
+                                           FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
+                                           Foreground="{StaticResource AccentBrush}"/>
+                            </StackPanel>
+
+                            <!-- Hideout Progress -->
+                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,8">
+                                <TextBlock x:Name="TxtMigrationHideoutLabel" Text="Hideout Progress"
+                                           FontSize="{DynamicResource FontSizeTiny}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtMigrationHideoutCount" Text="0"
+                                           FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
+                                           Foreground="{StaticResource AccentBrush}"/>
+                            </StackPanel>
+
+                            <!-- Item Inventory -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,8,8,0">
+                                <TextBlock x:Name="TxtMigrationInventoryLabel" Text="Item Inventory"
+                                           FontSize="{DynamicResource FontSizeTiny}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtMigrationInventoryCount" Text="0"
+                                           FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
+                                           Foreground="{StaticResource AccentBrush}"/>
+                            </StackPanel>
+
+                            <!-- Settings -->
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="8,8,0,0">
+                                <TextBlock x:Name="TxtMigrationSettingsLabel" Text="Settings"
+                                           FontSize="{DynamicResource FontSizeTiny}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"/>
+                                <TextBlock x:Name="TxtMigrationSettingsCount" Text="0"
+                                           FontSize="{DynamicResource FontSizeLarge}" FontWeight="Bold"
+                                           Foreground="{StaticResource AccentBrush}"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Warnings/Errors Section -->
+                    <Border x:Name="MigrationWarningsSection" Grid.Row="2"
+                            Background="{StaticResource BackgroundMediumBrush}"
+                            CornerRadius="4" Padding="12" Margin="0,0,0,12"
+                            Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock x:Name="TxtMigrationWarningsHeader" Text="Warnings"
+                                       FontSize="{DynamicResource FontSizeXSmall}" FontWeight="SemiBold"
+                                       Foreground="#FFA726" Margin="0,0,0,8"/>
+                            <ScrollViewer MaxHeight="100" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl x:Name="MigrationWarningsList">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}"
+                                                       FontSize="{DynamicResource FontSizeTiny}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       TextWrapping="Wrap"
+                                                       Margin="0,0,0,4"/>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Total Summary -->
+                    <Border Grid.Row="3" Background="{StaticResource BackgroundLightBrush}"
+                            CornerRadius="4" Padding="12" Margin="0,0,0,16">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <TextBlock x:Name="TxtMigrationTotalLabel" Text="Total imported: "
+                                       FontSize="{DynamicResource FontSizeSmall}"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="TxtMigrationTotalCount" Text="0 items"
+                                       FontSize="{DynamicResource FontSizeSmall}" FontWeight="Bold"
+                                       Foreground="{StaticResource AccentBrush}"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- OK Button -->
+                    <Button x:Name="BtnMigrationResultOk" Grid.Row="4" Content="OK"
+                            Padding="24,8" HorizontalAlignment="Center"
+                            Click="BtnMigrationResultOk_Click"
+                            Background="{StaticResource AccentBrush}"
+                            Foreground="{StaticResource BackgroundDarkBrush}"/>
                 </Grid>
             </Border>
         </Grid>

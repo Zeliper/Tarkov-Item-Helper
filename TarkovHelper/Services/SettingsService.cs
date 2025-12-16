@@ -973,7 +973,7 @@ public class SettingsService
         get
         {
             if (!_settingsLoaded) LoadSettings();
-            return _mapShowActiveOnly ?? false;
+            return _mapShowActiveOnly ?? true;
         }
         set
         {

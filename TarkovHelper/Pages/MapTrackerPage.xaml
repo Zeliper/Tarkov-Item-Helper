@@ -341,8 +341,11 @@
                             <ComboBoxItem Content="Lightkeeper" Tag="Lightkeeper"/>
                         </ComboBox>
                         <!-- Filter Checkboxes -->
-                        <CheckBox x:Name="ChkIncompleteOnly" Content="Incomplete only" IsChecked="False"
+                        <CheckBox x:Name="ChkActiveOnly" Content="Active only" IsChecked="True"
                                   Foreground="{StaticResource TextSecondary}" FontSize="11"
+                                  Checked="ChkActiveOnly_Changed" Unchecked="ChkActiveOnly_Changed"/>
+                        <CheckBox x:Name="ChkIncompleteOnly" Content="Incomplete only" IsChecked="False"
+                                  Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,4,0,0"
                                   Checked="QuestFilter_Changed" Unchecked="QuestFilter_Changed"/>
                         <CheckBox x:Name="ChkCurrentMapOnly" Content="This map only" IsChecked="True"
                                   Foreground="{StaticResource TextSecondary}" FontSize="11" Margin="0,4,0,0"
