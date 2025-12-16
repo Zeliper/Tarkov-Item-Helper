@@ -306,6 +306,12 @@ public sealed class ConfigMigrationService
 
             // QuestDbService에서 NormalizedName → Quest 매핑 가져오기
             var questDbService = QuestDbService.Instance;
+
+            // QuestDbService가 로드되지 않았으면 로드
+            if (!questDbService.IsLoaded)
+            {
+                await questDbService.LoadQuestsAsync();
+            }
             var progressItems = new List<(string Id, string? NormalizedName, QuestStatus Status)>();
 
             foreach (var kvp in data)
@@ -379,6 +385,13 @@ public sealed class ConfigMigrationService
 
             // HideoutDbService에서 NormalizedName → Station 매핑 가져오기
             var hideoutDbService = HideoutDbService.Instance;
+
+            // HideoutDbService가 로드되지 않았으면 로드
+            if (!hideoutDbService.IsLoaded)
+            {
+                await hideoutDbService.LoadStationsAsync();
+            }
+
             var allStations = hideoutDbService.AllStations;
 
             // NormalizedName으로 Station 찾기 위한 룩업 생성
