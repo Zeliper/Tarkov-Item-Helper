@@ -376,7 +376,9 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Check if the current quest status satisfies the required status conditions
+        /// Check if the current quest status satisfies the required status conditions.
+        /// Handles both tarkov.dev API values ("active", "complete", "failed") and
+        /// DB/Wiki values ("Start", "Accept", "Complete", "Fail").
         /// </summary>
         private bool IsStatusSatisfied(QuestStatus currentStatus, List<string>? requiredStatuses)
         {
@@ -392,10 +394,12 @@ namespace TarkovHelper.Services
                 switch (required.ToLowerInvariant())
                 {
                     case "active":
+                    case "start":    // DB value: RequirementType = "Start"
+                    case "accept":   // DB value: RequirementType = "Accept"
                         // Quest is active (started but not completed)
                         if (currentStatus == QuestStatus.Active)
                             return true;
-                        // Also satisfied if quest is done (was active before)
+                        // Also satisfied if quest is done (was active before completion)
                         if (currentStatus == QuestStatus.Done)
                             return true;
                         break;
@@ -406,6 +410,7 @@ namespace TarkovHelper.Services
                         break;
 
                     case "failed":
+                    case "fail":     // DB value: RequirementType = "Fail"
                         if (currentStatus == QuestStatus.Failed)
                             return true;
                         break;
