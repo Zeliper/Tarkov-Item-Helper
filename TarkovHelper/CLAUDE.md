@@ -265,6 +265,42 @@ Specialized agents for specific tasks (located in `.claude/agents/`):
 | `db-schema-analyzer` | SQLite schema, queries, migrations | Database work |
 | `wpf-xaml-specialist` | XAML binding, UI layout, events | UI modifications |
 | `service-architect` | Service design, DI patterns | Service refactoring |
+| `map-feature-specialist` | Map tracking, coordinates, markers | Map 탭 기능 작업 |
+| `prd-manager` | PRD 관리, 작업 계획, 에이전트 조율 | 기능 계획 및 관리 |
+
+### Agent Self-Learning
+
+모든 에이전트는 작업 완료 후 다음을 수행합니다:
+1. **발견한 패턴 기록**: 프로젝트 특화 정보를 에이전트 파일의 "Agent Learning Log"에 추가
+2. **이슈 기록**: 발견한 문제점이나 주의사항 기록
+3. **업데이트 리포트**: 에이전트 파일 수정 시 변경 내용 요약
+
+이를 통해 에이전트가 프로젝트에 특화된 지식을 축적합니다.
+
+### PRD Management
+
+기능 개발 계획은 `PRDs/` 폴더에서 관리됩니다:
+
+```
+PRDs/
+├── README.md              # PRD 관리 가이드
+├── active/                # 진행 중인 PRD
+├── archive/               # 완료된 PRD (월별 정리)
+└── templates/             # PRD 템플릿
+```
+
+PRD 워크플로우:
+1. `templates/feature-template.prd` 복사하여 `active/` 에 새 PRD 생성
+2. 작업 진행하며 Task 체크 및 Progress Log 기록
+3. 완료 시 `archive/YYYY-MM/` 로 이동
+
+### Reference Project: TarkovDBEditor
+
+Map 기능 작업 시 `../TarkovDBEditor/` 프로젝트를 참조해야 합니다:
+- `Models/MapConfig.cs` - 맵 좌표 변환 설정
+- `Services/MapMarkerService.cs` - 맵 마커 CRUD
+- `Views/MapEditorWindow.xaml` - 맵 편집 UI
+- `Resources/Data/map_configs.json` - 맵 설정 파일
 
 ### Available Skills
 
