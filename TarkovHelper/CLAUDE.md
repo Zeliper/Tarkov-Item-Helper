@@ -66,6 +66,14 @@ User Data (read-write):
 - `MapMarkerDbService.cs` - Map marker data from tarkov_data.db
 - `MapTrackerService.cs` - Map position tracking, settings persisted to user_data.db
 
+**Services/Logging/**
+- `LogLevel.cs` - Log level enumeration (Trace, Debug, Info, Warning, Error, Critical, None)
+- `ILogger.cs` - Logger interface
+- `LoggingService.cs` - Main logging service (singleton, session management)
+- `Log.cs` - Logger factory (`Log.For<T>()`)
+- `FileLogWriter.cs` - Async file writing with buffering
+- `LogCleanupService.cs` - Old log cleanup service
+
 **Pages/**
 - `QuestListPage.xaml` - Quest list view with filtering and detail panel
 - `HideoutPage.xaml` - Hideout module management with level controls and requirements
@@ -87,6 +95,7 @@ User Data (read-write):
   - App settings: `app.playerLevel`, `app.scavRep`, `app.baseFontSize`, etc.
   - Language: `app.language`
   - Map tracker: `mapTracker.settings` (JSON serialized)
+  - Logging: `logging.level`, `logging.maxDays`, `logging.maxSizeMB`
 - **Auto migration**: When user updates app, old JSON settings are automatically migrated to DB and deleted
 - Quest prerequisites are stored as ID lists; use `QuestGraphService.GetAllPrerequisites()` for recursive chain resolution
 - Item objectives track `FoundInRaid` boolean to distinguish FIR requirements from regular item submissions
@@ -114,6 +123,91 @@ ItemsPage / CollectorPage
 - `QuestRequiredItems.ItemId` must match `Items.Id` (both are tarkov.dev API IDs)
 - Items with `NULL` ItemId are NOT displayed (need to be matched in TarkovDBEditor first)
 - Item matching is done in TarkovDBEditor's RefreshDataService, not in TarkovHelper
+
+## Logging System
+
+### Overview
+
+The application uses a custom logging system with file-based log storage and configurable log levels.
+
+### Log Storage Location
+
+```
+[실행 폴더]/Logs/
+├── 2025-12-17-001/           # 날짜-인스턴스번호
+│   ├── trace.log             # Trace 레벨 로그
+│   ├── debug.log             # Debug 레벨 로그
+│   ├── info.log              # Info 레벨 로그
+│   ├── warning.log           # Warning 레벨 로그
+│   ├── error.log             # Error 레벨 로그
+│   ├── critical.log          # Critical 레벨 로그
+│   └── all.log               # 모든 레벨 통합 로그
+├── 2025-12-17-002/           # 같은 날 두 번째 실행
+└── ...
+```
+
+### Log Levels
+
+| Level | Value | Description | Usage |
+|-------|-------|-------------|-------|
+| Trace | 0 | Very detailed debugging | Method entry/exit, variable values |
+| Debug | 1 | Debugging information | DB queries, state changes |
+| Info | 2 | General information | App start, page navigation |
+| Warning | 3 | Potential issues | Slow responses, retries |
+| Error | 4 | Errors occurred | Exceptions, failures |
+| Critical | 5 | Fatal errors | App crashes, data corruption |
+| None | 6 | Disable logging | - |
+
+### Build-specific Defaults
+
+| Build Mode | File Logging Level | Console Output |
+|------------|-------------------|----------------|
+| **Debug** | Trace (all logs) | Enabled |
+| **Release** | Warning (Warning+) | Disabled |
+
+### Usage
+
+```csharp
+using TarkovHelper.Services.Logging;
+
+public class MyService
+{
+    private static readonly ILogger _log = Log.For<MyService>();
+
+    public void DoSomething()
+    {
+        _log.Debug("Starting operation...");
+
+        try
+        {
+            // ... work
+            _log.Info("Operation completed successfully");
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Operation failed", ex);
+        }
+    }
+}
+```
+
+### Log Settings (user_data.db)
+
+| Setting Key | Description | Default |
+|-------------|-------------|---------|
+| `logging.level` | Log level (0-6) | 3 (Warning) in Release |
+| `logging.maxDays` | Log retention days | 7 |
+| `logging.maxSizeMB` | Max log folder size (MB) | 100 |
+
+### Log Format
+
+```
+[2025-12-17 14:30:45.123] [INFO ] [MainWindow] Application started
+[2025-12-17 14:30:45.456] [DEBUG] [QuestDbService] Loaded 245 quests from database
+[2025-12-17 14:30:46.789] [ERROR] [MapTrackerService] Failed to connect: Connection refused
+    Exception: System.Net.Sockets.SocketException
+    at MapTrackerService.Connect() in Services\MapTrackerService.cs:line 123
+```
 
 ## Database Schema
 
@@ -159,3 +253,50 @@ ItemsPage / CollectorPage
 - `ItemNormalizedName` - Item identifier
 - `FirQuantity`, `NonFirQuantity` - Owned counts
 - `UpdatedAt` - Timestamp
+
+## Claude Code Configuration
+
+### Available SubAgents
+
+Specialized agents for specific tasks (located in `.claude/agents/`):
+
+| Agent | Purpose | Use When |
+|-------|---------|----------|
+| `db-schema-analyzer` | SQLite schema, queries, migrations | Database work |
+| `wpf-xaml-specialist` | XAML binding, UI layout, events | UI modifications |
+| `service-architect` | Service design, DI patterns | Service refactoring |
+
+### Available Skills
+
+Helper skills for common tasks (located in `.claude/skills/`):
+
+| Skill | Purpose |
+|-------|---------|
+| `db-query-helper` | Write SQLite queries for tarkov_data.db and user_data.db |
+| `logging-config` | Configure logging system settings |
+
+### Slash Commands
+
+Custom commands (located in `.claude/commands/`):
+
+| Command | Description |
+|---------|-------------|
+| `/build-and-run` | Build and run the WPF application |
+| `/db-check` | Check database schema and statistics |
+
+### Usage Examples
+
+```
+# Database schema questions → db-schema-analyzer
+"How should I add a new table for tracking achievements?"
+
+# UI work → wpf-xaml-specialist
+"Help me add a filter dropdown to the ItemsPage"
+
+# Service design → service-architect
+"How should I structure a new notification service?"
+
+# Quick commands
+/build-and-run    # Build and launch the app
+/db-check         # View database stats
+```
