@@ -23,8 +23,29 @@ public sealed class HideoutDbService
 
     private HideoutDbService()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        _databasePath = Path.Combine(appDir, "Assets", "tarkov_data.db");
+        _databasePath = DatabaseUpdateService.Instance.DatabasePath;
+
+        // 데이터베이스 업데이트 이벤트 구독
+        DatabaseUpdateService.Instance.DatabaseUpdated += OnDatabaseUpdated;
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 시 데이터 리로드
+    /// </summary>
+    private async void OnDatabaseUpdated(object? sender, EventArgs e)
+    {
+        System.Diagnostics.Debug.WriteLine("[HideoutDbService] Database updated, reloading data...");
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// 데이터 새로고침 (기존 데이터를 유지하면서 새 데이터로 atomic swap)
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        System.Diagnostics.Debug.WriteLine("[HideoutDbService] Refreshing hideout data...");
+        // 기존 데이터를 클리어하지 않음 - LoadStationsAsync()에서 atomic swap으로 교체
+        await LoadStationsAsync();
     }
 
     /// <summary>
@@ -76,18 +97,20 @@ public sealed class HideoutDbService
             // 2. 레벨 정보 로드
             await LoadLevelsAsync(connection, stationLookup);
 
-            // 캐시에 저장
-            _allStations = stations;
-            _stationsById.Clear();
+            // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
+            var newStationsById = new Dictionary<string, HideoutModule>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var station in stations)
             {
                 if (!string.IsNullOrEmpty(station.Id))
                 {
-                    _stationsById[station.Id] = station;
+                    newStationsById[station.Id] = station;
                 }
             }
 
+            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
+            _allStations = stations;
+            _stationsById = newStationsById;
             _isLoaded = true;
             System.Diagnostics.Debug.WriteLine($"[HideoutDbService] Loaded {stations.Count} hideout stations from DB");
             return true;

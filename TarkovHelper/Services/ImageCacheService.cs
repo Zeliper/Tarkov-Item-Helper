@@ -17,6 +17,7 @@ namespace TarkovHelper.Services
 
         private readonly HttpClient _httpClient;
         private readonly string _imageCachePath;
+        private readonly string _localIconsPath;
         private readonly Dictionary<string, BitmapImage> _memoryCache = new();
         private readonly LinkedList<string> _lruOrder = new(); // Track access order for LRU eviction
         private readonly object _cacheLock = new();
@@ -32,6 +33,7 @@ namespace TarkovHelper.Services
             _httpClient = new HttpClient();
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "TarkovHelper/1.0");
             _imageCachePath = Path.Combine(AppEnv.CachePath, "Images");
+            _localIconsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "icons");
             Directory.CreateDirectory(_imageCachePath);
         }
 
@@ -51,14 +53,50 @@ namespace TarkovHelper.Services
         }
 
         /// <summary>
-        /// Get an item icon from tarkov.dev
+        /// Get an item icon from local Assets/icons folder by item ID
         /// </summary>
-        public async Task<BitmapImage?> GetItemIconAsync(string? iconUrl)
+        public BitmapImage? GetLocalItemIcon(string? itemId)
         {
-            if (string.IsNullOrEmpty(iconUrl))
+            if (string.IsNullOrEmpty(itemId))
                 return null;
 
-            return await GetImageAsync(iconUrl, "items");
+            // Check memory cache first
+            var cacheKey = $"local:{itemId}";
+            lock (_cacheLock)
+            {
+                if (_memoryCache.TryGetValue(cacheKey, out var cachedImage))
+                {
+                    _lruOrder.Remove(cacheKey);
+                    _lruOrder.AddLast(cacheKey);
+                    return cachedImage;
+                }
+            }
+
+            // Load from local Assets/icons folder
+            var localPath = Path.Combine(_localIconsPath, $"{itemId}.png");
+            if (!File.Exists(localPath))
+            {
+                return null;
+            }
+
+            var image = LoadImageFromFile(localPath);
+            if (image != null)
+            {
+                lock (_cacheLock)
+                {
+                    AddToMemoryCache(cacheKey, image);
+                }
+            }
+
+            return image;
+        }
+
+        /// <summary>
+        /// Get an item icon from local Assets/icons folder by item ID (async wrapper)
+        /// </summary>
+        public Task<BitmapImage?> GetItemIconAsync(string? itemId)
+        {
+            return Task.FromResult(GetLocalItemIcon(itemId));
         }
 
         /// <summary>

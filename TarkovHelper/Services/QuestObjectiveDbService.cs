@@ -1,6 +1,7 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
 using TarkovHelper.Models;
+using TarkovHelper.Models.Map;
 
 namespace TarkovHelper.Services;
 
@@ -13,15 +14,36 @@ public sealed class QuestObjectiveDbService
     public static QuestObjectiveDbService Instance => _instance ??= new QuestObjectiveDbService();
 
     private readonly string _databasePath;
-    private readonly List<QuestObjective> _allObjectives = new();
+    private List<QuestObjective> _allObjectives = new();
     private bool _isLoaded;
 
     public bool IsLoaded => _isLoaded;
 
     private QuestObjectiveDbService()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        _databasePath = Path.Combine(appDir, "Assets", "tarkov_data.db");
+        _databasePath = DatabaseUpdateService.Instance.DatabasePath;
+
+        // 데이터베이스 업데이트 이벤트 구독
+        DatabaseUpdateService.Instance.DatabaseUpdated += OnDatabaseUpdated;
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 시 데이터 리로드
+    /// </summary>
+    private async void OnDatabaseUpdated(object? sender, EventArgs e)
+    {
+        System.Diagnostics.Debug.WriteLine("[QuestObjectiveDbService] Database updated, reloading data...");
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// 데이터 새로고침 (기존 데이터를 유지하면서 새 데이터로 atomic swap)
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        System.Diagnostics.Debug.WriteLine("[QuestObjectiveDbService] Refreshing objective data...");
+        // 기존 데이터를 클리어하지 않음 - LoadObjectivesAsync()에서 atomic swap으로 교체
+        await LoadObjectivesAsync();
     }
 
     /// <summary>
@@ -67,7 +89,8 @@ public sealed class QuestObjectiveDbService
             var hasOptionalPoints = await ColumnExistsAsync(connection, "QuestObjectives", "OptionalPoints");
             var hasObjectiveType = await ColumnExistsAsync(connection, "QuestObjectives", "ObjectiveType");
 
-            _allObjectives.Clear();
+            // 새 리스트 빌드 (기존 데이터 유지하면서)
+            var newObjectives = new List<QuestObjective>();
 
             // Check if Quests table has localization columns
             var hasQuestNameKo = await ColumnExistsAsync(connection, "Quests", "NameKo");
@@ -131,10 +154,12 @@ public sealed class QuestObjectiveDbService
                 // Only add if has any coordinates
                 if (objective.HasCoordinates || objective.HasOptionalPoints)
                 {
-                    _allObjectives.Add(objective);
+                    newObjectives.Add(objective);
                 }
             }
 
+            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
+            _allObjectives = newObjectives;
             _isLoaded = true;
             System.Diagnostics.Debug.WriteLine($"[QuestObjectiveDbService] Loaded {_allObjectives.Count} objectives with location data");
             return true;

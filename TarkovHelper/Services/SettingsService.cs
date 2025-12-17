@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Win32;
 using TarkovHelper.Debug;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services;
 
@@ -12,6 +13,7 @@ namespace TarkovHelper.Services;
 /// </summary>
 public class SettingsService
 {
+    private static readonly ILogger _log = Log.For<SettingsService>();
     private static SettingsService? _instance;
     public static SettingsService Instance => _instance ??= new SettingsService();
 
@@ -20,6 +22,11 @@ public class SettingsService
     // Setting keys
     private const string KeyLogFolderPath = "app.logFolderPath";
     private const string KeyLogMonitoringEnabled = "app.logMonitoringEnabled";
+
+    // Logging settings keys
+    private const string KeyLoggingLevel = "logging.level";
+    private const string KeyLoggingMaxDays = "logging.maxDays";
+    private const string KeyLoggingMaxSizeMB = "logging.maxSizeMB";
     private const string KeyPlayerLevel = "app.playerLevel";
     private const string KeyScavRep = "app.scavRep";
     private const string KeyShowLevelLockedQuests = "app.showLevelLockedQuests";
@@ -1649,8 +1656,32 @@ public class SettingsService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SettingsService] Save failed: {ex.Message}");
+            _log.Error($"Save failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Generic getter for any setting key
+    /// </summary>
+    public string GetValue(string key, string defaultValue = "")
+    {
+        try
+        {
+            var value = _userDataDb.GetSetting(key);
+            return string.IsNullOrEmpty(value) ? defaultValue : value;
+        }
+        catch
+        {
+            return defaultValue;
+        }
+    }
+
+    /// <summary>
+    /// Generic setter for any setting key
+    /// </summary>
+    public void SetValue(string key, string value)
+    {
+        SaveSetting(key, value);
     }
 
     private void LoadSettings()
@@ -1865,7 +1896,7 @@ public class SettingsService
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SettingsService] Load failed: {ex.Message}");
+            _log.Error($"Load failed: {ex.Message}");
         }
     }
 
@@ -1915,11 +1946,11 @@ public class SettingsService
 
             // Delete the JSON file after migration
             File.Delete(jsonPath);
-            System.Diagnostics.Debug.WriteLine($"[SettingsService] Migrated and deleted: {jsonPath}");
+            _log.Info($"Migrated and deleted: {jsonPath}");
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[SettingsService] Migration failed: {ex.Message}");
+            _log.Error($"Migration failed: {ex.Message}");
         }
     }
 

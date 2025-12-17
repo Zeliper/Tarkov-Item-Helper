@@ -568,75 +568,61 @@ namespace TarkovHelper.Pages
         /// <summary>
         /// Load images only for currently visible items in the ListBox.
         /// </summary>
-        private async Task LoadVisibleItemImagesAsync()
+        private Task LoadVisibleItemImagesAsync()
         {
             var visibleItems = GetVisibleItems();
             if (visibleItems.Count == 0)
-                return;
+                return Task.CompletedTask;
 
             var itemsNeedingIcons = visibleItems
-                .Where(vm => !string.IsNullOrEmpty(vm.IconLink) && vm.IconSource == null)
+                .Where(vm => !string.IsNullOrEmpty(vm.ItemId) && vm.IconSource == null)
                 .ToList();
 
             if (itemsNeedingIcons.Count == 0)
-                return;
+                return Task.CompletedTask;
 
-            await LoadItemImagesAsync(itemsNeedingIcons);
+            LoadItemImages(itemsNeedingIcons);
+            return Task.CompletedTask;
         }
 
         /// <summary>
         /// Load images for all remaining items that haven't been loaded yet.
         /// </summary>
-        private async Task LoadRemainingItemImagesAsync()
+        private Task LoadRemainingItemImagesAsync()
         {
             if (_allItemViewModels == null)
-                return;
+                return Task.CompletedTask;
 
             var itemsNeedingIcons = _allItemViewModels
-                .Where(vm => !string.IsNullOrEmpty(vm.IconLink) && vm.IconSource == null)
+                .Where(vm => !string.IsNullOrEmpty(vm.ItemId) && vm.IconSource == null)
                 .ToList();
 
             if (itemsNeedingIcons.Count == 0)
-                return;
+                return Task.CompletedTask;
 
-            await LoadItemImagesAsync(itemsNeedingIcons);
+            LoadItemImages(itemsNeedingIcons);
+            return Task.CompletedTask;
         }
 
         /// <summary>
-        /// Load images for a specific list of items using parallel downloads.
+        /// Load images for a specific list of items from local files.
         /// </summary>
-        private async Task LoadItemImagesAsync(List<AggregatedItemViewModel> items)
+        private void LoadItemImages(List<AggregatedItemViewModel> items)
         {
             if (items.Count == 0)
                 return;
 
-            const int maxConcurrency = 10;
-            using var semaphore = new SemaphoreSlim(maxConcurrency);
-
-            var tasks = items.Select(async vm =>
+            foreach (var vm in items)
             {
-                await semaphore.WaitAsync();
-                try
-                {
-                    if (_isUnloaded) return;
-                    if (vm.IconSource != null) return; // Already loaded
+                if (_isUnloaded) return;
+                if (vm.IconSource != null) continue;
 
-                    var icon = await _imageCache.GetItemIconAsync(vm.IconLink);
-                    if (icon != null && !_isUnloaded)
-                    {
-                        await Dispatcher.InvokeAsync(() =>
-                        {
-                            vm.IconSource = icon;
-                        });
-                    }
-                }
-                finally
+                var icon = _imageCache.GetLocalItemIcon(vm.ItemId);
+                if (icon != null)
                 {
-                    semaphore.Release();
+                    vm.IconSource = icon;
                 }
-            });
-
-            await Task.WhenAll(tasks);
+            }
         }
 
         /// <summary>
@@ -712,10 +698,10 @@ namespace TarkovHelper.Pages
             {
                 Interval = TimeSpan.FromMilliseconds(100)
             };
-            _scrollDebounceTimer.Tick += async (s, args) =>
+            _scrollDebounceTimer.Tick += (s, args) =>
             {
                 _scrollDebounceTimer?.Stop();
-                await LoadVisibleItemImagesAsync();
+                LoadVisibleItemImagesAsync();
             };
             _scrollDebounceTimer.Start();
         }

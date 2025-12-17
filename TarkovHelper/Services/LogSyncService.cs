@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using TarkovHelper.Models;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services
 {
@@ -9,6 +10,7 @@ namespace TarkovHelper.Services
     /// </summary>
     public class LogSyncService : IDisposable
     {
+        private static readonly ILogger _log = Log.For<LogSyncService>();
         private static LogSyncService? _instance;
         public static LogSyncService Instance => _instance ??= new LogSyncService();
 
@@ -399,7 +401,7 @@ namespace TarkovHelper.Services
             if (transitMatch.Success)
             {
                 var mapName = transitMatch.Groups[1].Value;
-                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Transit pattern matched: {mapName}");
+                _log.Debug($"Transit pattern matched: {mapName}");
                 if (TryGetMapKey(mapName, out var mapKey))
                 {
                     return mapKey;
@@ -420,7 +422,7 @@ namespace TarkovHelper.Services
             if (scenePresetMatch.Success)
             {
                 var mapName = scenePresetMatch.Groups[1].Value;
-                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Scene preset pattern matched: {mapName}");
+                _log.Debug($"Scene preset pattern matched: {mapName}");
                 if (TryGetMapKey(mapName, out var mapKey))
                 {
                     return mapKey;
@@ -460,14 +462,14 @@ namespace TarkovHelper.Services
                     var mapKey = FindLastMapInFile(logFile);
                     if (!string.IsNullOrEmpty(mapKey))
                     {
-                        System.Diagnostics.Debug.WriteLine($"[LogSyncService] Found last map from logs: {mapKey}");
+                        _log.Info($"Found last map from logs: {mapKey}");
                         return mapKey;
                     }
                 }
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Error finding last map: {ex.Message}");
+                _log.Error($"Error finding last map: {ex.Message}");
             }
 
             return null;
@@ -508,7 +510,7 @@ namespace TarkovHelper.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Error reading log file {filePath}: {ex.Message}");
+                _log.Error($"Error reading log file {filePath}: {ex.Message}");
                 return null;
             }
         }
@@ -765,12 +767,12 @@ namespace TarkovHelper.Services
         {
             var result = new SyncResult();
 
-            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Starting sync from: {logFolderPath}");
+            _log.Info($"Starting sync from: {logFolderPath}");
             progress?.Report("Scanning log files...");
 
             // Parse all log files
             var events = await ParseLogDirectoryAsync(logFolderPath, progress);
-            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Found {events.Count} quest events in logs");
+            _log.Info($"Found {events.Count} quest events in logs");
 
             // Apply date filter if specified
             if (daysRange > 0)
@@ -797,7 +799,7 @@ namespace TarkovHelper.Services
 
             // Build a lookup for quest IDs
             var tasksByQuestId = BuildQuestIdLookup(progressService.AllTasks);
-            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Built lookup with {tasksByQuestId.Count} quest IDs from {progressService.AllTasks.Count} tasks");
+            _log.Debug($"Built lookup with {tasksByQuestId.Count} quest IDs from {progressService.AllTasks.Count} tasks");
 
             // STEP 1: Determine final state for each quest (last event wins)
             // Key: normalizedName, Value: (finalEventType, timestamp, task)
@@ -925,7 +927,7 @@ namespace TarkovHelper.Services
                         // Skip alternative quests - will be collected separately
                         if (progressService.HasAlternativeQuests(prereq))
                         {
-                            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Skipping alternative quest prereq: {prereq.Name}");
+                            _log.Debug($"Skipping alternative quest prereq: {prereq.Name}");
                             continue;
                         }
 
@@ -981,17 +983,17 @@ namespace TarkovHelper.Services
 
             progress?.Report($"Found {questsToComplete.Count} quests to update");
 
-            System.Diagnostics.Debug.WriteLine($"[LogSyncService] Sync complete: {result.TotalEventsFound} events, {result.QuestsToComplete.Count} to complete, {result.InProgressQuests.Count} in progress, {result.UnmatchedQuestIds.Count} unmatched");
+            _log.Info($"Sync complete: {result.TotalEventsFound} events, {result.QuestsToComplete.Count} to complete, {result.InProgressQuests.Count} in progress, {result.UnmatchedQuestIds.Count} unmatched");
 
             // 매칭되지 않은 ID 샘플 출력
             if (result.UnmatchedQuestIds.Count > 0)
             {
                 var sampleUnmatched = result.UnmatchedQuestIds.Take(10).ToList();
-                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Sample unmatched IDs: {string.Join(", ", sampleUnmatched)}");
+                _log.Debug($"Sample unmatched IDs: {string.Join(", ", sampleUnmatched)}");
 
                 // DB의 샘플 ID도 출력
                 var sampleDbIds = tasksByQuestId.Keys.Take(10).ToList();
-                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Sample DB IDs: {string.Join(", ", sampleDbIds)}");
+                _log.Debug($"Sample DB IDs: {string.Join(", ", sampleDbIds)}");
             }
 
             return result;
@@ -1005,7 +1007,7 @@ namespace TarkovHelper.Services
             var progressService = QuestProgressService.Instance;
             var selectedChanges = changes.Where(c => c.IsSelected).ToList();
 
-            System.Diagnostics.Debug.WriteLine($"[LogSyncService] ApplyQuestChangesAsync: {changes.Count} total changes, {selectedChanges.Count} selected");
+            _log.Info($"ApplyQuestChangesAsync: {changes.Count} total changes, {selectedChanges.Count} selected");
 
             // Build batch of changes
             var batchChanges = new List<(TarkovTask Task, QuestStatus Status)>();
@@ -1015,7 +1017,7 @@ namespace TarkovHelper.Services
                 var task = progressService.GetTask(change.NormalizedName);
                 if (task == null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[LogSyncService] Task not found for NormalizedName: {change.NormalizedName}");
+                    _log.Warning($"Task not found for NormalizedName: {change.NormalizedName}");
                     continue;
                 }
 
@@ -1029,7 +1031,7 @@ namespace TarkovHelper.Services
                 if (status != QuestStatus.Active)
                 {
                     batchChanges.Add((task, status));
-                    System.Diagnostics.Debug.WriteLine($"[LogSyncService] Queued change: {change.NormalizedName} -> {change.ChangeType}");
+                    _log.Debug($"Queued change: {change.NormalizedName} -> {change.ChangeType}");
                 }
             }
 
@@ -1037,10 +1039,10 @@ namespace TarkovHelper.Services
             if (batchChanges.Count > 0)
             {
                 await progressService.ApplyQuestChangesBatchAsync(batchChanges);
-                System.Diagnostics.Debug.WriteLine($"[LogSyncService] Batch applied {batchChanges.Count} quest changes");
+                _log.Info($"Batch applied {batchChanges.Count} quest changes");
             }
 
-            System.Diagnostics.Debug.WriteLine("[LogSyncService] ApplyQuestChangesAsync completed");
+            _log.Info("ApplyQuestChangesAsync completed");
         }
 
         /// <summary>

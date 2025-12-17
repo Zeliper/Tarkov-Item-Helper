@@ -1,5 +1,6 @@
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services
 {
@@ -8,6 +9,7 @@ namespace TarkovHelper.Services
     /// </summary>
     public class HideoutProgressService
     {
+        private static readonly ILogger _log = Log.For<HideoutProgressService>();
         private static HideoutProgressService? _instance;
         public static HideoutProgressService Instance => _instance ??= new HideoutProgressService();
 
@@ -114,7 +116,7 @@ namespace TarkovHelper.Services
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[HideoutProgressService] Save failed: {ex.Message}");
+                    _log.Error($"Save failed: {ex.Message}");
                 }
             }).GetAwaiter().GetResult();
         }
@@ -298,7 +300,7 @@ namespace TarkovHelper.Services
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[HideoutProgressService] Reset failed: {ex.Message}");
+                    _log.Error($"Reset failed: {ex.Message}");
                 }
             }).GetAwaiter().GetResult();
             ProgressChanged?.Invoke(this, EventArgs.Empty);
@@ -323,7 +325,7 @@ namespace TarkovHelper.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HideoutProgressService] Save failed: {ex.Message}");
+                _log.Error($"Save failed: {ex.Message}");
             }
         }
 
@@ -350,7 +352,7 @@ namespace TarkovHelper.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[HideoutProgressService] Load failed: {ex.Message}");
+                _log.Error($"Load failed: {ex.Message}");
                 _progress = new HideoutProgress();
             }
         }

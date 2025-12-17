@@ -1,5 +1,6 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services;
 
@@ -9,6 +10,7 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class FloorDetectionService
 {
+    private static readonly ILogger _log = Log.For<FloorDetectionService>();
     private static FloorDetectionService? _instance;
     public static FloorDetectionService Instance => _instance ??= new FloorDetectionService();
 
@@ -23,8 +25,29 @@ public sealed class FloorDetectionService
 
     private FloorDetectionService()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        _databasePath = Path.Combine(appDir, "Assets", "tarkov_data.db");
+        _databasePath = DatabaseUpdateService.Instance.DatabasePath;
+
+        // 데이터베이스 업데이트 이벤트 구독
+        DatabaseUpdateService.Instance.DatabaseUpdated += OnDatabaseUpdated;
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 시 데이터 리로드
+    /// </summary>
+    private async void OnDatabaseUpdated(object? sender, EventArgs e)
+    {
+        _log.Info("Database updated, reloading data...");
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// 데이터 새로고침 (기존 데이터를 유지하면서 새 데이터로 atomic swap)
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        _log.Debug("Refreshing floor ranges data...");
+        // 기존 데이터를 클리어하지 않음 - LoadFloorRangesAsync()에서 atomic swap으로 교체
+        await LoadFloorRangesAsync();
     }
 
     /// <summary>
@@ -34,7 +57,7 @@ public sealed class FloorDetectionService
     {
         if (!File.Exists(_databasePath))
         {
-            System.Diagnostics.Debug.WriteLine($"[FloorDetectionService] Database not found: {_databasePath}");
+            _log.Warning($"Database not found: {_databasePath}");
             return false;
         }
 
@@ -49,7 +72,7 @@ public sealed class FloorDetectionService
             await using var checkCmd = new SqliteCommand(checkSql, connection);
             if (Convert.ToInt32(await checkCmd.ExecuteScalarAsync()) == 0)
             {
-                System.Diagnostics.Debug.WriteLine("[FloorDetectionService] MapFloorLocations table not found");
+                _log.Warning("MapFloorLocations table not found");
                 return false;
             }
 
@@ -58,7 +81,8 @@ public sealed class FloorDetectionService
             await using var cmd = new SqliteCommand(sql, connection);
             await using var reader = await cmd.ExecuteReaderAsync();
 
-            _floorRangesByMap.Clear();
+            // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
+            var newFloorRangesByMap = new Dictionary<string, List<FloorYRange>>(StringComparer.OrdinalIgnoreCase);
 
             while (await reader.ReadAsync())
             {
@@ -71,21 +95,23 @@ public sealed class FloorDetectionService
                     Priority = reader.GetInt32(4)
                 };
 
-                if (!_floorRangesByMap.TryGetValue(mapKey, out var ranges))
+                if (!newFloorRangesByMap.TryGetValue(mapKey, out var ranges))
                 {
                     ranges = new List<FloorYRange>();
-                    _floorRangesByMap[mapKey] = ranges;
+                    newFloorRangesByMap[mapKey] = ranges;
                 }
                 ranges.Add(range);
             }
 
+            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
+            _floorRangesByMap = newFloorRangesByMap;
             _isLoaded = true;
-            System.Diagnostics.Debug.WriteLine($"[FloorDetectionService] Loaded floor ranges for {_floorRangesByMap.Count} maps");
+            _log.Info($"Loaded floor ranges for {_floorRangesByMap.Count} maps");
             return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FloorDetectionService] Error loading floor ranges: {ex.Message}");
+            _log.Error($"Error loading floor ranges: {ex.Message}");
             return false;
         }
     }

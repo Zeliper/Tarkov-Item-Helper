@@ -11,12 +11,15 @@ using System.Windows.Media.Animation;
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
 using TarkovHelper.Pages;
+using TarkovHelper.Pages.Map;
 using TarkovHelper.Services;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper;
 
 public partial class MainWindow : Window
 {
+    private static readonly ILogger _log = Log.For<MainWindow>();
     private readonly LocalizationService _loc = LocalizationService.Instance;
     private readonly HideoutProgressService _hideoutProgressService = HideoutProgressService.Instance;
     private readonly SettingsService _settingsService = SettingsService.Instance;
@@ -26,7 +29,7 @@ public partial class MainWindow : Window
     private HideoutPage? _hideoutPage;
     private ItemsPage? _itemsPage;
     private CollectorPage? _collectorPage;
-    private MapTrackerPage? _mapTrackerPage;
+    private MapPage? _mapTrackerPage;
     private List<HideoutModule>? _hideoutModules;
     private ObservableCollection<QuestChangeInfo>? _pendingSyncChanges;
     private List<AlternativeQuestGroupViewModel>? _pendingAlternativeGroups;
@@ -113,11 +116,49 @@ public partial class MainWindow : Window
 
         _isLoading = false;
 
+        // Start database update check (initial check + background updates every 5 minutes)
+        StartDatabaseUpdateService();
+
         // Load and show quest data from DB
         await CheckAndRefreshDataAsync();
 
         // Auto-start log monitoring if enabled
         AutoStartLogMonitoring();
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 서비스 시작
+    /// </summary>
+    private void StartDatabaseUpdateService()
+    {
+        var dbUpdateService = DatabaseUpdateService.Instance;
+
+        // 업데이트 완료 이벤트 구독 (UI 새로고침용)
+        dbUpdateService.DatabaseUpdated += OnDatabaseUpdated;
+
+        // 백그라운드 업데이트 체크 시작 (5분마다)
+        dbUpdateService.StartBackgroundUpdates();
+
+        _log.Info("Database update service started");
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 완료 시 UI 새로고침
+    /// </summary>
+    private void OnDatabaseUpdated(object? sender, EventArgs e)
+    {
+        _log.Info("Database updated, all services will reload data automatically");
+
+        // 서비스들이 이미 DatabaseUpdated 이벤트를 구독하고 있으므로
+        // 각 서비스의 RefreshAsync()가 자동으로 호출됨
+        // UI 페이지들은 서비스의 새로운 데이터를 사용하게 됨
+
+        // 필요시 사용자에게 알림 표시 가능
+        Dispatcher.Invoke(() =>
+        {
+            // 상태 표시줄이나 토스트 메시지로 업데이트 완료 알림 가능
+            _log.Debug("Database update notification displayed");
+        });
     }
 
     /// <summary>
@@ -146,7 +187,7 @@ public partial class MainWindow : Window
             _logSyncService.StartMonitoring(logPath);
             _logSyncService.QuestEventDetected -= OnQuestEventDetected;
             _logSyncService.QuestEventDetected += OnQuestEventDetected;
-            System.Diagnostics.Debug.WriteLine($"[MainWindow] Auto-started log monitoring: {logPath}");
+            _log.Info($"Auto-started log monitoring: {logPath}");
         }
 
         UpdateQuestSyncUI();
@@ -253,12 +294,12 @@ public partial class MainWindow : Window
                 // 마이그레이션 실패 시 로그 파일에 기록
                 var logPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "migration_error.log");
                 File.WriteAllText(logPath, $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] Migration failed:\n{ex}\n\nStack trace:\n{ex.StackTrace}");
-                System.Diagnostics.Debug.WriteLine($"[MainWindow] Migration failed: {ex.Message}");
+                _log.Error($"Migration failed: {ex.Message}");
             }
             finally
             {
-                // HideLoadingOverlay()를 호출하여 Blur 효과도 함께 해제
-                HideLoadingOverlay();
+                // LoadingOverlay만 숨기고, Blur는 마이그레이션 결과 팝업 표시 여부에 따라 처리
+                LoadingOverlay.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -268,29 +309,29 @@ public partial class MainWindow : Window
             if (await progressService.InitializeFromDbAsync())
             {
                 tasks = progressService.AllTasks.ToList();
-                System.Diagnostics.Debug.WriteLine($"[MainWindow] Loaded {tasks.Count} quests from DB");
+                _log.Debug($"Loaded {tasks.Count} quests from DB");
             }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MainWindow] Failed to load quests: {ex.Message}");
+            _log.Error($"Failed to load quests: {ex.Message}");
         }
 
         // Load hideout data from DB
         var hideoutDbService = HideoutDbService.Instance;
         var hideoutLoaded = await hideoutDbService.LoadStationsAsync();
-        System.Diagnostics.Debug.WriteLine($"[MainWindow] Hideout DB loaded: {hideoutLoaded}, StationCount: {hideoutDbService.StationCount}");
+        _log.Debug($"Hideout DB loaded: {hideoutLoaded}, StationCount: {hideoutDbService.StationCount}");
         if (hideoutLoaded)
         {
             _hideoutModules = hideoutDbService.AllStations.ToList();
-            System.Diagnostics.Debug.WriteLine($"[MainWindow] Hideout modules count: {_hideoutModules.Count}");
+            _log.Debug($"Hideout modules count: {_hideoutModules.Count}");
         }
         else
         {
-            System.Diagnostics.Debug.WriteLine($"[MainWindow] Hideout loading failed. DB exists: {hideoutDbService.DatabaseExists}");
+            _log.Warning($"Hideout loading failed. DB exists: {hideoutDbService.DatabaseExists}");
         }
 
-        System.Diagnostics.Debug.WriteLine($"[MainWindow] Tasks count: {tasks?.Count ?? 0}");
+        _log.Debug($"Tasks count: {tasks?.Count ?? 0}");
 
         // Log diagnostic info to file
         try
@@ -330,11 +371,11 @@ public partial class MainWindow : Window
             }
 
             // Debug: Show hideout module status
-            System.Diagnostics.Debug.WriteLine($"[MainWindow] Creating HideoutPage: modules={_hideoutModules?.Count ?? 0}");
+            _log.Debug($"Creating HideoutPage: modules={_hideoutModules?.Count ?? 0}");
             _hideoutPage = _hideoutModules != null && _hideoutModules.Count > 0
                 ? new HideoutPage()
                 : null;
-            System.Diagnostics.Debug.WriteLine($"[MainWindow] HideoutPage created: {_hideoutPage != null}");
+            _log.Debug($"HideoutPage created: {_hideoutPage != null}");
             _itemsPage = new ItemsPage();
             _collectorPage = new CollectorPage();
 
@@ -355,6 +396,12 @@ public partial class MainWindow : Window
         if (migrationResult != null && migrationResult.TotalCount > 0)
         {
             ShowMigrationResultDialog(migrationResult);
+        }
+        else if (needsMigration)
+        {
+            // 마이그레이션이 필요했지만 결과가 없는 경우 Blur 해제
+            var blurAnimation = new DoubleAnimation(8, 0, TimeSpan.FromMilliseconds(200));
+            BlurEffect.BeginAnimation(System.Windows.Media.Effects.BlurEffect.RadiusProperty, blurAnimation);
         }
     }
 
@@ -398,7 +445,7 @@ public partial class MainWindow : Window
         }
         else if (sender == TabMap)
         {
-            _mapTrackerPage ??= new MapTrackerPage();
+            _mapTrackerPage ??= new MapPage();
             PageContent.Content = _mapTrackerPage;
         }
     }

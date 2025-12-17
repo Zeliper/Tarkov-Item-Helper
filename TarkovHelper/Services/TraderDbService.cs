@@ -1,6 +1,7 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
 using TarkovHelper.Models;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services;
 
@@ -10,6 +11,7 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class TraderDbService
 {
+    private static readonly ILogger _log = Log.For<TraderDbService>();
     private static TraderDbService? _instance;
     public static TraderDbService Instance => _instance ??= new TraderDbService();
 
@@ -24,8 +26,29 @@ public sealed class TraderDbService
 
     private TraderDbService()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        _databasePath = Path.Combine(appDir, "Assets", "tarkov_data.db");
+        _databasePath = DatabaseUpdateService.Instance.DatabasePath;
+
+        // 데이터베이스 업데이트 이벤트 구독
+        DatabaseUpdateService.Instance.DatabaseUpdated += OnDatabaseUpdated;
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 시 데이터 리로드
+    /// </summary>
+    private async void OnDatabaseUpdated(object? sender, EventArgs e)
+    {
+        _log.Info("Database updated, reloading data...");
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// 데이터 새로고침 (기존 데이터를 유지하면서 새 데이터로 atomic swap)
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        _log.Debug("Refreshing trader data...");
+        // 기존 데이터를 클리어하지 않음 - LoadTradersAsync()에서 atomic swap으로 교체
+        await LoadTradersAsync();
     }
 
     /// <summary>
@@ -61,7 +84,7 @@ public sealed class TraderDbService
     {
         if (!DatabaseExists)
         {
-            System.Diagnostics.Debug.WriteLine($"[TraderDbService] Database not found: {_databasePath}");
+            _log.Warning($"Database not found: {_databasePath}");
             return false;
         }
 
@@ -74,37 +97,40 @@ public sealed class TraderDbService
             // Traders 테이블 존재 여부 확인
             if (!await TableExistsAsync(connection, "Traders"))
             {
-                System.Diagnostics.Debug.WriteLine("[TraderDbService] Traders table not found");
+                _log.Warning("Traders table not found");
                 return false;
             }
 
             // 트레이더 정보 로드
             var traders = await LoadTradersFromDbAsync(connection);
 
-            // 캐시에 저장
-            _allTraders = traders;
-            _tradersById.Clear();
-            _tradersByName.Clear();
+            // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
+            var newTradersById = new Dictionary<string, TarkovTrader>(StringComparer.OrdinalIgnoreCase);
+            var newTradersByName = new Dictionary<string, TarkovTrader>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var trader in traders)
             {
                 if (!string.IsNullOrEmpty(trader.Id))
                 {
-                    _tradersById[trader.Id] = trader;
+                    newTradersById[trader.Id] = trader;
                 }
                 if (!string.IsNullOrEmpty(trader.Name))
                 {
-                    _tradersByName[trader.Name] = trader;
+                    newTradersByName[trader.Name] = trader;
                 }
             }
 
+            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
+            _allTraders = traders;
+            _tradersById = newTradersById;
+            _tradersByName = newTradersByName;
             _isLoaded = true;
-            System.Diagnostics.Debug.WriteLine($"[TraderDbService] Loaded {traders.Count} traders from DB");
+            _log.Info($"Loaded {traders.Count} traders from DB");
             return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[TraderDbService] Error loading traders: {ex.Message}");
+            _log.Error($"Error loading traders: {ex.Message}");
             return false;
         }
     }

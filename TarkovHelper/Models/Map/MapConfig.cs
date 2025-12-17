@@ -1,0 +1,260 @@
+using System.Text.Json.Serialization;
+
+namespace TarkovHelper.Models.Map;
+
+/// <summary>
+/// map_configs.json 파일의 루트 구조.
+/// </summary>
+public sealed class MapConfigList
+{
+    [JsonPropertyName("maps")]
+    public List<MapConfig> Maps { get; set; } = new();
+}
+
+/// <summary>
+/// 개별 맵의 좌표 변환 설정.
+/// 월드 좌표를 이미지 픽셀 좌표로 변환하는데 필요한 정보를 담습니다.
+///
+/// [설정 수정 가이드]
+/// - WorldMinX/MaxX, WorldMinY/MaxY: 게임 내 맵의 실제 좌표 범위입니다.
+///   게임에서 맵의 구석 좌표를 확인하여 입력하세요.
+/// - ImageWidth/Height: 사용하는 맵 이미지의 실제 픽셀 크기입니다.
+/// - InvertY: EFT는 일반적으로 Y축이 반대이므로 true로 설정합니다.
+/// - OffsetX/Y: 이미지에 여백이 있는 경우 조정값입니다.
+/// </summary>
+public sealed class MapConfig
+{
+    /// <summary>
+    /// 맵 식별 키 (예: "Woods", "Customs")
+    /// 스크린샷 파일명의 맵 이름과 매칭됩니다.
+    /// </summary>
+    public string Key { get; set; } = string.Empty;
+
+    /// <summary>
+    /// UI에 표시될 맵 이름
+    /// </summary>
+    public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// 맵 이미지 파일 경로 (Assets/Maps/ 폴더 기준 상대 경로 또는 절대 경로)
+    /// </summary>
+    public string ImagePath { get; set; } = string.Empty;
+
+    /// <summary>
+    /// SVG 파일 이름 (JSON의 svgFileName 필드와 매핑)
+    /// </summary>
+    [JsonPropertyName("svgFileName")]
+    public string? SvgFileName { get; set; }
+
+    /// <summary>
+    /// 월드 좌표 X 최소값
+    /// </summary>
+    public double WorldMinX { get; set; }
+
+    /// <summary>
+    /// 월드 좌표 X 최대값
+    /// </summary>
+    public double WorldMaxX { get; set; }
+
+    /// <summary>
+    /// 월드 좌표 Y 최소값
+    /// </summary>
+    public double WorldMinY { get; set; }
+
+    /// <summary>
+    /// 월드 좌표 Y 최대값
+    /// </summary>
+    public double WorldMaxY { get; set; }
+
+    /// <summary>
+    /// 맵 이미지 픽셀 너비
+    /// </summary>
+    [JsonPropertyName("imageWidth")]
+    public int ImageWidth { get; set; }
+
+    /// <summary>
+    /// 맵 이미지 픽셀 높이
+    /// </summary>
+    [JsonPropertyName("imageHeight")]
+    public int ImageHeight { get; set; }
+
+    /// <summary>
+    /// Y축 좌표 반전 여부 (EFT는 보통 true)
+    /// </summary>
+    public bool InvertY { get; set; } = true;
+
+    /// <summary>
+    /// X축 좌표 반전 여부
+    /// </summary>
+    public bool InvertX { get; set; } = false;
+
+    /// <summary>
+    /// 이미지 X 오프셋 (여백 보정용)
+    /// </summary>
+    public double OffsetX { get; set; } = 0;
+
+    /// <summary>
+    /// 이미지 Y 오프셋 (여백 보정용)
+    /// </summary>
+    public double OffsetY { get; set; } = 0;
+
+    /// <summary>
+    /// 맵 별칭 목록 (스크린샷 파일명에 다른 이름이 사용될 수 있음)
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<string>? Aliases { get; set; }
+
+    /// <summary>
+    /// 좌표 변환 매개변수 [scaleX, offsetX, scaleY, offsetY].
+    /// tarkov.dev의 transform 배열과 동일한 형식.
+    /// null이면 기존 WorldMin/Max 방식 사용.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? Transform { get; set; }
+
+    /// <summary>
+    /// 좌표 회전 각도 (90, 180, 270).
+    /// tarkov.dev의 coordinateRotation 값.
+    /// </summary>
+    public int CoordinateRotation { get; set; } = 180;
+
+    /// <summary>
+    /// SVG 좌표 범위 [minX, maxX, minY, maxY].
+    /// JSON에서는 1차원 배열로 저장됩니다.
+    /// </summary>
+    [JsonPropertyName("svgBounds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? SvgBounds { get; set; }
+
+    /// <summary>
+    /// 플레이어 마커용 변환 행렬 [a, b, c, d, tx, ty].
+    /// </summary>
+    [JsonPropertyName("playerMarkerTransform")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? PlayerMarkerTransform { get; set; }
+
+    /// <summary>
+    /// 마커 크기 배율.
+    /// 확대된 맵(Factory, Ground Zero 등)에서 마커도 같은 비율로 확대합니다.
+    /// 기본값: 1.0
+    /// </summary>
+    [JsonPropertyName("markerScale")]
+    public double MarkerScale { get; set; } = 1.0;
+
+    /// <summary>
+    /// 좌표 보정 포인트 목록.
+    /// 사용자가 수동으로 조정한 탈출구 위치를 기반으로 좌표 변환을 보정합니다.
+    /// 최소 3개 이상의 포인트가 있으면 affine 변환을 계산합니다.
+    /// </summary>
+    [JsonPropertyName("calibrationPoints")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<CalibrationPoint>? CalibrationPoints { get; set; }
+
+    /// <summary>
+    /// 보정된 좌표 변환 행렬 [a, b, c, d, tx, ty].
+    /// CalibrationPoints에서 자동 계산됩니다.
+    /// 변환 공식: screenX = a*gameX + b*gameZ + tx, screenY = c*gameX + d*gameZ + ty
+    /// </summary>
+    [JsonPropertyName("calibratedTransform")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? CalibratedTransform { get; set; }
+
+    /// <summary>
+    /// 맵의 층(레벨) 설정 목록.
+    /// SVG 파일에 여러 층이 있는 맵(Labs, Interchange, Factory, Reserve)에서 사용됩니다.
+    /// null이거나 비어있으면 단일 층 맵으로 처리됩니다.
+    /// </summary>
+    [JsonPropertyName("floors")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<MapFloorConfig>? Floors { get; set; }
+
+    /// <summary>
+    /// 게임 좌표를 맵 픽셀 좌표로 변환.
+    /// TarkovDBEditor와 동일한 변환 방식 사용.
+    /// </summary>
+    public (double screenX, double screenY) GameToScreen(double gameX, double gameZ)
+    {
+        if (CalibratedTransform == null || CalibratedTransform.Length < 6)
+        {
+            // Fallback: 단순 변환 (중앙 기준)
+            return (ImageWidth / 2.0 + gameX, ImageHeight / 2.0 + gameZ);
+        }
+
+        var a = CalibratedTransform[0];
+        var b = CalibratedTransform[1];
+        var c = CalibratedTransform[2];
+        var d = CalibratedTransform[3];
+        var tx = CalibratedTransform[4];
+        var ty = CalibratedTransform[5];
+
+        var screenX = a * gameX + b * gameZ + tx;
+        var screenY = c * gameX + d * gameZ + ty;
+
+        return (screenX, screenY);
+    }
+
+    /// <summary>
+    /// 맵 픽셀 좌표를 게임 좌표로 변환 (역행렬).
+    /// </summary>
+    public (double gameX, double gameZ) ScreenToGame(double screenX, double screenY)
+    {
+        if (CalibratedTransform == null || CalibratedTransform.Length < 6)
+        {
+            return (screenX - ImageWidth / 2.0, screenY - ImageHeight / 2.0);
+        }
+
+        var a = CalibratedTransform[0];
+        var b = CalibratedTransform[1];
+        var c = CalibratedTransform[2];
+        var d = CalibratedTransform[3];
+        var tx = CalibratedTransform[4];
+        var ty = CalibratedTransform[5];
+
+        var det = a * d - b * c;
+        if (Math.Abs(det) < 1e-10)
+        {
+            return (0, 0);
+        }
+
+        var invA = d / det;
+        var invB = -b / det;
+        var invC = -c / det;
+        var invD = a / det;
+
+        var dx = screenX - tx;
+        var dy = screenY - ty;
+
+        var gameX = invA * dx + invB * dy;
+        var gameZ = invC * dx + invD * dy;
+
+        return (gameX, gameZ);
+    }
+
+    /// <summary>
+    /// Check if the given map name matches this config
+    /// </summary>
+    public bool MatchesMapName(string? mapName)
+    {
+        if (string.IsNullOrEmpty(mapName))
+            return false;
+
+        var normalized = mapName.ToLowerInvariant().Replace(" ", "").Replace("-", "");
+
+        if (Key.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
+            return true;
+
+        if (DisplayName.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
+            return true;
+
+        if (Aliases != null)
+        {
+            foreach (var alias in Aliases)
+            {
+                if (alias.ToLowerInvariant().Replace(" ", "").Replace("-", "") == normalized)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+}

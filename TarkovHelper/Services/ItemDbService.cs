@@ -1,6 +1,7 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
 using TarkovHelper.Models;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services;
 
@@ -10,6 +11,7 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class ItemDbService
 {
+    private static readonly ILogger _log = Log.For<ItemDbService>();
     private static ItemDbService? _instance;
     public static ItemDbService Instance => _instance ??= new ItemDbService();
 
@@ -24,8 +26,19 @@ public sealed class ItemDbService
 
     private ItemDbService()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        _databasePath = Path.Combine(appDir, "Assets", "tarkov_data.db");
+        _databasePath = DatabaseUpdateService.Instance.DatabasePath;
+
+        // 데이터베이스 업데이트 이벤트 구독
+        DatabaseUpdateService.Instance.DatabaseUpdated += OnDatabaseUpdated;
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 시 데이터 리로드
+    /// </summary>
+    private async void OnDatabaseUpdated(object? sender, EventArgs e)
+    {
+        _log.Info("Database updated, reloading data...");
+        await RefreshAsync();
     }
 
     /// <summary>
@@ -94,7 +107,7 @@ public sealed class ItemDbService
     {
         if (!DatabaseExists)
         {
-            System.Diagnostics.Debug.WriteLine($"[ItemDbService] Database not found: {_databasePath}");
+            _log.Warning($"Database not found: {_databasePath}");
             return false;
         }
 
@@ -107,36 +120,39 @@ public sealed class ItemDbService
             // Items 테이블 존재 여부 확인
             if (!await TableExistsAsync(connection, "Items"))
             {
-                System.Diagnostics.Debug.WriteLine("[ItemDbService] Items table not found");
+                _log.Warning("Items table not found");
                 return false;
             }
 
             var items = await LoadItemsFromDbAsync(connection);
 
-            // 캐시에 저장
-            _allItems = items;
-            _itemsById.Clear();
-            _itemsByNormalizedName.Clear();
+            // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
+            var newItemsById = new Dictionary<string, TarkovItem>(StringComparer.OrdinalIgnoreCase);
+            var newItemsByNormalizedName = new Dictionary<string, TarkovItem>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var item in items)
             {
                 if (!string.IsNullOrEmpty(item.Id))
                 {
-                    _itemsById[item.Id] = item;
+                    newItemsById[item.Id] = item;
                 }
                 if (!string.IsNullOrEmpty(item.NormalizedName))
                 {
-                    _itemsByNormalizedName[item.NormalizedName] = item;
+                    newItemsByNormalizedName[item.NormalizedName] = item;
                 }
             }
 
+            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
+            _allItems = items;
+            _itemsById = newItemsById;
+            _itemsByNormalizedName = newItemsByNormalizedName;
             _isLoaded = true;
-            System.Diagnostics.Debug.WriteLine($"[ItemDbService] Loaded {items.Count} items from DB");
+            _log.Info($"Loaded {items.Count} items from DB");
             return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ItemDbService] Error loading items: {ex.Message}");
+            _log.Error($"Error loading items: {ex.Message}");
             return false;
         }
     }
@@ -221,15 +237,12 @@ public sealed class ItemDbService
     }
 
     /// <summary>
-    /// 데이터 새로고침
+    /// 데이터 새로고침 (기존 데이터를 유지하면서 새 데이터로 atomic swap)
     /// </summary>
     public async Task RefreshAsync()
     {
-        _isLoaded = false;
-        _allItems.Clear();
-        _itemsById.Clear();
-        _itemsByNormalizedName.Clear();
-
+        _log.Debug("Refreshing item data...");
+        // 기존 데이터를 클리어하지 않음 - LoadItemsAsync()에서 atomic swap으로 교체
         await LoadItemsAsync();
     }
 }

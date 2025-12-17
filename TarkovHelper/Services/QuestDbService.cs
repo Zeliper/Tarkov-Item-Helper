@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using TarkovHelper.Models;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services;
 
@@ -11,6 +12,7 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class QuestDbService
 {
+    private static readonly ILogger _log = Log.For<QuestDbService>();
     private static QuestDbService? _instance;
     public static QuestDbService Instance => _instance ??= new QuestDbService();
 
@@ -25,8 +27,19 @@ public sealed class QuestDbService
 
     private QuestDbService()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        _databasePath = Path.Combine(appDir, "Assets", "tarkov_data.db");
+        _databasePath = DatabaseUpdateService.Instance.DatabasePath;
+
+        // 데이터베이스 업데이트 이벤트 구독
+        DatabaseUpdateService.Instance.DatabaseUpdated += OnDatabaseUpdated;
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 시 데이터 리로드
+    /// </summary>
+    private async void OnDatabaseUpdated(object? sender, EventArgs e)
+    {
+        _log.Info("Database updated, reloading data...");
+        await RefreshAsync();
     }
 
     /// <summary>
@@ -62,7 +75,7 @@ public sealed class QuestDbService
     {
         if (!DatabaseExists)
         {
-            System.Diagnostics.Debug.WriteLine($"[QuestDbService] Database not found: {_databasePath}");
+            _log.Warning($"Database not found: {_databasePath}");
             return false;
         }
 
@@ -75,7 +88,7 @@ public sealed class QuestDbService
             // Quests 테이블 존재 여부 확인
             if (!await TableExistsAsync(connection, "Quests"))
             {
-                System.Diagnostics.Debug.WriteLine("[QuestDbService] Quests table not found");
+                _log.Warning("Quests table not found");
                 return false;
             }
 
@@ -98,31 +111,34 @@ public sealed class QuestDbService
             // 6. LeadsTo 역참조 구축
             BuildLeadsToReferences(quests);
 
-            // 캐시에 저장
-            _allQuests = quests;
-            _questsById.Clear();
-            _questsByNormalizedName.Clear();
+            // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
+            var newQuestsById = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
+            var newQuestsByNormalizedName = new Dictionary<string, TarkovTask>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var quest in quests)
             {
                 var id = quest.Ids?.FirstOrDefault();
                 if (!string.IsNullOrEmpty(id))
                 {
-                    _questsById[id] = quest;
+                    newQuestsById[id] = quest;
                 }
                 if (!string.IsNullOrEmpty(quest.NormalizedName))
                 {
-                    _questsByNormalizedName[quest.NormalizedName] = quest;
+                    newQuestsByNormalizedName[quest.NormalizedName] = quest;
                 }
             }
 
+            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
+            _allQuests = quests;
+            _questsById = newQuestsById;
+            _questsByNormalizedName = newQuestsByNormalizedName;
             _isLoaded = true;
-            System.Diagnostics.Debug.WriteLine($"[QuestDbService] Loaded {quests.Count} quests from DB");
+            _log.Info($"Loaded {quests.Count} quests from DB");
             return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[QuestDbService] Error loading quests: {ex.Message}");
+            _log.Error($"Error loading quests: {ex.Message}");
             return false;
         }
     }
@@ -168,7 +184,7 @@ public sealed class QuestDbService
         var hasExcludedEdition = await ColumnExistsAsync(connection, "Quests", "ExcludedEdition");
         var hasRequiredPrestigeLevel = await ColumnExistsAsync(connection, "Quests", "RequiredPrestigeLevel");
         var hasRequiredDecodeCount = await ColumnExistsAsync(connection, "Quests", "RequiredDecodeCount");
-        System.Diagnostics.Debug.WriteLine($"[QuestDbService] BsgId column exists: {hasBsgId}");
+        _log.Debug($"BsgId column exists: {hasBsgId}");
 
         // NormalizedName이 없으면 Name에서 생성
         var normalizedNameExpr = hasNormalizedName
@@ -228,10 +244,10 @@ public sealed class QuestDbService
 
         // BsgId 통계 출력
         var questsWithBsgId = quests.Count(q => q.Ids != null && q.Ids.Count > 1);
-        System.Diagnostics.Debug.WriteLine($"[QuestDbService] Quests with BsgId: {questsWithBsgId}/{quests.Count}");
+        _log.Debug($"Quests with BsgId: {questsWithBsgId}/{quests.Count}");
         if (quests.Count > 0 && quests[0].Ids != null)
         {
-            System.Diagnostics.Debug.WriteLine($"[QuestDbService] Sample quest IDs: {string.Join(", ", quests[0].Ids ?? [])} - {quests[0].Name}");
+            _log.Debug($"Sample quest IDs: {string.Join(", ", quests[0].Ids ?? [])} - {quests[0].Name}");
         }
 
         return quests;
@@ -493,15 +509,12 @@ public sealed class QuestDbService
     }
 
     /// <summary>
-    /// 데이터 새로고침
+    /// 데이터 새로고침 (기존 데이터를 유지하면서 새 데이터로 atomic swap)
     /// </summary>
     public async Task RefreshAsync()
     {
-        _isLoaded = false;
-        _allQuests.Clear();
-        _questsById.Clear();
-        _questsByNormalizedName.Clear();
-
+        _log.Debug("Refreshing quest data...");
+        // 기존 데이터를 클리어하지 않음 - LoadQuestsAsync()에서 atomic swap으로 교체
         await LoadQuestsAsync();
     }
 }

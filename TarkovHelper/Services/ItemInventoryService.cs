@@ -1,5 +1,6 @@
 using TarkovHelper.Debug;
 using TarkovHelper.Models;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services
 {
@@ -8,6 +9,7 @@ namespace TarkovHelper.Services
     /// </summary>
     public class ItemInventoryService
     {
+        private static readonly ILogger _log = Log.For<ItemInventoryService>();
         private static ItemInventoryService? _instance;
         public static ItemInventoryService Instance => _instance ??= new ItemInventoryService();
 
@@ -72,7 +74,7 @@ namespace TarkovHelper.Services
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[ItemInventoryService] Save failed for {itemName}: {ex.Message}");
+                        _log.Error($"Save failed for {itemName}: {ex.Message}");
                     }
                 }
             }).GetAwaiter().GetResult();
@@ -259,7 +261,7 @@ namespace TarkovHelper.Services
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ItemInventoryService] Reset failed: {ex.Message}");
+                    _log.Error($"Reset failed: {ex.Message}");
                 }
             }).GetAwaiter().GetResult();
 
@@ -317,7 +319,7 @@ namespace TarkovHelper.Services
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ItemInventoryService] Load failed: {ex.Message}");
+                _log.Error($"Load failed: {ex.Message}");
                 _inventoryData = new ItemInventoryData();
             }
         }

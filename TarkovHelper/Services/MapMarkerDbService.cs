@@ -1,6 +1,7 @@
 using System.IO;
 using Microsoft.Data.Sqlite;
 using TarkovHelper.Models;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper.Services;
 
@@ -10,6 +11,7 @@ namespace TarkovHelper.Services;
 /// </summary>
 public sealed class MapMarkerDbService
 {
+    private static readonly ILogger _log = Log.For<MapMarkerDbService>();
     private static MapMarkerDbService? _instance;
     public static MapMarkerDbService Instance => _instance ??= new MapMarkerDbService();
 
@@ -23,8 +25,19 @@ public sealed class MapMarkerDbService
 
     private MapMarkerDbService()
     {
-        var appDir = AppDomain.CurrentDomain.BaseDirectory;
-        _databasePath = Path.Combine(appDir, "Assets", "tarkov_data.db");
+        _databasePath = DatabaseUpdateService.Instance.DatabasePath;
+
+        // 데이터베이스 업데이트 이벤트 구독
+        DatabaseUpdateService.Instance.DatabaseUpdated += OnDatabaseUpdated;
+    }
+
+    /// <summary>
+    /// 데이터베이스 업데이트 시 데이터 리로드
+    /// </summary>
+    private async void OnDatabaseUpdated(object? sender, EventArgs e)
+    {
+        _log.Info("Database updated, reloading data...");
+        await RefreshAsync();
     }
 
     /// <summary>
@@ -54,7 +67,7 @@ public sealed class MapMarkerDbService
     {
         if (!DatabaseExists)
         {
-            System.Diagnostics.Debug.WriteLine($"[MapMarkerDbService] Database not found: {_databasePath}");
+            _log.Warning($"Database not found: {_databasePath}");
             return false;
         }
 
@@ -67,34 +80,36 @@ public sealed class MapMarkerDbService
             // MapMarkers 테이블 존재 여부 확인
             if (!await TableExistsAsync(connection, "MapMarkers"))
             {
-                System.Diagnostics.Debug.WriteLine("[MapMarkerDbService] MapMarkers table not found");
+                _log.Warning("MapMarkers table not found");
                 return false;
             }
 
             // 마커 로드
             var markers = await LoadAllMarkersAsync(connection);
 
-            // 캐시에 저장
-            _allMarkers = markers;
-            _markersByMap.Clear();
+            // 새 딕셔너리 빌드 (기존 데이터 유지하면서)
+            var newMarkersByMap = new Dictionary<string, List<MapMarker>>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var marker in markers)
             {
-                if (!_markersByMap.TryGetValue(marker.MapKey, out var mapMarkers))
+                if (!newMarkersByMap.TryGetValue(marker.MapKey, out var mapMarkers))
                 {
                     mapMarkers = new List<MapMarker>();
-                    _markersByMap[marker.MapKey] = mapMarkers;
+                    newMarkersByMap[marker.MapKey] = mapMarkers;
                 }
                 mapMarkers.Add(marker);
             }
 
+            // Atomic swap - 모든 데이터가 준비된 후 한 번에 교체
+            _allMarkers = markers;
+            _markersByMap = newMarkersByMap;
             _isLoaded = true;
-            System.Diagnostics.Debug.WriteLine($"[MapMarkerDbService] Loaded {markers.Count} markers from DB");
+            _log.Info($"Loaded {markers.Count} markers from DB");
             return true;
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[MapMarkerDbService] Error loading markers: {ex.Message}");
+            _log.Error($"Error loading markers: {ex.Message}");
             return false;
         }
     }
@@ -218,14 +233,12 @@ public sealed class MapMarkerDbService
     }
 
     /// <summary>
-    /// 데이터 새로고침
+    /// 데이터 새로고침 (기존 데이터를 유지하면서 새 데이터로 atomic swap)
     /// </summary>
     public async Task RefreshAsync()
     {
-        _isLoaded = false;
-        _allMarkers.Clear();
-        _markersByMap.Clear();
-
+        _log.Debug("Refreshing marker data...");
+        // 기존 데이터를 클리어하지 않음 - LoadMarkersAsync()에서 atomic swap으로 교체
         await LoadMarkersAsync();
     }
 }
