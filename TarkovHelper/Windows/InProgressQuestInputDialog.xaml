@@ -1,0 +1,214 @@
+<Window x:Class="TarkovHelper.Windows.InProgressQuestInputDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="In-Progress Quest Input"
+        WindowStartupLocation="CenterOwner"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        ShowInTaskbar="False">
+
+    <Border Background="{DynamicResource BackgroundDarkBrush}"
+            CornerRadius="8" Padding="24"
+            MinWidth="850" MaxWidth="950" MaxHeight="650">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="20" ShadowDepth="0" Opacity="0.5"/>
+        </Border.Effect>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Header -->
+            <Grid Grid.Row="0" Margin="0,0,0,16">
+                <TextBlock x:Name="TxtTitle" Text="Enter In-Progress Quests" FontSize="{DynamicResource FontSizeXLarge}" FontWeight="SemiBold"
+                           Foreground="{DynamicResource AccentBrush}"/>
+                <Button x:Name="BtnClose" Content="X"
+                        HorizontalAlignment="Right"
+                        Padding="8,4" FontSize="{DynamicResource FontSizeSmall}"
+                        Click="BtnClose_Click"/>
+            </Grid>
+
+            <!-- Two Column Layout -->
+            <Grid Grid.Row="1" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="16"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Panel: Quest Selection -->
+                <Border Grid.Column="0" Background="{DynamicResource BackgroundMediumBrush}"
+                        CornerRadius="4">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header -->
+                        <Border Grid.Row="0" Background="{DynamicResource BackgroundLightBrush}"
+                                CornerRadius="4,4,0,0" Padding="12,8">
+                            <TextBlock x:Name="TxtQuestSelectionHeader" Text="Quest Selection"
+                                       FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </Border>
+
+                        <!-- Search and Filter -->
+                        <StackPanel Grid.Row="1" Margin="12,8">
+                            <!-- Search Box -->
+                            <TextBox x:Name="TxtQuestSearch"
+                                     Padding="8,6" Margin="0,0,0,8"
+                                     Background="{DynamicResource BackgroundDarkBrush}"
+                                     Foreground="{DynamicResource TextPrimaryBrush}"
+                                     BorderBrush="{DynamicResource BorderBrush}"
+                                     TextChanged="TxtQuestSearch_TextChanged"/>
+
+                            <!-- Trader Filter -->
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="TxtTraderFilterLabel" Text="Trader:"
+                                           FontSize="{DynamicResource FontSizeXSmall}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <ComboBox x:Name="CmbQuestTraderFilter" Width="140"
+                                          SelectionChanged="CmbQuestTraderFilter_SelectionChanged"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Quest List -->
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8">
+                            <ItemsControl x:Name="QuestSelectionList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderBrush}"
+                                                Padding="12,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                          IsEnabled="{Binding IsEnabled}"
+                                                          VerticalAlignment="Center" Margin="0,0,8,0"
+                                                          Checked="QuestSelection_CheckChanged"
+                                                          Unchecked="QuestSelection_CheckChanged"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayName}"
+                                                               FontSize="{DynamicResource FontSizeXSmall}"
+                                                               Foreground="{Binding TextColor}"/>
+                                                    <TextBlock Text="{Binding SubtitleName}"
+                                                               FontSize="{DynamicResource FontSizeTiny}"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               Visibility="{Binding SubtitleVisibility}"/>
+                                                    <TextBlock Text="{Binding TraderName}"
+                                                               FontSize="{DynamicResource FontSizeTiny}"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+
+                <!-- Right Panel: Prerequisites Preview -->
+                <Border Grid.Column="2" Background="{DynamicResource BackgroundMediumBrush}"
+                        CornerRadius="4">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header -->
+                        <Border Grid.Row="0" Background="{DynamicResource BackgroundLightBrush}"
+                                CornerRadius="4,4,0,0" Padding="12,8">
+                            <TextBlock x:Name="TxtPrerequisitesHeader" Text="Prerequisites Preview"
+                                       FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"/>
+                        </Border>
+
+                        <!-- Description -->
+                        <TextBlock x:Name="TxtPrerequisitesDesc" Grid.Row="1"
+                                   Text="Prerequisites of selected quests will be shown here.&#x0a;These will be auto-completed on apply."
+                                   FontSize="{DynamicResource FontSizeTiny}" Margin="12,8"
+                                   Foreground="{DynamicResource TextSecondaryBrush}"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- Prerequisites List -->
+                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Margin="0,0,0,8">
+                            <ItemsControl x:Name="PrerequisitesList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderBrush}"
+                                                Padding="12,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="V" FontSize="{DynamicResource FontSizeXSmall}"
+                                                           Foreground="{DynamicResource AccentBrush}"
+                                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayName}"
+                                                               FontSize="{DynamicResource FontSizeXSmall}"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}"/>
+                                                    <TextBlock Text="{Binding SubtitleName}"
+                                                               FontSize="{DynamicResource FontSizeTiny}"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               Visibility="{Binding SubtitleVisibility}"/>
+                                                    <TextBlock Text="{Binding TraderName}"
+                                                               FontSize="{DynamicResource FontSizeTiny}"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- Summary Stats -->
+            <Border Grid.Row="2" Background="{DynamicResource BackgroundMediumBrush}"
+                    CornerRadius="4" Padding="12,8" Margin="0,0,0,16">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="TxtSelectedQuestsCount"
+                               Text="Selected quests: 0"
+                               FontSize="{DynamicResource FontSizeXSmall}"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               Margin="0,0,24,0"/>
+                    <TextBlock x:Name="TxtPrerequisitesCount"
+                               Text="Prerequisites to complete: 0"
+                               FontSize="{DynamicResource FontSizeXSmall}"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Action Buttons -->
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="BtnCancel" Content="Cancel"
+                        Padding="16,8" Margin="0,0,8,0"
+                        Click="BtnCancel_Click"/>
+                <Button x:Name="BtnApply" Content="Apply"
+                        Padding="16,8"
+                        Click="BtnApply_Click"
+                        Background="{DynamicResource AccentBrush}"
+                        Foreground="{DynamicResource BackgroundDarkBrush}"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

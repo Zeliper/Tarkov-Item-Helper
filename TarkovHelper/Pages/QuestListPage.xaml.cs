@@ -10,141 +10,6 @@ using System.Linq;
 
 namespace TarkovHelper.Pages
 {
-    /// <summary>
-    /// Quest list view model for display
-    /// </summary>
-    public class QuestViewModel
-    {
-        public TarkovTask Task { get; set; } = null!;
-        public string DisplayName { get; set; } = string.Empty;
-        public string SubtitleName { get; set; } = string.Empty;
-        public Visibility SubtitleVisibility { get; set; } = Visibility.Collapsed;
-        public string TraderInitial { get; set; } = string.Empty;
-        public QuestStatus Status { get; set; }
-        public string StatusText { get; set; } = string.Empty;
-        public Brush StatusBackground { get; set; } = Brushes.Gray;
-        public Visibility CompleteButtonVisibility { get; set; } = Visibility.Visible;
-        public bool IsKappaRequired { get; set; }
-        public Visibility KappaBadgeVisibility => IsKappaRequired ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    /// <summary>
-    /// Required item view model
-    /// </summary>
-    public class RequiredItemViewModel
-    {
-        public string DisplayText { get; set; } = string.Empty;
-        public bool FoundInRaid { get; set; }
-        public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
-        public BitmapImage? IconSource { get; set; }
-        public string RequirementType { get; set; } = string.Empty;
-        public Visibility RequirementTypeVisibility =>
-            string.IsNullOrEmpty(RequirementType) ? Visibility.Collapsed : Visibility.Visible;
-
-        // Navigation identifier
-        public string ItemNormalizedName { get; set; } = string.Empty;
-
-        // Fulfillment status
-        public bool IsFulfilled { get; set; }
-        public TextDecorationCollection? TextDecorations => IsFulfilled ? System.Windows.TextDecorations.Strikethrough : null;
-        public double ItemOpacity => IsFulfilled ? 0.6 : 1.0;
-        public Visibility FulfilledVisibility => IsFulfilled ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    /// <summary>
-    /// Prerequisite group view model for displaying OR/AND grouped prerequisites
-    /// </summary>
-    public class PrerequisiteGroupViewModel
-    {
-        public int GroupId { get; set; }
-        public bool IsOrGroup => GroupId > 0;
-        public string GroupLabel => IsOrGroup ? "OR" : "";
-        public Visibility OrLabelVisibility => IsOrGroup ? Visibility.Visible : Visibility.Collapsed;
-        public Brush OrGroupBackground => IsOrGroup ? new SolidColorBrush(Color.FromArgb(30, 33, 150, 243)) : Brushes.Transparent;
-        public List<PrerequisiteItemViewModel> Items { get; set; } = new();
-    }
-
-    /// <summary>
-    /// Single prerequisite item view model
-    /// </summary>
-    public class PrerequisiteItemViewModel
-    {
-        public TarkovTask? Task { get; set; }
-        public string DisplayName { get; set; } = string.Empty;
-        public string StatusText { get; set; } = string.Empty;
-        public Brush StatusBackground { get; set; } = Brushes.Gray;
-        public bool IsOrItem { get; set; }
-        public string OrSeparator => IsOrItem ? " OR " : "";
-        public Visibility OrSeparatorVisibility => IsOrItem ? Visibility.Visible : Visibility.Collapsed;
-        public string BulletText => IsOrItem ? "" : "• ";
-    }
-
-    /// <summary>
-    /// Recommendation view model for display
-    /// </summary>
-    public class RecommendationViewModel
-    {
-        public QuestRecommendation Recommendation { get; set; } = null!;
-        public string QuestName { get; set; } = string.Empty;
-        public string Reason { get; set; } = string.Empty;
-        public string TypeText { get; set; } = string.Empty;
-        public Brush TypeBackground { get; set; } = Brushes.Gray;
-        public string TraderInitial { get; set; } = string.Empty;
-        public bool IsKappaRequired { get; set; }
-        public Visibility KappaBadgeVisibility => IsKappaRequired ? Visibility.Visible : Visibility.Collapsed;
-    }
-
-    /// <summary>
-    /// Guide image view model with loading state
-    /// </summary>
-    public class GuideImageViewModel : System.ComponentModel.INotifyPropertyChanged
-    {
-        private BitmapImage? _imageSource;
-        private bool _isLoading = true;
-
-        public string FileName { get; set; } = string.Empty;
-        public string? Caption { get; set; }
-
-        public BitmapImage? ImageSource
-        {
-            get => _imageSource;
-            set
-            {
-                _imageSource = value;
-                OnPropertyChanged(nameof(ImageSource));
-                OnPropertyChanged(nameof(ImageVisibility));
-            }
-        }
-
-        public bool IsLoading
-        {
-            get => _isLoading;
-            set
-            {
-                _isLoading = value;
-                OnPropertyChanged(nameof(IsLoading));
-                OnPropertyChanged(nameof(LoadingVisibility));
-                OnPropertyChanged(nameof(ImageVisibility));
-            }
-        }
-
-        public Visibility CaptionVisibility =>
-            string.IsNullOrEmpty(Caption) ? Visibility.Collapsed : Visibility.Visible;
-
-        public Visibility LoadingVisibility =>
-            IsLoading ? Visibility.Visible : Visibility.Collapsed;
-
-        public Visibility ImageVisibility =>
-            IsLoading ? Visibility.Collapsed : Visibility.Visible;
-
-        public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
-
-        protected void OnPropertyChanged(string propertyName)
-        {
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
-        }
-    }
-
     public partial class QuestListPage : UserControl
     {
         private readonly LocalizationService _loc = LocalizationService.Instance;
@@ -170,13 +35,6 @@ namespace TarkovHelper.Pages
         private static readonly Brush FailedBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));
         private static readonly Brush LevelLockedBrush = new SolidColorBrush(Color.FromRgb(255, 152, 0)); // Orange for Level Locked
         private static readonly Brush UnavailableBrush = new SolidColorBrush(Color.FromRgb(158, 158, 158)); // Gray for Unavailable
-
-        // Recommendation type brushes
-        private static readonly Brush ReadyToCompleteBrush = new SolidColorBrush(Color.FromRgb(76, 175, 80)); // Green
-        private static readonly Brush ItemHandInBrush = new SolidColorBrush(Color.FromRgb(33, 150, 243)); // Blue
-        private static readonly Brush KappaPriorityBrush = new SolidColorBrush(Color.FromRgb(156, 39, 176)); // Purple
-        private static readonly Brush UnlocksManyBrush = new SolidColorBrush(Color.FromRgb(255, 152, 0)); // Orange
-        private static readonly Brush EasyQuestBrush = new SolidColorBrush(Color.FromRgb(0, 188, 212)); // Cyan
 
         public QuestListPage()
         {
@@ -1305,11 +1163,10 @@ namespace TarkovHelper.Pages
         private FrameworkElement CreateObjectiveElement(string objective, int objectiveIndex, bool isCompleted)
         {
             // Check for (''Optional'') pattern in wiki markup
-            var optionalPattern = @"\(''Optional''\)\s*";
-            var isOptional = System.Text.RegularExpressions.Regex.IsMatch(objective, optionalPattern);
+            var isOptional = WikiMarkupHelper.IsOptional(objective);
 
             // Remove the optional marker from text
-            var cleanedObjective = System.Text.RegularExpressions.Regex.Replace(objective, optionalPattern, "").Trim();
+            var cleanedObjective = WikiMarkupHelper.RemoveOptionalMarker(objective);
 
             // Main container with checkbox
             var mainContainer = new StackPanel
@@ -1330,6 +1187,12 @@ namespace TarkovHelper.Pages
             checkBox.Unchecked += ObjectiveCheckBox_Changed;
             mainContainer.Children.Add(checkBox);
 
+            // Get resources for text styling
+            var fontFamily = (FontFamily)FindResource("MaplestoryFont");
+            var fontSize = (double)FindResource("FontSizeXSmall");
+            var defaultBrush = (Brush)FindResource("TextPrimaryBrush");
+            var accentBrush = (Brush)FindResource("AccentBrush");
+
             if (isOptional)
             {
                 // Create horizontal layout with Optional badge + text
@@ -1341,8 +1204,7 @@ namespace TarkovHelper.Pages
                 // Optional badge
                 var badge = new Border
                 {
-                    Background = new System.Windows.Media.SolidColorBrush(
-                        System.Windows.Media.Color.FromArgb(60, 255, 193, 7)), // Amber/yellow with transparency
+                    Background = new SolidColorBrush(Color.FromArgb(60, 255, 193, 7)), // Amber/yellow with transparency
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(6, 2, 6, 2),
                     Margin = new Thickness(0, 0, 8, 0),
@@ -1354,15 +1216,15 @@ namespace TarkovHelper.Pages
                     Text = "Optional",
                     FontSize = 10,
                     FontWeight = FontWeights.SemiBold,
-                    Foreground = new System.Windows.Media.SolidColorBrush(
-                        System.Windows.Media.Color.FromRgb(255, 193, 7)) // Amber color
+                    Foreground = new SolidColorBrush(Color.FromRgb(255, 193, 7)) // Amber color
                 };
 
                 badge.Child = badgeText;
                 contentContainer.Children.Add(badge);
 
                 // Create text block without bullet (badge replaces the bullet indicator)
-                var textBlock = CreateRichTextBlockWithoutBullet(cleanedObjective, isCompleted);
+                var textBlock = WikiMarkupHelper.CreateRichTextBlockWithoutBullet(
+                    cleanedObjective, fontFamily, fontSize, defaultBrush, accentBrush, isCompleted);
                 contentContainer.Children.Add(textBlock);
 
                 mainContainer.Children.Add(contentContainer);
@@ -1370,7 +1232,8 @@ namespace TarkovHelper.Pages
             else
             {
                 // Create text block without bullet (checkbox replaces the bullet)
-                var textBlock = CreateRichTextBlockWithoutBullet(cleanedObjective, isCompleted);
+                var textBlock = WikiMarkupHelper.CreateRichTextBlockWithoutBullet(
+                    cleanedObjective, fontFamily, fontSize, defaultBrush, accentBrush, isCompleted);
                 mainContainer.Children.Add(textBlock);
             }
 
@@ -1414,204 +1277,6 @@ namespace TarkovHelper.Pages
                 {
                     UpdateObjectiveTextStyle(innerPanel, isCompleted);
                 }
-            }
-        }
-
-        /// <summary>
-        /// Create a TextBlock with rich text but without bullet point (for checkbox items)
-        /// </summary>
-        private TextBlock CreateRichTextBlockWithoutBullet(string wikiText, bool isCompleted = false)
-        {
-            var textBlock = new TextBlock
-            {
-                FontFamily = (System.Windows.Media.FontFamily)FindResource("MaplestoryFont"),
-                FontSize = (double)FindResource("FontSizeXSmall"),
-                TextWrapping = TextWrapping.Wrap,
-                MaxWidth = 260, // Slightly smaller to account for checkbox and badge
-                VerticalAlignment = VerticalAlignment.Top,
-                TextDecorations = isCompleted ? TextDecorations.Strikethrough : null,
-                Opacity = isCompleted ? 0.6 : 1.0
-            };
-
-            // Parse and add content (no bullet)
-            ParseWikiMarkup(wikiText, textBlock);
-
-            return textBlock;
-        }
-
-        /// <summary>
-        /// Create a TextBlock with rich text from wiki markup (links and HTML colors)
-        /// </summary>
-        private TextBlock CreateRichTextBlock(string wikiText)
-        {
-            var textBlock = new TextBlock
-            {
-                FontFamily = (System.Windows.Media.FontFamily)FindResource("MaplestoryFont"),
-                FontSize = (double)FindResource("FontSizeXSmall"),
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 2, 0, 2),
-                MaxWidth = 300
-            };
-
-            // Add bullet point
-            textBlock.Inlines.Add(new System.Windows.Documents.Run("• ")
-            {
-                Foreground = (System.Windows.Media.Brush)FindResource("AccentBrush"),
-                FontWeight = FontWeights.Bold
-            });
-
-            // Parse and add content
-            ParseWikiMarkup(wikiText, textBlock);
-
-            return textBlock;
-        }
-
-        /// <summary>
-        /// Parse wiki markup and add to TextBlock inlines
-        /// Supports: [[Link|Text]], [[Link]], <font color="...">text</font>
-        /// </summary>
-        private void ParseWikiMarkup(string text, TextBlock textBlock)
-        {
-            var defaultBrush = (System.Windows.Media.Brush)FindResource("TextPrimaryBrush");
-            var linkBrush = (System.Windows.Media.Brush)FindResource("AccentBrush");
-
-            // Pattern to match wiki links and font color tags
-            var pattern = @"(\[\[([^\]|]+)(?:\|([^\]]+))?\]\])|(<font\s+color=""([^""]+)"">([^<]+)</font>)";
-            var regex = new System.Text.RegularExpressions.Regex(pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-            int lastIndex = 0;
-            var matches = regex.Matches(text);
-
-            foreach (System.Text.RegularExpressions.Match match in matches)
-            {
-                // Add text before match
-                if (match.Index > lastIndex)
-                {
-                    var beforeText = text.Substring(lastIndex, match.Index - lastIndex);
-                    textBlock.Inlines.Add(new System.Windows.Documents.Run(beforeText) { Foreground = defaultBrush });
-                }
-
-                if (match.Groups[1].Success)
-                {
-                    // Wiki link: [[Link|Text]] or [[Link]]
-                    var linkTarget = match.Groups[2].Value;
-                    var displayText = match.Groups[3].Success ? match.Groups[3].Value : linkTarget;
-
-                    var hyperlink = new System.Windows.Documents.Hyperlink
-                    {
-                        Foreground = linkBrush,
-                        TextDecorations = null
-                    };
-                    hyperlink.Tag = linkTarget;
-                    hyperlink.Click += WikiLink_Click;
-                    hyperlink.MouseEnter += (s, e) => ((System.Windows.Documents.Hyperlink)s).TextDecorations = TextDecorations.Underline;
-                    hyperlink.MouseLeave += (s, e) => ((System.Windows.Documents.Hyperlink)s).TextDecorations = null;
-
-                    // Parse display text for nested font tags
-                    ParseHyperlinkContent(displayText, hyperlink, linkBrush);
-
-                    textBlock.Inlines.Add(hyperlink);
-                }
-                else if (match.Groups[4].Success)
-                {
-                    // Font color: <font color="...">text</font>
-                    var colorStr = match.Groups[5].Value;
-                    var coloredText = match.Groups[6].Value;
-
-                    System.Windows.Media.Brush colorBrush;
-                    try
-                    {
-                        colorBrush = new System.Windows.Media.SolidColorBrush(
-                            (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(colorStr));
-                    }
-                    catch
-                    {
-                        colorBrush = defaultBrush;
-                    }
-
-                    textBlock.Inlines.Add(new System.Windows.Documents.Run(coloredText) { Foreground = colorBrush });
-                }
-
-                lastIndex = match.Index + match.Length;
-            }
-
-            // Add remaining text
-            if (lastIndex < text.Length)
-            {
-                var remainingText = text.Substring(lastIndex);
-                textBlock.Inlines.Add(new System.Windows.Documents.Run(remainingText) { Foreground = defaultBrush });
-            }
-        }
-
-        /// <summary>
-        /// Parse content for a hyperlink, handling nested font color tags
-        /// </summary>
-        private void ParseHyperlinkContent(string displayText, System.Windows.Documents.Hyperlink hyperlink, System.Windows.Media.Brush defaultBrush)
-        {
-            // Pattern to match font color tags
-            var fontPattern = @"<font\s+color=""([^""]+)"">([^<]+)</font>";
-            var fontRegex = new System.Text.RegularExpressions.Regex(fontPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-
-            int lastIndex = 0;
-            var matches = fontRegex.Matches(displayText);
-
-            foreach (System.Text.RegularExpressions.Match match in matches)
-            {
-                // Add text before match
-                if (match.Index > lastIndex)
-                {
-                    var beforeText = displayText.Substring(lastIndex, match.Index - lastIndex);
-                    hyperlink.Inlines.Add(new System.Windows.Documents.Run(beforeText) { Foreground = defaultBrush });
-                }
-
-                // Add colored text
-                var colorStr = match.Groups[1].Value;
-                var coloredText = match.Groups[2].Value;
-
-                System.Windows.Media.Brush colorBrush;
-                try
-                {
-                    colorBrush = new System.Windows.Media.SolidColorBrush(
-                        (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(colorStr));
-                }
-                catch
-                {
-                    colorBrush = defaultBrush;
-                }
-
-                hyperlink.Inlines.Add(new System.Windows.Documents.Run(coloredText) { Foreground = colorBrush });
-                lastIndex = match.Index + match.Length;
-            }
-
-            // Add remaining text
-            if (lastIndex < displayText.Length)
-            {
-                var remainingText = displayText.Substring(lastIndex);
-                hyperlink.Inlines.Add(new System.Windows.Documents.Run(remainingText) { Foreground = defaultBrush });
-            }
-
-            // If no content was added (no font tags and no plain text), add displayText as-is
-            if (hyperlink.Inlines.Count == 0)
-            {
-                hyperlink.Inlines.Add(new System.Windows.Documents.Run(displayText) { Foreground = defaultBrush });
-            }
-        }
-
-        private void WikiLink_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is System.Windows.Documents.Hyperlink hyperlink && hyperlink.Tag is string linkTarget)
-            {
-                // Open wiki page in browser
-                var wikiUrl = $"https://escapefromtarkov.fandom.com/wiki/{Uri.EscapeDataString(linkTarget.Replace(" ", "_"))}";
-                try
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = wikiUrl,
-                        UseShellExecute = true
-                    });
-                }
-                catch { }
             }
         }
 
@@ -1761,11 +1426,14 @@ namespace TarkovHelper.Pages
                     item.ItemNormalizedName, item.Amount, requiredFir);
                 var isFulfilled = fulfillmentInfo.Status == Models.ItemFulfillmentStatus.Fulfilled;
 
+                // Get item from lookup (for ItemId and localized name)
+                var tarkovItem = GetItemByNormalizedName(item.ItemNormalizedName, item.ItemDisplayName);
+
                 var vm = new RequiredItemViewModel
                 {
                     FoundInRaid = item.FoundInRaid,
                     RequirementType = item.Requirement,
-                    ItemNormalizedName = item.ItemNormalizedName, // For navigation
+                    ItemId = tarkovItem?.Id ?? string.Empty, // Use ItemId for navigation
                     IsFulfilled = isFulfilled
                 };
 
@@ -1773,9 +1441,8 @@ namespace TarkovHelper.Pages
                 var localizedName = GetLocalizedItemName(item.ItemNormalizedName, item.ItemDisplayName);
                 vm.DisplayText = $"{localizedName} x{item.Amount}";
 
-                // Get item icon (with display name for better matching)
-                var tarkovItem = GetItemByNormalizedName(item.ItemNormalizedName, item.ItemDisplayName);
-                if (tarkovItem?.Id != null)
+                // Get item icon
+                if (!string.IsNullOrEmpty(tarkovItem?.Id))
                 {
                     var icon = _imageCache.GetLocalItemIcon(tarkovItem.Id);
                     vm.IconSource = icon;
@@ -1794,10 +1461,10 @@ namespace TarkovHelper.Pages
         {
             if (sender is FrameworkElement element && element.DataContext is RequiredItemViewModel vm)
             {
-                if (string.IsNullOrEmpty(vm.ItemNormalizedName)) return;
+                if (string.IsNullOrEmpty(vm.ItemId)) return;
 
                 var mainWindow = Window.GetWindow(this) as MainWindow;
-                mainWindow?.NavigateToItem(vm.ItemNormalizedName);
+                mainWindow?.NavigateToItem(vm.ItemId);
             }
         }
 
@@ -1909,89 +1576,14 @@ namespace TarkovHelper.Pages
 
         private void UpdateRecommendations()
         {
-            try
-            {
-                var recommendationService = QuestRecommendationService.Instance;
-                var recommendations = recommendationService.GetRecommendations(5);
-
-                if (recommendations.Count == 0)
-                {
-                    RecommendationsExpander.Visibility = Visibility.Collapsed;
-                    return;
-                }
-
-                // Update header text with localization
-                TxtRecommendationsHeader.Text = _loc.RecommendedQuests;
-                TxtRecommendationCount.Text = recommendations.Count.ToString();
-                TxtNoRecommendations.Text = _loc.NoRecommendations;
-
-                // Create view models
-                var recommendationVms = recommendations.Select(r => CreateRecommendationViewModel(r)).ToList();
-
-                RecommendationsList.ItemsSource = recommendationVms;
-                TxtNoRecommendations.Visibility = Visibility.Collapsed;
-                RecommendationsExpander.Visibility = Visibility.Visible;
-            }
-            catch
-            {
-                // Hide recommendations section if service is not initialized
-                RecommendationsExpander.Visibility = Visibility.Collapsed;
-            }
+            // Set up localization function for the recommendations panel
+            RecommendationsPanel.GetLocalizedNames = GetLocalizedNames;
+            RecommendationsPanel.UpdateRecommendations();
         }
 
-        private RecommendationViewModel CreateRecommendationViewModel(QuestRecommendation rec)
+        private void RecommendationsPanel_RecommendationClicked(object? sender, string questNormalizedName)
         {
-            var (displayName, _, _) = GetLocalizedNames(rec.Quest);
-
-            return new RecommendationViewModel
-            {
-                Recommendation = rec,
-                QuestName = displayName,
-                Reason = rec.Reason,
-                TypeText = GetRecommendationTypeText(rec.Type),
-                TypeBackground = GetRecommendationTypeBrush(rec.Type),
-                TraderInitial = GetTraderInitial(rec.Quest.Trader),
-                IsKappaRequired = rec.Quest.ReqKappa
-            };
-        }
-
-        private string GetRecommendationTypeText(RecommendationType type)
-        {
-            return type switch
-            {
-                RecommendationType.ReadyToComplete => _loc.ReadyToComplete,
-                RecommendationType.ItemHandInOnly => _loc.ItemHandInOnly,
-                RecommendationType.KappaPriority => _loc.KappaPriority,
-                RecommendationType.UnlocksMany => _loc.UnlocksMany,
-                RecommendationType.EasyQuest => _loc.EasyQuest,
-                _ => "Unknown"
-            };
-        }
-
-        private static Brush GetRecommendationTypeBrush(RecommendationType type)
-        {
-            return type switch
-            {
-                RecommendationType.ReadyToComplete => ReadyToCompleteBrush,
-                RecommendationType.ItemHandInOnly => ItemHandInBrush,
-                RecommendationType.KappaPriority => KappaPriorityBrush,
-                RecommendationType.UnlocksMany => UnlocksManyBrush,
-                RecommendationType.EasyQuest => EasyQuestBrush,
-                _ => Brushes.Gray
-            };
-        }
-
-        private void Recommendation_Click(object sender, MouseButtonEventArgs e)
-        {
-            if (sender is FrameworkElement element && element.DataContext is RecommendationViewModel vm)
-            {
-                // Navigate to the quest in the list
-                var questNormalizedName = vm.Recommendation.Quest.NormalizedName;
-                if (!string.IsNullOrEmpty(questNormalizedName))
-                {
-                    SelectQuestInternal(questNormalizedName);
-                }
-            }
+            SelectQuestInternal(questNormalizedName);
         }
 
         #endregion

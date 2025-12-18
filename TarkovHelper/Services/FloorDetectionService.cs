@@ -76,8 +76,8 @@ public sealed class FloorDetectionService
                 return false;
             }
 
-            // 층 범위 로드 (Priority 내림차순)
-            var sql = "SELECT MapKey, FloorId, MinY, MaxY, Priority FROM MapFloorLocations ORDER BY MapKey, Priority DESC";
+            // 층 범위 로드 (Priority 내림차순) - XZ 좌표 포함
+            var sql = "SELECT MapKey, FloorId, MinY, MaxY, MinX, MaxX, MinZ, MaxZ, Priority FROM MapFloorLocations ORDER BY MapKey, Priority DESC";
             await using var cmd = new SqliteCommand(sql, connection);
             await using var reader = await cmd.ExecuteReaderAsync();
 
@@ -92,7 +92,11 @@ public sealed class FloorDetectionService
                     FloorId = reader.GetString(1),
                     MinY = reader.GetDouble(2),
                     MaxY = reader.GetDouble(3),
-                    Priority = reader.GetInt32(4)
+                    MinX = reader.IsDBNull(4) ? null : reader.GetDouble(4),
+                    MaxX = reader.IsDBNull(5) ? null : reader.GetDouble(5),
+                    MinZ = reader.IsDBNull(6) ? null : reader.GetDouble(6),
+                    MaxZ = reader.IsDBNull(7) ? null : reader.GetDouble(7),
+                    Priority = reader.GetInt32(8)
                 };
 
                 if (!newFloorRangesByMap.TryGetValue(mapKey, out var ranges))
@@ -117,12 +121,15 @@ public sealed class FloorDetectionService
     }
 
     /// <summary>
-    /// Y 좌표를 기반으로 층을 감지합니다.
+    /// X, Y, Z 좌표를 기반으로 층을 감지합니다.
+    /// XZ 범위가 설정된 영역은 해당 범위 내에서만 층이 감지됩니다.
     /// </summary>
     /// <param name="mapKey">맵 키</param>
+    /// <param name="x">X 좌표</param>
     /// <param name="y">Y 좌표 (높이)</param>
+    /// <param name="z">Z 좌표</param>
     /// <returns>감지된 층 ID (없으면 null)</returns>
-    public string? DetectFloor(string mapKey, double y)
+    public string? DetectFloor(string mapKey, double x, double y, double z)
     {
         if (!_floorRangesByMap.TryGetValue(mapKey, out var ranges))
             return null;
@@ -130,7 +137,30 @@ public sealed class FloorDetectionService
         // Priority 순서대로 (내림차순) 체크
         foreach (var range in ranges)
         {
-            if (y >= range.MinY && y <= range.MaxY)
+            if (range.Contains(x, y, z))
+                return range.FloorId;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Y 좌표만으로 층을 감지합니다 (XZ 범위가 없는 영역만 체크).
+    /// 하위 호환성을 위해 유지됩니다.
+    /// </summary>
+    /// <param name="mapKey">맵 키</param>
+    /// <param name="y">Y 좌표 (높이)</param>
+    /// <returns>감지된 층 ID (없으면 null)</returns>
+    [Obsolete("Use DetectFloor(mapKey, x, y, z) for accurate floor detection with XZ bounds")]
+    public string? DetectFloor(string mapKey, double y)
+    {
+        if (!_floorRangesByMap.TryGetValue(mapKey, out var ranges))
+            return null;
+
+        // Priority 순서대로 (내림차순) 체크 - XZ 범위가 없는 것만
+        foreach (var range in ranges)
+        {
+            if (!range.HasXZBounds && y >= range.MinY && y <= range.MaxY)
                 return range.FloorId;
         }
 
@@ -157,7 +187,7 @@ public sealed class FloorDetectionService
 }
 
 /// <summary>
-/// 층별 Y 좌표 범위
+/// 층별 좌표 범위 (Y 필수, XZ 선택적)
 /// </summary>
 public class FloorYRange
 {
@@ -167,17 +197,63 @@ public class FloorYRange
     public string FloorId { get; set; } = string.Empty;
 
     /// <summary>
-    /// 최소 Y 좌표
+    /// 최소 Y 좌표 (필수)
     /// </summary>
     public double MinY { get; set; }
 
     /// <summary>
-    /// 최대 Y 좌표
+    /// 최대 Y 좌표 (필수)
     /// </summary>
     public double MaxY { get; set; }
+
+    /// <summary>
+    /// 최소 X 좌표 (선택적 - 특정 영역 지정용)
+    /// </summary>
+    public double? MinX { get; set; }
+
+    /// <summary>
+    /// 최대 X 좌표 (선택적 - 특정 영역 지정용)
+    /// </summary>
+    public double? MaxX { get; set; }
+
+    /// <summary>
+    /// 최소 Z 좌표 (선택적 - 특정 영역 지정용)
+    /// </summary>
+    public double? MinZ { get; set; }
+
+    /// <summary>
+    /// 최대 Z 좌표 (선택적 - 특정 영역 지정용)
+    /// </summary>
+    public double? MaxZ { get; set; }
 
     /// <summary>
     /// 우선순위 (높을수록 먼저 체크)
     /// </summary>
     public int Priority { get; set; }
+
+    /// <summary>
+    /// XZ 범위가 지정되어 있는지 여부
+    /// </summary>
+    public bool HasXZBounds => MinX.HasValue && MaxX.HasValue && MinZ.HasValue && MaxZ.HasValue;
+
+    /// <summary>
+    /// 좌표가 이 Floor 영역에 해당하는지 확인
+    /// </summary>
+    public bool Contains(double x, double y, double z)
+    {
+        // Y 범위 확인 (필수)
+        if (y < MinY || y > MaxY)
+            return false;
+
+        // XZ 범위 확인 (선택적)
+        if (HasXZBounds)
+        {
+            if (x < MinX!.Value || x > MaxX!.Value)
+                return false;
+            if (z < MinZ!.Value || z > MaxZ!.Value)
+                return false;
+        }
+
+        return true;
+    }
 }

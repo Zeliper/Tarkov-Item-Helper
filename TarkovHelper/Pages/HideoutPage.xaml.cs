@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using TarkovHelper.Models;
 using TarkovHelper.Services;
@@ -70,7 +71,8 @@ namespace TarkovHelper.Pages
         public int FIRCount { get; set; }
         public bool HasMixedFIR => FIRCount > 0 && FIRCount < TotalCount;
 
-        // Item identifier for fulfillment check
+        // Item identifier for fulfillment check and navigation
+        public string ItemId { get; set; } = string.Empty;
         public string ItemNormalizedName { get; set; } = string.Empty;
 
         // Icon link for lazy loading
@@ -105,6 +107,8 @@ namespace TarkovHelper.Pages
         private List<HideoutModuleViewModel> _allModuleViewModels = new();
         private bool _isInitializing = true;
         private bool _isUnloaded = false;
+        private bool _isDataLoaded = false;
+        private string? _pendingModuleSelection = null;
 
         public HideoutPage()
         {
@@ -120,6 +124,7 @@ namespace TarkovHelper.Pages
         private void HideoutPage_Unloaded(object sender, RoutedEventArgs e)
         {
             _isUnloaded = true;
+            _isDataLoaded = false; // Reset so SelectModule will use pending selection on next load
             // Unsubscribe from events to prevent memory leaks
             _loc.LanguageChanged -= OnLanguageChanged;
             _progressService.ProgressChanged -= OnProgressChanged;
@@ -147,8 +152,17 @@ namespace TarkovHelper.Pages
                 if (_isUnloaded) return; // Check if page was unloaded during async operation
 
                 _isInitializing = false;
+                _isDataLoaded = true;
                 ApplyFilters();
                 UpdateStatistics();
+
+                // Process pending selection if any
+                if (!string.IsNullOrEmpty(_pendingModuleSelection))
+                {
+                    var pendingId = _pendingModuleSelection;
+                    _pendingModuleSelection = null;
+                    SelectModuleInternal(pendingId);
+                }
             }
             finally
             {
@@ -448,6 +462,7 @@ namespace TarkovHelper.Pages
                         {
                             DisplayText = $"{itemName} x{itemReq.Count}",
                             FoundInRaid = itemReq.FoundInRaid,
+                            ItemId = itemReq.ItemId,
                             ItemNormalizedName = itemReq.ItemNormalizedName,
                             IconLink = itemReq.IconLink,
                             IsFulfilled = isFulfilled
@@ -544,6 +559,7 @@ namespace TarkovHelper.Pages
                         FIRCount = firCount,
                         // Only show FIR badge if ALL items are FIR (not mixed)
                         FoundInRaid = firCount > 0 && firCount == totalCount,
+                        ItemId = kvp.Value.Item.ItemId,
                         ItemNormalizedName = kvp.Value.Item.ItemNormalizedName,
                         IconLink = kvp.Value.Item.IconLink,
                         IsFulfilled = isFulfilled
@@ -658,34 +674,74 @@ namespace TarkovHelper.Pages
         /// </summary>
         public void SelectModule(string stationId)
         {
-            // Reset filters to ensure the module is visible
+            // If data is not loaded yet, save for later
+            if (!_isDataLoaded)
+            {
+                _pendingModuleSelection = stationId;
+                return;
+            }
+
+            SelectModuleInternal(stationId);
+        }
+
+        /// <summary>
+        /// Internal method to select a module (called when data is ready)
+        /// </summary>
+        private void SelectModuleInternal(string stationId)
+        {
+            // Prevent SelectionChanged from interfering during navigation
             _isInitializing = true;
-            TxtSearch.Text = "";
-            _isInitializing = false;
 
-            // Apply filters to update the list
-            ApplyFilters();
+            try
+            {
+                // Reset filters to ensure the module is visible
+                TxtSearch.Text = "";
 
-            // Find the module view model from the filtered list
-            var filteredModules = LstModules.ItemsSource as IEnumerable<HideoutModuleViewModel>;
-            var moduleVm = filteredModules?.FirstOrDefault(vm =>
-                string.Equals(vm.Module.Id, stationId, StringComparison.OrdinalIgnoreCase));
+                // Apply filters to update the list
+                ApplyFilters();
 
-            if (moduleVm == null) return;
+                // Find the module view model from the filtered list
+                var filteredModules = LstModules.ItemsSource as IEnumerable<HideoutModuleViewModel>;
+                var moduleVm = filteredModules?.FirstOrDefault(vm =>
+                    string.Equals(vm.Module.Id, stationId, StringComparison.OrdinalIgnoreCase));
 
-            // For virtualized lists: scroll first, then select
-            LstModules.ScrollIntoView(moduleVm);
-            LstModules.UpdateLayout();
+                if (moduleVm == null) return;
 
-            // Now select the module
-            LstModules.SelectedItem = moduleVm;
-            LstModules.UpdateLayout();
+                // For virtualized lists: scroll first, then select
+                LstModules.ScrollIntoView(moduleVm);
+                LstModules.UpdateLayout();
 
-            // Scroll again to ensure visibility after selection
-            LstModules.ScrollIntoView(moduleVm);
+                // Now select the module
+                LstModules.SelectedItem = moduleVm;
+                LstModules.UpdateLayout();
 
-            // Focus the list to show selection highlight
-            LstModules.Focus();
+                // Scroll again to ensure visibility after selection
+                LstModules.ScrollIntoView(moduleVm);
+
+                // Update detail panel
+                UpdateDetailPanel();
+
+                // Focus the list to show selection highlight
+                LstModules.Focus();
+            }
+            finally
+            {
+                _isInitializing = false;
+            }
+        }
+
+        /// <summary>
+        /// Handle click on item name to navigate to Items tab
+        /// </summary>
+        private void ItemName_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is FrameworkElement element && element.DataContext is RequirementViewModel vm)
+            {
+                if (string.IsNullOrEmpty(vm.ItemId)) return;
+
+                var mainWindow = Window.GetWindow(this) as MainWindow;
+                mainWindow?.NavigateToItem(vm.ItemId);
+            }
         }
 
         #endregion

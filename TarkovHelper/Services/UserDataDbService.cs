@@ -122,9 +122,37 @@ public sealed class UserDataDbService
                 Value TEXT NOT NULL
             );
 
+            -- 레이드 히스토리
+            CREATE TABLE IF NOT EXISTS RaidHistory (
+                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                RaidId TEXT,
+                SessionId TEXT,
+                ShortId TEXT,
+                ProfileId TEXT,
+                RaidType INTEGER NOT NULL DEFAULT 0,
+                GameMode INTEGER NOT NULL DEFAULT 0,
+                MapName TEXT,
+                MapKey TEXT,
+                ServerIp TEXT,
+                ServerPort INTEGER,
+                IsParty INTEGER NOT NULL DEFAULT 0,
+                PartyLeaderAccountId TEXT,
+                StartTime TEXT,
+                EndTime TEXT,
+                DurationSeconds INTEGER,
+                Rtt REAL,
+                PacketLoss REAL,
+                PacketsSent INTEGER,
+                PacketsReceived INTEGER,
+                CreatedAt TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
             -- 인덱스
             CREATE INDEX IF NOT EXISTS idx_quest_progress_normalized ON QuestProgress(NormalizedName);
             CREATE INDEX IF NOT EXISTS idx_objective_progress_quest ON ObjectiveProgress(QuestId);
+            CREATE INDEX IF NOT EXISTS idx_raid_history_start_time ON RaidHistory(StartTime);
+            CREATE INDEX IF NOT EXISTS idx_raid_history_map_key ON RaidHistory(MapKey);
+            CREATE INDEX IF NOT EXISTS idx_raid_history_raid_type ON RaidHistory(RaidType);
         ";
 
         await using var cmd = new SqliteCommand(createTablesSql, connection);
@@ -1065,6 +1093,184 @@ public sealed class UserDataDbService
             await transaction.RollbackAsync();
             throw;
         }
+    }
+
+    #endregion
+
+    #region Raid History
+
+    /// <summary>
+    /// 레이드 히스토리 저장
+    /// </summary>
+    public async Task SaveRaidHistoryAsync(Models.EftRaidInfo raid)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var sql = @"
+            INSERT INTO RaidHistory (
+                RaidId, SessionId, ShortId, ProfileId, RaidType, GameMode,
+                MapName, MapKey, ServerIp, ServerPort, IsParty, PartyLeaderAccountId,
+                StartTime, EndTime, DurationSeconds, Rtt, PacketLoss, PacketsSent, PacketsReceived
+            ) VALUES (
+                @raidId, @sessionId, @shortId, @profileId, @raidType, @gameMode,
+                @mapName, @mapKey, @serverIp, @serverPort, @isParty, @partyLeaderId,
+                @startTime, @endTime, @durationSeconds, @rtt, @packetLoss, @packetsSent, @packetsReceived
+            )";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@raidId", raid.RaidId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@sessionId", raid.SessionId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@shortId", raid.ShortId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@profileId", raid.ProfileId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@raidType", (int)raid.RaidType);
+        cmd.Parameters.AddWithValue("@gameMode", (int)raid.GameMode);
+        cmd.Parameters.AddWithValue("@mapName", raid.MapName ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@mapKey", raid.MapKey ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@serverIp", raid.ServerIp ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@serverPort", raid.ServerPort);
+        cmd.Parameters.AddWithValue("@isParty", raid.IsParty ? 1 : 0);
+        cmd.Parameters.AddWithValue("@partyLeaderId", raid.PartyLeaderAccountId ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@startTime", raid.StartTime?.ToString("o") ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@endTime", raid.EndTime?.ToString("o") ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@durationSeconds", raid.Duration?.TotalSeconds ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@rtt", raid.Rtt ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@packetLoss", raid.PacketLoss ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@packetsSent", raid.PacketsSent ?? (object)DBNull.Value);
+        cmd.Parameters.AddWithValue("@packetsReceived", raid.PacketsReceived ?? (object)DBNull.Value);
+
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// 레이드 히스토리 조회 (최근 N개)
+    /// </summary>
+    public async Task<List<Models.EftRaidInfo>> GetRaidHistoryAsync(int limit = 100, Models.RaidType? raidType = null, string? mapKey = null)
+    {
+        await InitializeAsync();
+
+        var result = new List<Models.EftRaidInfo>();
+
+        var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var whereConditions = new List<string>();
+        if (raidType.HasValue)
+            whereConditions.Add("RaidType = @raidType");
+        if (!string.IsNullOrEmpty(mapKey))
+            whereConditions.Add("MapKey = @mapKey");
+
+        var whereClause = whereConditions.Count > 0 ? $"WHERE {string.Join(" AND ", whereConditions)}" : "";
+
+        var sql = $@"
+            SELECT RaidId, SessionId, ShortId, ProfileId, RaidType, GameMode,
+                   MapName, MapKey, ServerIp, ServerPort, IsParty, PartyLeaderAccountId,
+                   StartTime, EndTime, Rtt, PacketLoss, PacketsSent, PacketsReceived
+            FROM RaidHistory
+            {whereClause}
+            ORDER BY StartTime DESC
+            LIMIT @limit";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@limit", limit);
+        if (raidType.HasValue)
+            cmd.Parameters.AddWithValue("@raidType", (int)raidType.Value);
+        if (!string.IsNullOrEmpty(mapKey))
+            cmd.Parameters.AddWithValue("@mapKey", mapKey);
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            var raid = new Models.EftRaidInfo
+            {
+                RaidId = reader.IsDBNull(0) ? null : reader.GetString(0),
+                SessionId = reader.IsDBNull(1) ? null : reader.GetString(1),
+                ShortId = reader.IsDBNull(2) ? null : reader.GetString(2),
+                ProfileId = reader.IsDBNull(3) ? null : reader.GetString(3),
+                RaidType = (Models.RaidType)reader.GetInt32(4),
+                GameMode = (Models.GameMode)reader.GetInt32(5),
+                MapName = reader.IsDBNull(6) ? null : reader.GetString(6),
+                MapKey = reader.IsDBNull(7) ? null : reader.GetString(7),
+                ServerIp = reader.IsDBNull(8) ? null : reader.GetString(8),
+                ServerPort = reader.GetInt32(9),
+                IsParty = reader.GetInt32(10) == 1,
+                PartyLeaderAccountId = reader.IsDBNull(11) ? null : reader.GetString(11),
+                StartTime = reader.IsDBNull(12) ? null : DateTime.Parse(reader.GetString(12)),
+                EndTime = reader.IsDBNull(13) ? null : DateTime.Parse(reader.GetString(13)),
+                Rtt = reader.IsDBNull(14) ? null : reader.GetDouble(14),
+                PacketLoss = reader.IsDBNull(15) ? null : reader.GetDouble(15),
+                PacketsSent = reader.IsDBNull(16) ? null : reader.GetInt64(16),
+                PacketsReceived = reader.IsDBNull(17) ? null : reader.GetInt64(17)
+            };
+            result.Add(raid);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 레이드 통계 조회
+    /// </summary>
+    public async Task<(int TotalRaids, int PmcRaids, int ScavRaids, int PartyRaids)> GetRaidStatisticsAsync(DateTime? since = null)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath};Mode=ReadOnly";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var whereClause = since.HasValue ? "WHERE StartTime >= @since" : "";
+
+        var sql = $@"
+            SELECT
+                COUNT(*) as TotalRaids,
+                SUM(CASE WHEN RaidType = 1 THEN 1 ELSE 0 END) as PmcRaids,
+                SUM(CASE WHEN RaidType = 2 THEN 1 ELSE 0 END) as ScavRaids,
+                SUM(CASE WHEN IsParty = 1 THEN 1 ELSE 0 END) as PartyRaids
+            FROM RaidHistory
+            {whereClause}";
+
+        await using var cmd = new SqliteCommand(sql, connection);
+        if (since.HasValue)
+            cmd.Parameters.AddWithValue("@since", since.Value.ToString("o"));
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        if (await reader.ReadAsync())
+        {
+            return (
+                reader.GetInt32(0),
+                reader.GetInt32(1),
+                reader.GetInt32(2),
+                reader.GetInt32(3)
+            );
+        }
+
+        return (0, 0, 0, 0);
+    }
+
+    /// <summary>
+    /// 오래된 레이드 히스토리 삭제
+    /// </summary>
+    public async Task CleanupRaidHistoryAsync(int keepDays = 30)
+    {
+        await InitializeAsync();
+
+        var connectionString = $"Data Source={_databasePath}";
+        await using var connection = new SqliteConnection(connectionString);
+        await connection.OpenAsync();
+
+        var cutoffDate = DateTime.Now.AddDays(-keepDays).ToString("o");
+
+        var sql = "DELETE FROM RaidHistory WHERE StartTime < @cutoff";
+        await using var cmd = new SqliteCommand(sql, connection);
+        cmd.Parameters.AddWithValue("@cutoff", cutoffDate);
+
+        var deleted = await cmd.ExecuteNonQueryAsync();
+        System.Diagnostics.Debug.WriteLine($"[UserDataDbService] Cleaned up {deleted} old raid history entries");
     }
 
     #endregion

@@ -1,242 +1,13 @@
-using System.ComponentModel;
 using System.Diagnostics;
-using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using TarkovHelper.Models;
 using TarkovHelper.Services;
 
 namespace TarkovHelper.Pages
 {
-    /// <summary>
-    /// Aggregated item view model for display with inventory tracking
-    /// </summary>
-    public class AggregatedItemViewModel : INotifyPropertyChanged
-    {
-        public string ItemId { get; set; } = string.Empty;
-        public string ItemNormalizedName { get; set; } = string.Empty;
-        public string DisplayName { get; set; } = string.Empty;
-        public string SubtitleName { get; set; } = string.Empty;
-        public Visibility SubtitleVisibility { get; set; } = Visibility.Collapsed;
-        public int QuestCount { get; set; }
-        public int QuestFIRCount { get; set; }
-        public int HideoutCount { get; set; }
-        public int HideoutFIRCount { get; set; }
-        public int TotalCount { get; set; }
-        public int TotalFIRCount { get; set; }
-        public bool FoundInRaid { get; set; }
-        public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
-
-        private BitmapImage? _iconSource;
-        public BitmapImage? IconSource
-        {
-            get => _iconSource;
-            set
-            {
-                if (_iconSource != value)
-                {
-                    _iconSource = value;
-                    OnPropertyChanged(nameof(IconSource));
-                }
-            }
-        }
-        public string? IconLink { get; set; }
-        public string? WikiLink { get; set; }
-
-        // Inventory quantities (user's owned items)
-        private int _ownedFirQuantity;
-        private int _ownedNonFirQuantity;
-
-        public int OwnedFirQuantity
-        {
-            get => _ownedFirQuantity;
-            set
-            {
-                if (_ownedFirQuantity != value)
-                {
-                    _ownedFirQuantity = value;
-                    OnPropertyChanged(nameof(OwnedFirQuantity));
-                    OnPropertyChanged(nameof(OwnedTotalQuantity));
-                    OnPropertyChanged(nameof(FulfillmentStatus));
-                    OnPropertyChanged(nameof(ProgressPercent));
-                    OnPropertyChanged(nameof(IsFulfilled));
-                    OnPropertyChanged(nameof(FulfilledVisibility));
-                    OnPropertyChanged(nameof(ItemOpacity));
-                    OnPropertyChanged(nameof(NameTextDecorations));
-                    OnPropertyChanged(nameof(OwnedDisplay));
-                }
-            }
-        }
-
-        public int OwnedNonFirQuantity
-        {
-            get => _ownedNonFirQuantity;
-            set
-            {
-                if (_ownedNonFirQuantity != value)
-                {
-                    _ownedNonFirQuantity = value;
-                    OnPropertyChanged(nameof(OwnedNonFirQuantity));
-                    OnPropertyChanged(nameof(OwnedTotalQuantity));
-                    OnPropertyChanged(nameof(FulfillmentStatus));
-                    OnPropertyChanged(nameof(ProgressPercent));
-                    OnPropertyChanged(nameof(IsFulfilled));
-                    OnPropertyChanged(nameof(FulfilledVisibility));
-                    OnPropertyChanged(nameof(ItemOpacity));
-                    OnPropertyChanged(nameof(NameTextDecorations));
-                    OnPropertyChanged(nameof(OwnedDisplay));
-                }
-            }
-        }
-
-        public int OwnedTotalQuantity => OwnedFirQuantity + OwnedNonFirQuantity;
-
-        // Fulfillment calculation
-        public ItemFulfillmentStatus FulfillmentStatus
-        {
-            get
-            {
-                if (TotalFIRCount > 0)
-                {
-                    // FIR is required
-                    if (OwnedFirQuantity >= TotalFIRCount)
-                        return ItemFulfillmentStatus.Fulfilled;
-                    if (OwnedTotalQuantity > 0)
-                        return ItemFulfillmentStatus.PartiallyFulfilled;
-                    return ItemFulfillmentStatus.NotStarted;
-                }
-                else
-                {
-                    // Non-FIR OK
-                    if (OwnedTotalQuantity >= TotalCount)
-                        return ItemFulfillmentStatus.Fulfilled;
-                    if (OwnedTotalQuantity > 0)
-                        return ItemFulfillmentStatus.PartiallyFulfilled;
-                    return ItemFulfillmentStatus.NotStarted;
-                }
-            }
-        }
-
-        public double ProgressPercent
-        {
-            get
-            {
-                if (TotalCount == 0) return 100;
-
-                if (TotalFIRCount > 0)
-                {
-                    return Math.Min(100, (double)OwnedFirQuantity / TotalFIRCount * 100);
-                }
-                else
-                {
-                    return Math.Min(100, (double)OwnedTotalQuantity / TotalCount * 100);
-                }
-            }
-        }
-
-        public bool IsFulfilled => FulfillmentStatus == ItemFulfillmentStatus.Fulfilled;
-        public Visibility FulfilledVisibility => IsFulfilled ? Visibility.Visible : Visibility.Collapsed;
-        public double ItemOpacity => IsFulfilled ? 0.5 : 1.0;
-        public TextDecorationCollection? NameTextDecorations => IsFulfilled ? TextDecorations.Strikethrough : null;
-
-        // Owned display string
-        public string OwnedDisplay
-        {
-            get
-            {
-                if (OwnedTotalQuantity == 0)
-                    return "0";
-                if (OwnedNonFirQuantity == 0)
-                    return $"{OwnedFirQuantity}F";
-                if (OwnedFirQuantity == 0)
-                    return OwnedNonFirQuantity.ToString();
-                return $"{OwnedFirQuantity}F+{OwnedNonFirQuantity}";
-            }
-        }
-
-        // Display strings for UI - shows FIR/non-FIR breakdown
-        public string QuestDisplay => QuestCount > 0 ? FormatCountDisplay(QuestCount, QuestFIRCount) : "0";
-        public string HideoutDisplay => HideoutCount > 0 ? FormatCountDisplay(HideoutCount, HideoutFIRCount) : "0";
-        public string TotalDisplay => FormatCountDisplay(TotalCount, TotalFIRCount);
-
-        private static string FormatCountDisplay(int total, int firCount)
-        {
-            if (firCount == 0)
-                return total.ToString();
-            if (firCount == total)
-                return $"{total} (FIR)";
-            // Mixed: show both FIR and non-FIR counts
-            var nonFirCount = total - firCount;
-            return $"{firCount}F+{nonFirCount}";
-        }
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-        protected void OnPropertyChanged(string propertyName) =>
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-    }
-
-    /// <summary>
-    /// Quest item source - shows which quest requires this item
-    /// </summary>
-    public class QuestItemSourceViewModel
-    {
-        public string QuestName { get; set; } = string.Empty;
-        public string TraderName { get; set; } = string.Empty;
-        public int Amount { get; set; }
-        public bool FoundInRaid { get; set; }
-        public string? WikiLink { get; set; }
-        public TarkovTask? Task { get; set; }
-        public string AmountDisplay => $"x{Amount}";
-        public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
-        public Visibility WikiButtonVisibility => Task != null ? Visibility.Visible : Visibility.Collapsed;
-
-        // Navigation identifier
-        public string QuestNormalizedName { get; set; } = string.Empty;
-
-        // Dogtag level requirement
-        public int? DogtagMinLevel { get; set; }
-        public bool HasDogtagLevel => DogtagMinLevel.HasValue;
-        public Visibility DogtagLevelVisibility => HasDogtagLevel ? Visibility.Visible : Visibility.Collapsed;
-        public string DogtagLevelDisplay => DogtagMinLevel.HasValue ? $"(Lv.{DogtagMinLevel}+)" : "";
-    }
-
-    /// <summary>
-    /// Hideout item source - shows which hideout module requires this item
-    /// </summary>
-    public class HideoutItemSourceViewModel
-    {
-        public string ModuleName { get; set; } = string.Empty;
-        public int Level { get; set; }
-        public int Amount { get; set; }
-        public bool FoundInRaid { get; set; }
-        public string LevelDisplay => $"Level {Level}";
-        public string AmountDisplay => $"x{Amount}";
-        public Visibility FirVisibility => FoundInRaid ? Visibility.Visible : Visibility.Collapsed;
-
-        // Navigation identifier
-        public string StationId { get; set; } = string.Empty;
-    }
-
-    /// <summary>
-    /// Quest item aggregate for internal processing
-    /// </summary>
-    internal class QuestItemAggregate
-    {
-        public string ItemId { get; set; } = string.Empty;
-        public string ItemName { get; set; } = string.Empty;
-        public string? ItemNameKo { get; set; }
-        public string? ItemNameJa { get; set; }
-        public string ItemNormalizedName { get; set; } = string.Empty;
-        public string? IconLink { get; set; }
-        public string? WikiLink { get; set; }
-        public int QuestCount { get; set; }
-        public int QuestFIRCount { get; set; }
-        public bool FoundInRaid { get; set; }
-    }
-
     public partial class ItemsPage : UserControl
     {
         private readonly LocalizationService _loc = LocalizationService.Instance;
@@ -357,9 +128,20 @@ namespace TarkovHelper.Pages
             if (_isDataLoaded && _needsRefreshOnLoad)
             {
                 _needsRefreshOnLoad = false;
+
+                // Save current selection before reload (may have been set by NavigateToItem)
+                var savedSelection = _selectedItemId;
+
                 await LoadItemsAsync();
                 ApplyFilters();
                 _ = LoadImagesInBackgroundAsync();
+
+                // Restore selection if there was one (fixes cross-tab navigation after tab switch)
+                if (!string.IsNullOrEmpty(savedSelection))
+                {
+                    SelectItemInternal(savedSelection);
+                }
+
                 return;
             }
 
@@ -940,24 +722,24 @@ namespace TarkovHelper.Pages
         }
 
         /// <summary>
-        /// Select an item by its normalized name (for cross-tab navigation)
+        /// Select an item by its ID (for cross-tab navigation)
         /// </summary>
-        public void SelectItem(string itemNormalizedName)
+        public void SelectItem(string itemId)
         {
             // If data is not loaded yet, save for later
             if (!_isDataLoaded)
             {
-                _pendingItemSelection = itemNormalizedName;
+                _pendingItemSelection = itemId;
                 return;
             }
 
-            SelectItemInternal(itemNormalizedName);
+            SelectItemInternal(itemId);
         }
 
         /// <summary>
         /// Internal method to select an item (called when data is ready)
         /// </summary>
-        private void SelectItemInternal(string itemNormalizedName)
+        private void SelectItemInternal(string itemId)
         {
             // Prevent SelectionChanged from interfering during navigation
             _isInitializing = true;
@@ -970,10 +752,10 @@ namespace TarkovHelper.Pages
                 // Apply filters to update the list
                 ApplyFilters();
 
-                // Find the item view model from the filtered list (ItemsSource)
+                // Find the item view model from the filtered list by ItemId
                 var filteredItems = LstItems.ItemsSource as IEnumerable<AggregatedItemViewModel>;
                 var itemVm = filteredItems?.FirstOrDefault(vm =>
-                    string.Equals(vm.ItemNormalizedName, itemNormalizedName, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(vm.ItemId, itemId, StringComparison.OrdinalIgnoreCase));
 
                 if (itemVm == null) return;
 
@@ -990,7 +772,7 @@ namespace TarkovHelper.Pages
 
                 // Update state and detail panel directly
                 _selectedItem = itemVm;
-                _selectedItemNormalizedName = itemVm.ItemNormalizedName;
+                _selectedItemId = itemVm.ItemId;
                 ShowItemDetail(itemVm);
 
                 // Focus the list to show selection highlight
@@ -1038,6 +820,16 @@ namespace TarkovHelper.Pages
 
             TxtSelectItem.Visibility = Visibility.Collapsed;
             DetailPanel.Visibility = Visibility.Visible;
+
+            // Load icon if not loaded yet
+            if (itemVm.IconSource == null && !string.IsNullOrEmpty(itemVm.ItemId))
+            {
+                var icon = _imageCache.GetLocalItemIcon(itemVm.ItemId);
+                if (icon != null)
+                {
+                    itemVm.IconSource = icon;
+                }
+            }
 
             // Populate header
             TxtDetailName.Text = itemVm.DisplayName;
@@ -1115,24 +907,24 @@ namespace TarkovHelper.Pages
         }
 
         private AggregatedItemViewModel? _selectedItem;
-        private string? _selectedItemNormalizedName;
+        private string? _selectedItemId;
 
         private void LstItems_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isInitializing) return;
 
             _selectedItem = LstItems.SelectedItem as AggregatedItemViewModel;
-            _selectedItemNormalizedName = _selectedItem?.ItemNormalizedName;
+            _selectedItemId = _selectedItem?.ItemId;
             UpdateDetailPanel();
         }
 
         private void UpdateDetailPanel()
         {
             // If there was a previously selected item, try to find it again after language change
-            if (_selectedItem == null && !string.IsNullOrEmpty(_selectedItemNormalizedName))
+            if (_selectedItem == null && !string.IsNullOrEmpty(_selectedItemId))
             {
                 _selectedItem = _allItemViewModels.FirstOrDefault(vm =>
-                    string.Equals(vm.ItemNormalizedName, _selectedItemNormalizedName, StringComparison.OrdinalIgnoreCase));
+                    string.Equals(vm.ItemId, _selectedItemId, StringComparison.OrdinalIgnoreCase));
             }
 
             if (_selectedItem == null)
@@ -1144,6 +936,16 @@ namespace TarkovHelper.Pages
 
             TxtSelectItem.Visibility = Visibility.Collapsed;
             DetailPanel.Visibility = Visibility.Visible;
+
+            // Load icon if not loaded yet
+            if (_selectedItem.IconSource == null && !string.IsNullOrEmpty(_selectedItem.ItemId))
+            {
+                var icon = _imageCache.GetLocalItemIcon(_selectedItem.ItemId);
+                if (icon != null)
+                {
+                    _selectedItem.IconSource = icon;
+                }
+            }
 
             // Populate header
             TxtDetailName.Text = _selectedItem.DisplayName;

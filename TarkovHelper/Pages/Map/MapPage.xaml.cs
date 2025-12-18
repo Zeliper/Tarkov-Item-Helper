@@ -15,6 +15,7 @@ using TarkovHelper.Models.Map;
 using TarkovHelper.Services;
 using TarkovHelper.Services.Logging;
 using TarkovHelper.Services.Map;
+using TarkovHelper.Pages.Map.Components;
 using LegacyMapConfig = TarkovHelper.Models.Map.MapConfig;
 using SvgStylePreprocessor = TarkovHelper.Services.Map.SvgStylePreprocessor;
 
@@ -47,17 +48,14 @@ public partial class MapPage : UserControl
     private static readonly double[] ZoomPresets = { 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0 };
 
     // 퀘스트 마커 관련 필드
-    private readonly List<FrameworkElement> _questMarkerElements = new();
     private List<TaskObjectiveWithLocation> _currentMapObjectives = new();
     private bool _showQuestMarkers = true;
     private QuestMarkerStyle _questMarkerStyle = QuestMarkerStyle.DefaultWithName;
     private double _questNameTextSize = 12.0;
     private TaskObjectiveWithLocation? _selectedObjective;
-    private FrameworkElement? _selectedMarkerElement;
 
     // 탈출구 마커 관련 필드
     private readonly ExtractService _extractService = ExtractService.Instance;
-    private readonly List<FrameworkElement> _extractMarkerElements = new();
     private bool _showExtractMarkers = true;
     private bool _showPmcExtracts = true;
     private bool _showScavExtracts = true;
@@ -65,18 +63,17 @@ public partial class MapPage : UserControl
     private double _extractNameTextSize = 10.0;
     private bool _hideCompletedObjectives = true;
 
-    // 로그 맵 감시 서비스 (자동 맵 전환용)
-    private readonly LogMapWatcherService _logMapWatcher = LogMapWatcherService.Instance;
+    // EFT 레이드 이벤트 서비스 (자동 맵 전환 및 레이드 감지용)
+    private readonly EftRaidEventService _raidEventService = EftRaidEventService.Instance;
+
+    // 맵별 줌 레벨 캐시 (DB 접근 최소화)
+    private readonly Dictionary<string, double> _mapZoomLevelCache = new(StringComparer.OrdinalIgnoreCase);
 
     // 퀘스트 드로어 필터링 옵션
     private string _drawerStatusFilter = "All";
     private string _drawerTypeFilter = "All";
     private bool _drawerCurrentMapOnly = true;  // XAML 기본값과 일치
     private bool _drawerGroupByQuest = true;    // XAML 기본값과 일치
-
-    // 겹치는 마커 그룹 관련
-    private readonly List<FrameworkElement> _groupedMarkerElements = new();
-    private Popup? _markerGroupPopup;
 
     // 보정 모드 관련 필드
     private readonly MapCalibrationService _calibrationService = MapCalibrationService.Instance;
@@ -91,6 +88,11 @@ public partial class MapPage : UserControl
 
     // 층 전환 관련 필드
     private string? _currentFloorId;
+
+    // 리팩터링된 컴포넌트들
+    private MapQuestMarkerManager? _questMarkerManager;
+    private MapExtractMarkerManager? _extractMarkerManager;
+    private MapCalibrationController? _calibrationController;
 
     public MapPage()
     {
@@ -131,6 +133,62 @@ public partial class MapPage : UserControl
         CmbZoomLevel.Text = "100%";
     }
 
+    /// <summary>
+    /// 리팩터링된 컴포넌트들을 초기화합니다.
+    /// </summary>
+    private void InitializeComponents()
+    {
+        if (_trackerService == null) return;
+
+        // MapQuestMarkerManager 초기화
+        _questMarkerManager = new MapQuestMarkerManager(
+            QuestMarkersContainer,
+            _trackerService,
+            _objectiveService,
+            _progressService,
+            _loc);
+        _questMarkerManager.ObjectiveSelected += OnObjectiveSelectedFromManager;
+        _questMarkerManager.FloorChangeRequested += OnFloorChangeRequestedFromManager;
+        _questMarkerManager.StatusUpdated += msg => Dispatcher.Invoke(() => TxtStatus.Text = msg);
+
+        // MapExtractMarkerManager 초기화
+        _extractMarkerManager = new MapExtractMarkerManager(
+            ExtractMarkersContainer,
+            _trackerService,
+            _extractService,
+            _loc);
+        _extractMarkerManager.CalibrationMarkerSetup += OnCalibrationMarkerSetup;
+
+        // MapCalibrationController 초기화
+        _calibrationController = new MapCalibrationController(
+            ExtractMarkersContainer,
+            _trackerService,
+            _calibrationService);
+        _calibrationController.StatusUpdated += msg => Dispatcher.Invoke(() => TxtStatus.Text = msg);
+        _calibrationController.CalibrationCompleted += OnCalibrationCompleted;
+    }
+
+    private void OnObjectiveSelectedFromManager(object? sender, TaskObjectiveWithLocation objective)
+    {
+        _selectedObjective = objective;
+        ShowQuestDrawer(objective);
+    }
+
+    private void OnFloorChangeRequestedFromManager(object? sender, TaskObjectiveWithLocation objective)
+    {
+        SelectFloorForObjective(objective);
+    }
+
+    private void OnCalibrationMarkerSetup(FrameworkElement marker, MapExtract extract)
+    {
+        _calibrationController?.SetupMarkerForCalibration(marker, extract);
+    }
+
+    private void OnCalibrationCompleted(object? sender, EventArgs e)
+    {
+        RefreshExtractMarkers();
+    }
+
     private async void MapTrackerPage_Loaded(object sender, RoutedEventArgs e)
     {
         try
@@ -140,10 +198,14 @@ public partial class MapPage : UserControl
             TrailPath.Points.Clear();
 
             LoadSettings();
+
+            // 리팩터링된 컴포넌트 초기화
+            InitializeComponents();
+
             PopulateMapComboBox();
 
-            // 로그 맵 감시 시작 (자동 맵 전환용) - RestoreMapState 전에 호출하여 마지막 플레이 맵 우선
-            StartLogMapWatching();
+            // 레이드 이벤트 모니터링 시작 (자동 맵 전환 및 레이드 감지용)
+            StartRaidEventMonitoring();
 
             // 로그에서 맵이 감지되지 않은 경우에만 저장된 맵 상태 복원
             RestoreMapState();
@@ -203,8 +265,8 @@ public partial class MapPage : UserControl
         // 자동 Tracking 중지 (다른 탭으로 이동 시)
         StopAutoTracking();
 
-        // 로그 맵 감시 중지
-        StopLogMapWatching();
+        // 레이드 이벤트 모니터링 중지
+        StopRaidEventMonitoring();
     }
 
     private void SaveMapState()
@@ -460,8 +522,9 @@ public partial class MapPage : UserControl
     }
 
     /// <summary>
-    /// Y 좌표(높이)를 기반으로 층을 자동 전환합니다.
-    /// DB의 MapFloorLocations 테이블에 설정된 Y 범위를 사용합니다.
+    /// X, Y, Z 좌표를 기반으로 층을 자동 전환합니다.
+    /// DB의 MapFloorLocations 테이블에 설정된 범위를 사용합니다.
+    /// XZ 범위가 설정된 영역은 해당 영역 내에서만 층이 전환됩니다.
     /// </summary>
     private void TryAutoSwitchFloor(ScreenPosition position)
     {
@@ -472,13 +535,15 @@ public partial class MapPage : UserControl
         if (CmbFloorSelect.Visibility != Visibility.Visible)
             return;
 
-        // 원본 EFT 좌표에서 Y(높이) 가져오기
+        // 원본 EFT 좌표에서 X, Y, Z 가져오기
         var originalPos = position.OriginalPosition;
         if (originalPos == null)
             return;
 
-        // FloorDetectionService로 층 감지
-        var detectedFloorId = FloorDetectionService.Instance.DetectFloor(_currentMapKey, originalPos.Y);
+        // FloorDetectionService로 층 감지 (X, Y, Z 좌표 모두 사용)
+        // Z가 null인 경우 0으로 처리 (XZ 범위 체크 시 영향 없음)
+        var detectedFloorId = FloorDetectionService.Instance.DetectFloor(
+            _currentMapKey, originalPos.X, originalPos.Y, originalPos.Z ?? 0);
         // 어떤 Boundary에도 해당하지 않으면 main 층으로 기본 설정
         if (string.IsNullOrEmpty(detectedFloorId))
             detectedFloorId = "main";
@@ -557,67 +622,240 @@ public partial class MapPage : UserControl
     }
 
     /// <summary>
-    /// 로그 맵 감시를 시작합니다 (자동 맵 전환용).
+    /// 레이드 이벤트 모니터링을 시작합니다 (자동 맵 전환 및 레이드 감지용).
     /// </summary>
-    private void StartLogMapWatching()
+    private void StartRaidEventMonitoring()
     {
         // 이벤트 구독
-        _logMapWatcher.MapChanged += OnLogMapChanged;
+        _raidEventService.RaidEvent += OnRaidEvent;
 
         // Settings에서 설정된 로그 폴더 경로 사용
         var logFolderPath = SettingsService.Instance.LogFolderPath;
-        _logMapWatcher.StartWatching(logFolderPath);
+        _raidEventService.StartMonitoring(logFolderPath);
     }
 
     /// <summary>
-    /// 로그 맵 감시를 중지합니다.
+    /// 레이드 이벤트 모니터링을 중지합니다.
     /// </summary>
-    private void StopLogMapWatching()
+    private void StopRaidEventMonitoring()
     {
         // 이벤트 구독 해제
-        _logMapWatcher.MapChanged -= OnLogMapChanged;
+        _raidEventService.RaidEvent -= OnRaidEvent;
 
-        // 로그 감시 중지
-        _logMapWatcher.StopWatching();
+        // 모니터링 중지
+        _raidEventService.StopMonitoring();
     }
 
     /// <summary>
-    /// 로그에서 맵 변경이 감지되었을 때 호출됩니다.
-    /// 자동으로 맵을 전환하고 Trail을 초기화합니다.
+    /// 레이드 이벤트가 발생했을 때 호출됩니다.
+    /// RaidStarted: 맵 자동 전환, 중앙 정렬, 맵별 줌 레벨 적용
+    /// RaidEnded/Disconnected: Trail 초기화
     /// </summary>
-    private void OnLogMapChanged(object? sender, MapChangedEventArgs e)
+    private void OnRaidEvent(object? sender, EftRaidEventArgs e)
     {
         Dispatcher.Invoke(() =>
         {
-            // 현재 맵과 같으면 스킵
-            if (string.Equals(_currentMapKey, e.NewMapKey, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            // 맵 콤보박스에서 해당 맵 찾기
-            for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+            switch (e.EventType)
             {
-                if (CmbMapSelect.Items[i] is ComboBoxItem item &&
-                    string.Equals(item.Tag as string, e.NewMapKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    // 새 맵 시작이므로 Trail 먼저 초기화 (맵 전환 전에)
-                    _trackerService?.ClearTrail();
-                    TrailPath.Points.Clear();
-                    PlayerMarker.Visibility = Visibility.Collapsed;
-                    PlayerDot.Visibility = Visibility.Collapsed;
-                    TxtCoordinates.Text = "--";
-                    TxtLastUpdateTime.Text = "--";
-
-                    // 맵 선택 변경 (이로 인해 CmbMapSelect_SelectionChanged가 호출됨)
-                    CmbMapSelect.SelectedIndex = i;
-
-                    // 로그에서 맵 감지 시 100% 배율로 리셋
-                    SetZoom(1.0);
-
-                    TxtStatus.Text = $"맵 감지: {e.NewMapKey}";
+                case EftRaidEventType.RaidStarted:
+                    HandleRaidStarted(e);
                     break;
-                }
+
+                case EftRaidEventType.RaidEnded:
+                case EftRaidEventType.Disconnected:
+                    HandleRaidEnded(e);
+                    break;
             }
         });
+    }
+
+    /// <summary>
+    /// 레이드 시작 시 맵 자동 전환, 중앙 정렬, 맵별 줌 레벨 적용, Extraction 자동 스위칭
+    /// </summary>
+    private void HandleRaidStarted(EftRaidEventArgs e)
+    {
+        var mapKey = e.RaidInfo?.MapKey;
+        if (string.IsNullOrEmpty(mapKey))
+            return;
+
+        var raidType = e.RaidInfo?.RaidType ?? RaidType.Unknown;
+
+        // PMC/SCAV에 따른 Extraction 자동 스위칭
+        ApplyRaidTypeExtracts(raidType);
+
+        // 현재 맵과 같으면 Trail만 초기화
+        if (string.Equals(_currentMapKey, mapKey, StringComparison.OrdinalIgnoreCase))
+        {
+            ClearTrailAndMarkers();
+            var raidTypeStr = raidType == RaidType.PMC ? "PMC" : "SCAV";
+            TxtStatus.Text = $"레이드 시작: {mapKey} ({raidTypeStr})";
+            return;
+        }
+
+        // 맵 콤보박스에서 해당 맵 찾기
+        for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+        {
+            if (CmbMapSelect.Items[i] is ComboBoxItem item &&
+                string.Equals(item.Tag as string, mapKey, StringComparison.OrdinalIgnoreCase))
+            {
+                // 현재 맵의 줌 레벨 저장 (맵 전환 전에)
+                if (!string.IsNullOrEmpty(_currentMapKey))
+                {
+                    SaveMapZoomLevel(_currentMapKey, _zoomLevel);
+                }
+
+                // Trail 초기화
+                ClearTrailAndMarkers();
+
+                // 맵 선택 변경 (이로 인해 CmbMapSelect_SelectionChanged가 호출됨)
+                CmbMapSelect.SelectedIndex = i;
+
+                // 해당 맵의 저장된 줌 레벨 적용
+                var savedZoom = LoadMapZoomLevel(mapKey);
+                SetZoom(savedZoom);
+
+                // 맵을 중앙으로 이동
+                CenterMapInView();
+
+                var raidTypeStr = raidType == RaidType.PMC ? "PMC" : "SCAV";
+                TxtStatus.Text = $"레이드 시작: {mapKey} ({raidTypeStr})";
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// RaidType에 따라 Extraction 표시를 자동으로 스위칭합니다.
+    /// PMC: PMC Extracts + Shared 표시, SCAV Extracts 숨김
+    /// SCAV: SCAV Extracts 표시, PMC Extracts 숨김 (Shared는 PMC 설정을 따름)
+    /// </summary>
+    private void ApplyRaidTypeExtracts(RaidType raidType)
+    {
+        bool showPmc, showScav;
+
+        switch (raidType)
+        {
+            case RaidType.PMC:
+                showPmc = true;
+                showScav = false;
+                break;
+            case RaidType.Scav:
+                showPmc = false;
+                showScav = true;
+                break;
+            default:
+                // Unknown인 경우 둘 다 표시
+                showPmc = true;
+                showScav = true;
+                break;
+        }
+
+        // 내부 상태 업데이트
+        _showPmcExtracts = showPmc;
+        _showScavExtracts = showScav;
+
+        // UI 체크박스 업데이트 (이벤트 트리거 방지)
+        ChkShowPmcExtracts.Checked -= ChkExtractFilter_Changed;
+        ChkShowPmcExtracts.Unchecked -= ChkExtractFilter_Changed;
+        ChkShowScavExtracts.Checked -= ChkExtractFilter_Changed;
+        ChkShowScavExtracts.Unchecked -= ChkExtractFilter_Changed;
+
+        ChkShowPmcExtracts.IsChecked = showPmc;
+        ChkShowScavExtracts.IsChecked = showScav;
+
+        ChkShowPmcExtracts.Checked += ChkExtractFilter_Changed;
+        ChkShowPmcExtracts.Unchecked += ChkExtractFilter_Changed;
+        ChkShowScavExtracts.Checked += ChkExtractFilter_Changed;
+        ChkShowScavExtracts.Unchecked += ChkExtractFilter_Changed;
+
+        // ExtractMarkerManager에 설정 적용
+        if (_extractMarkerManager != null)
+        {
+            _extractMarkerManager.SetShowPmcExtracts(showPmc);
+            _extractMarkerManager.SetShowScavExtracts(showScav);
+        }
+
+        // 마커 새로고침
+        RefreshExtractMarkers();
+    }
+
+    /// <summary>
+    /// 레이드 종료 시 Trail 초기화
+    /// </summary>
+    private void HandleRaidEnded(EftRaidEventArgs e)
+    {
+        ClearTrailAndMarkers();
+
+        var mapKey = e.RaidInfo?.MapKey ?? _currentMapKey;
+        var duration = e.RaidInfo?.Duration;
+        var durationStr = duration.HasValue ? $" ({duration.Value.Minutes}분 {duration.Value.Seconds}초)" : "";
+        TxtStatus.Text = $"레이드 종료: {mapKey}{durationStr}";
+    }
+
+    /// <summary>
+    /// Trail과 플레이어 마커를 초기화합니다.
+    /// </summary>
+    private void ClearTrailAndMarkers()
+    {
+        _trackerService?.ClearTrail();
+        TrailPath.Points.Clear();
+        PlayerMarker.Visibility = Visibility.Collapsed;
+        PlayerDot.Visibility = Visibility.Collapsed;
+        TxtCoordinates.Text = "--";
+        TxtLastUpdateTime.Text = "--";
+    }
+
+    /// <summary>
+    /// 특정 맵의 줌 레벨을 DB에 저장합니다.
+    /// </summary>
+    private void SaveMapZoomLevel(string mapKey, double zoomLevel)
+    {
+        _mapZoomLevelCache[mapKey] = zoomLevel;
+
+        // 백그라운드에서 DB에 저장
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var settingKey = $"map.zoomLevel.{mapKey}";
+                await UserDataDbService.Instance.SetSettingAsync(settingKey, zoomLevel.ToString("F2"));
+            }
+            catch
+            {
+                // 저장 실패 시 무시
+            }
+        });
+    }
+
+    /// <summary>
+    /// 특정 맵의 저장된 줌 레벨을 로드합니다.
+    /// </summary>
+    private double LoadMapZoomLevel(string mapKey)
+    {
+        // 캐시에서 먼저 확인
+        if (_mapZoomLevelCache.TryGetValue(mapKey, out var cachedZoom))
+        {
+            return cachedZoom;
+        }
+
+        // DB에서 로드
+        try
+        {
+            var settingKey = $"map.zoomLevel.{mapKey}";
+            var value = UserDataDbService.Instance.GetSetting(settingKey);
+            if (!string.IsNullOrEmpty(value) && double.TryParse(value, out var zoom))
+            {
+                _mapZoomLevelCache[mapKey] = zoom;
+                return zoom;
+            }
+        }
+        catch
+        {
+            // 로드 실패 시 무시
+        }
+
+        // 기본값 1.0 (100%)
+        return 1.0;
     }
 
     #endregion
@@ -1422,57 +1660,18 @@ public partial class MapPage : UserControl
     {
         var inverseScale = 1.0 / _zoomLevel;
 
-        // 퀘스트 마커 업데이트
-        foreach (var marker in _questMarkerElements)
+        // 컴포넌트를 통해 퀘스트 마커 스케일 업데이트
+        if (_questMarkerManager != null)
         {
-            if (marker is Canvas canvas)
-            {
-                // Area 마커인 경우 내부 centerCanvas만 역스케일 적용
-                if (canvas.Tag is AreaMarkerTag)
-                {
-                    // container 자체는 역스케일 적용 안 함 (Polygon이 맵과 함께 줌되어야 함)
-                    // 내부 centerCanvas 찾아서 역스케일 적용
-                    foreach (var child in canvas.Children)
-                    {
-                        if (child is Canvas centerCanvas && centerCanvas.Tag is TaskObjectiveWithLocation)
-                        {
-                            centerCanvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-                        }
-                    }
-                }
-                else
-                {
-                    // 일반 마커는 전체 역스케일 적용
-                    canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-                }
-            }
+            _questMarkerManager.SetZoomLevel(_zoomLevel);
+            _questMarkerManager.UpdateMarkerScales();
         }
 
-        // 탈출구 마커 업데이트
-        foreach (var marker in _extractMarkerElements)
+        // 컴포넌트를 통해 탈출구 마커 스케일 업데이트
+        if (_extractMarkerManager != null)
         {
-            if (marker is Canvas canvas)
-            {
-                canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-            }
-        }
-
-        // 그룹 마커 업데이트
-        foreach (var marker in _groupedMarkerElements)
-        {
-            if (marker is Canvas canvas)
-            {
-                canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-            }
-        }
-
-        // 이름을 표시하는 스타일일 때 겹침 재계산
-        var showName = _questMarkerStyle == QuestMarkerStyle.DefaultWithName ||
-                       _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
-        if (showName)
-        {
-            // 줌 변경 후 레이아웃 업데이트가 필요할 수 있음
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, DetectAndGroupOverlappingMarkers);
+            _extractMarkerManager.SetZoomLevel(_zoomLevel);
+            _extractMarkerManager.UpdateMarkerScales();
         }
 
         // 플레이어 마커 업데이트
@@ -1695,546 +1894,20 @@ public partial class MapPage : UserControl
 
     private void RefreshQuestMarkers()
     {
-        if (string.IsNullOrEmpty(_currentMapKey)) return;
-        if (!_objectiveService.IsLoaded) return;
-
-        // 기존 마커 제거
-        ClearQuestMarkers();
-
-        if (!_showQuestMarkers) return;
-
-        // 맵 설정 가져오기
-        var config = _trackerService?.GetMapConfig(_currentMapKey);
-        if (config == null) return;
-
-        // 현재 맵의 활성 퀘스트 목표 가져오기 (별칭 포함하여 검색)
-        var mapNamesToSearch = new List<string> { _currentMapKey };
-        if (config.Aliases != null)
-        {
-            mapNamesToSearch.AddRange(config.Aliases);
-        }
-        // 표시 이름도 추가
-        if (!string.IsNullOrEmpty(config.DisplayName))
-        {
-            mapNamesToSearch.Add(config.DisplayName);
-        }
-
-        _currentMapObjectives = new List<TaskObjectiveWithLocation>();
-        foreach (var mapName in mapNamesToSearch)
-        {
-            var objectives = _objectiveService.GetActiveObjectivesForMap(mapName, _progressService);
-            foreach (var obj in objectives)
-            {
-                if (!_currentMapObjectives.Any(o => o.ObjectiveId == obj.ObjectiveId))
-                {
-                    _currentMapObjectives.Add(obj);
-                }
-            }
-        }
-
-        TxtStatus.Text = $"Found {_currentMapObjectives.Count} active objectives for {_currentMapKey}";
-
-        foreach (var objective in _currentMapObjectives)
-        {
-            // ObjectiveId 기반으로 완료 상태 확인 (동일 설명 목표 개별 추적)
-            var isCompleted = _progressService.IsObjectiveCompletedById(objective.ObjectiveId);
-            objective.IsCompleted = isCompleted;
-
-            // 완료된 목표 숨기기 설정이 활성화되어 있으면 스킵
-            if (_hideCompletedObjectives && isCompleted)
-                continue;
-
-            // 현재 맵에 해당하는 위치만 필터링
-            var locationsOnCurrentMap = objective.Locations
-                .Where(loc => IsLocationOnCurrentMap(loc, config))
-                .ToList();
-
-            foreach (var location in locationsOnCurrentMap)
-            {
-                // 층 정보 확인: 현재 선택된 층과 목표 위치의 층 비교
-                var isOnCurrentFloor = IsMarkerOnCurrentFloor(location.FloorId);
-
-                // Area(Polygon) 표시: Outline이 있으면 다각형으로 그리기
-                if (location.Outline != null && location.Outline.Count >= 3)
-                {
-                    var areaMarker = CreateAreaMarker(objective, location, config, isOnCurrentFloor);
-                    _questMarkerElements.Add(areaMarker);
-                    QuestMarkersContainer.Children.Add(areaMarker);
-                }
-                else
-                {
-                    // 단일 포인트 마커
-                    // TarkovDBEditor 방식: config.GameToScreen 직접 사용
-                    // QuestObjectiveLocation: X = game X, Y = game Z (수평면), Z = game Y (높이)
-                    var (screenX, screenY) = config.GameToScreen(location.X, location.Y);
-                    var screenPos = new ScreenPosition
-                    {
-                        MapKey = _currentMapKey!,
-                        X = screenX,
-                        Y = screenY
-                    };
-
-                    // OR Pointer 여부 확인 (location.Id에 _opt_ 포함)
-                    var isOrPointer = location.Id.Contains("_opt_");
-
-                    var marker = isOrPointer
-                        ? CreateOrPointerMarker(objective, location, screenPos, isOnCurrentFloor)
-                        : CreateQuestMarker(objective, location, screenPos, isOnCurrentFloor);
-                    _questMarkerElements.Add(marker);
-                    QuestMarkersContainer.Children.Add(marker);
-                }
-            }
-        }
-
-        // 이름을 표시하는 스타일일 때만 겹침 감지 수행
-        var showName = _questMarkerStyle == QuestMarkerStyle.DefaultWithName ||
-                       _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
-        if (showName)
-        {
-            // 레이아웃 완료 후 그룹화 수행 (Measure가 정확한 크기를 반환하도록)
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded, DetectAndGroupOverlappingMarkers);
-        }
-    }
-
-    private FrameworkElement CreateQuestMarker(TaskObjectiveWithLocation objective, QuestObjectiveLocation location, ScreenPosition screenPos, bool isOnCurrentFloor = true)
-    {
-        // 설정에서 커스텀 색상 가져오기
-        var colorHex = _trackerService?.Settings.GetMarkerColor(objective.Type) ?? objective.MarkerColor;
-        var markerColor = (Color)ColorConverter.ConvertFromString(colorHex);
-
-        // 다른 층의 마커는 색상을 흐리게 처리
-        if (!isOnCurrentFloor)
-        {
-            markerColor = Color.FromArgb(100, markerColor.R, markerColor.G, markerColor.B);
-        }
-
-        var markerBrush = new SolidColorBrush(markerColor);
-        var glowBrush = new SolidColorBrush(Color.FromArgb((byte)(isOnCurrentFloor ? 64 : 30), markerColor.R, markerColor.G, markerColor.B));
-
-        // 초록색 원 스타일용 색상
-        var greenColor = (Color)ColorConverter.ConvertFromString("#4CAF50");
-        if (!isOnCurrentFloor)
-        {
-            greenColor = Color.FromArgb(100, greenColor.R, greenColor.G, greenColor.B);
-        }
-        var greenBrush = new SolidColorBrush(greenColor);
-        var greenGlowBrush = new SolidColorBrush(Color.FromArgb((byte)(isOnCurrentFloor ? 64 : 30), greenColor.R, greenColor.G, greenColor.B));
-
-        // 설정에서 마커 크기 가져오기
-        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
-
-        // 맵별 마커 스케일 적용
-        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        var mapScale = mapConfig?.MarkerScale ?? 1.0;
-
-        var markerSize = baseMarkerSize * mapScale;
-        var glowSize = markerSize * 1.75;
-        var centerSize = markerSize * 0.875;
-
-        var canvas = new Canvas
-        {
-            Width = 0,
-            Height = 0,
-            Tag = objective
-        };
-
-        // 스타일에 따라 다르게 렌더링
-        var useGreenCircle = _questMarkerStyle == QuestMarkerStyle.GreenCircle ||
-                             _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
-        var showName = _questMarkerStyle == QuestMarkerStyle.DefaultWithName ||
-                       _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
-
-        if (useGreenCircle)
-        {
-            // 초록색 원 (테두리만)
-            var circleOuter = new Ellipse
-            {
-                Width = markerSize,
-                Height = markerSize,
-                Stroke = greenBrush,
-                StrokeThickness = 3,
-                Fill = Brushes.Transparent
-            };
-            Canvas.SetLeft(circleOuter, -markerSize / 2);
-            Canvas.SetTop(circleOuter, -markerSize / 2);
-            canvas.Children.Add(circleOuter);
-        }
-        else
-        {
-            // 기본 스타일: 외곽 글로우 + 중심 원
-            var glow = new Ellipse
-            {
-                Width = glowSize,
-                Height = glowSize,
-                Fill = glowBrush
-            };
-            Canvas.SetLeft(glow, -glowSize / 2);
-            Canvas.SetTop(glow, -glowSize / 2);
-            canvas.Children.Add(glow);
-
-            var center = new Ellipse
-            {
-                Width = centerSize,
-                Height = centerSize,
-                Fill = markerBrush,
-                Stroke = Brushes.White,
-                StrokeThickness = 2
-            };
-            Canvas.SetLeft(center, -centerSize / 2);
-            Canvas.SetTop(center, -centerSize / 2);
-            canvas.Children.Add(center);
-        }
-
-        // 완료 상태 표시 (큰 체크마크 + 취소선)
-        if (objective.IsCompleted)
-        {
-            // 완료 배경 오버레이 (반투명 회색)
-            var completedOverlay = new Ellipse
-            {
-                Width = useGreenCircle ? markerSize : glowSize,
-                Height = useGreenCircle ? markerSize : glowSize,
-                Fill = new SolidColorBrush(Color.FromArgb(180, 50, 50, 50))
-            };
-            var overlaySize = useGreenCircle ? markerSize : glowSize;
-            Canvas.SetLeft(completedOverlay, -overlaySize / 2);
-            Canvas.SetTop(completedOverlay, -overlaySize / 2);
-            canvas.Children.Add(completedOverlay);
-
-            // 큰 체크마크
-            var checkMarkSize = markerSize * 0.8;
-            var checkMark = new TextBlock
-            {
-                Text = "✓",
-                FontSize = checkMarkSize,
-                FontWeight = FontWeights.ExtraBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(76, 175, 80)) // 밝은 초록
-            };
-            // 체크마크 중앙 정렬
-            checkMark.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(checkMark, -checkMark.DesiredSize.Width / 2);
-            Canvas.SetTop(checkMark, -checkMark.DesiredSize.Height / 2);
-            canvas.Children.Add(checkMark);
-
-            // 완료된 마커는 약간 반투명
-            canvas.Opacity = 0.7;
-        }
-
-        // 퀘스트명 표시
-        Border? floorBadgeBorder = null;  // 층 배지를 별도로 관리
-        if (showName)
-        {
-            var questName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
-                ? objective.TaskNameKo
-                : objective.TaskName;
-
-            // 층 정보 가져오기
-            var floorInfo = GetFloorIndicator(location.FloorId);
-
-            // 퀘스트명과 층 배지를 함께 담는 StackPanel (수직 중앙 정렬을 위해)
-            var contentPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            // 퀘스트명 텍스트
-            var nameText = new TextBlock
-            {
-                Text = questName,
-                FontSize = _questNameTextSize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Brushes.White,
-                TextAlignment = TextAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            var nameBorder = new Border
-            {
-                Background = new SolidColorBrush(Color.FromArgb(200, 0, 0, 0)),
-                CornerRadius = new CornerRadius(3),
-                Padding = new Thickness(6, 3, 6, 3),
-                Child = nameText,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            // 텍스트 클릭 이벤트 추가
-            nameBorder.Tag = objective;
-            nameBorder.MouseLeftButtonDown += QuestMarkerText_Click;
-            nameBorder.Cursor = Cursors.Hand;
-
-            contentPanel.Children.Add(nameBorder);
-
-            // 다른 층일 때 층 배지 추가
-            if (floorInfo.HasValue)
-            {
-                var (arrow, floorText, indicatorColor) = floorInfo.Value;
-
-                // 층 배지 (화살표 + 층 표시) - 불투명하게 유지하기 위해 별도 Border
-                var floorBadgeText = new TextBlock
-                {
-                    Text = $"{arrow}{floorText}",
-                    FontSize = _questNameTextSize * 0.85,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = Brushes.White,
-                    VerticalAlignment = VerticalAlignment.Center
-                };
-
-                floorBadgeBorder = new Border
-                {
-                    Background = new SolidColorBrush(indicatorColor),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(3, 1, 3, 1),
-                    Margin = new Thickness(4, 0, 0, 0),  // 왼쪽 여백으로 간격 확보
-                    Child = floorBadgeText,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Tag = "FloorBadge"  // 식별용 태그
-                };
-
-                contentPanel.Children.Add(floorBadgeBorder);
-            }
-
-            // 전체 컨테이너 크기를 측정하여 중앙 정렬
-            contentPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            var totalWidth = contentPanel.DesiredSize.Width;
-
-            // 컨테이너를 마커 중앙 아래에 위치
-            Canvas.SetLeft(contentPanel, -totalWidth / 2);
-            Canvas.SetTop(contentPanel, markerSize / 2 + 4);
-
-            canvas.Children.Add(contentPanel);
-        }
-
-        // 위치 설정
-        Canvas.SetLeft(canvas, screenPos.X);
-        Canvas.SetTop(canvas, screenPos.Y);
-
-        // 줌에 상관없이 고정 크기 유지를 위한 역스케일 적용
-        var inverseScale = 1.0 / _zoomLevel;
-        canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-        canvas.RenderTransformOrigin = new Point(0, 0);
-
-        // 다른 층의 마커는 반투명 처리 (층 배지 제외)
-        if (!isOnCurrentFloor)
-        {
-            // canvas 전체 대신 개별 요소에 반투명 적용
-            foreach (var child in canvas.Children)
-            {
-                if (child is FrameworkElement element)
-                {
-                    // StackPanel인 경우 내부 요소들을 개별 처리
-                    if (element is StackPanel stackPanel)
-                    {
-                        foreach (var stackChild in stackPanel.Children)
-                        {
-                            if (stackChild is Border border)
-                            {
-                                // 층 배지는 불투명하게 유지
-                                if (border.Tag as string == "FloorBadge")
-                                {
-                                    border.Opacity = 1.0;
-                                }
-                                else
-                                {
-                                    border.Opacity = 0.5;
-                                }
-                            }
-                        }
-                    }
-                    // 층 배지는 불투명하게 유지
-                    else if (element is Border border && border.Tag as string == "FloorBadge")
-                    {
-                        element.Opacity = 1.0;
-                    }
-                    else
-                    {
-                        element.Opacity = 0.5;
-                    }
-                }
-            }
-        }
-
-        // 클릭 이벤트
-        canvas.MouseLeftButtonDown += QuestMarker_Click;
-        canvas.Cursor = Cursors.Hand;
-
-        // 툴팁
-        var tooltipDesc = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.DescriptionKo)
-            ? objective.DescriptionKo
-            : objective.Description;
-        var tooltipName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
-            ? objective.TaskNameKo
-            : objective.TaskName;
-        var floorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        canvas.ToolTip = $"{tooltipName}\n{tooltipDesc}{floorIndicator}";
-
-        return canvas;
-    }
-
-    /// <summary>
-    /// Area(다각형) 마커를 생성합니다. Outline이 있는 퀘스트 목표에 사용됩니다.
-    /// Polygon은 맵과 함께 줌되고, 중앙 마커/텍스트만 역스케일 적용됩니다.
-    /// </summary>
-    private FrameworkElement CreateAreaMarker(TaskObjectiveWithLocation objective, QuestObjectiveLocation location, MapConfig config, bool isOnCurrentFloor = true)
-    {
-        // 설정에서 커스텀 색상 가져오기
-        var colorHex = _trackerService?.Settings.GetMarkerColor(objective.Type) ?? objective.MarkerColor;
-        var markerColor = (Color)ColorConverter.ConvertFromString(colorHex);
-
-        // 다른 층의 마커는 색상을 흐리게 처리
-        byte alpha = isOnCurrentFloor ? (byte)60 : (byte)20;
-        byte strokeAlpha = isOnCurrentFloor ? (byte)255 : (byte)100;
-
-        // Area 마커임을 표시하는 태그
-        var areaTag = new AreaMarkerTag { Objective = objective, IsArea = true };
-
-        // 최상위 컨테이너 (역스케일 적용 안 함)
-        var container = new Canvas
-        {
-            Width = 0,
-            Height = 0,
-            Tag = areaTag
-        };
-
-        // Polygon 그리기 (맵과 함께 줌됨)
-        var polygon = new Polygon
-        {
-            Fill = new SolidColorBrush(Color.FromArgb(alpha, markerColor.R, markerColor.G, markerColor.B)),
-            Stroke = new SolidColorBrush(Color.FromArgb(strokeAlpha, markerColor.R, markerColor.G, markerColor.B)),
-            StrokeThickness = 2,
-            StrokeDashArray = new DoubleCollection { 4, 2 },
-            Tag = "AreaPolygon" // UpdateMarkerScales에서 제외하기 위한 태그
-        };
-
-        // Outline 좌표를 스크린 좌표로 변환
-        double sumX = 0, sumY = 0;
-        foreach (var point in location.Outline!)
-        {
-            var (sx, sy) = config.GameToScreen(point.X, point.Y);
-            polygon.Points.Add(new Point(sx, sy));
-            sumX += sx;
-            sumY += sy;
-        }
-
-        container.Children.Add(polygon);
-
-        // 중심점 계산
-        var centroidX = sumX / location.Outline.Count;
-        var centroidY = sumY / location.Outline.Count;
-
-        // 설정에서 마커 크기 가져오기
-        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
-        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        var mapScale = mapConfig?.MarkerScale ?? 1.0;
-        var markerSize = baseMarkerSize * mapScale;
-
-        // 중앙 마커용 캔버스 (역스케일 적용됨)
-        var centerCanvas = new Canvas
-        {
-            Width = 0,
-            Height = 0,
-            Tag = objective
-        };
-
-        // 다이아몬드 마커
-        var diamond = new Polygon
-        {
-            Fill = new SolidColorBrush(Color.FromArgb((byte)(isOnCurrentFloor ? 200 : 100), markerColor.R, markerColor.G, markerColor.B)),
-            Stroke = Brushes.White,
-            StrokeThickness = 2,
-            Points = new PointCollection
-            {
-                new Point(0, -markerSize / 2),
-                new Point(markerSize / 2, 0),
-                new Point(0, markerSize / 2),
-                new Point(-markerSize / 2, 0)
-            }
-        };
-        centerCanvas.Children.Add(diamond);
-
-        // 퀘스트명 표시
-        var showName = _questMarkerStyle == QuestMarkerStyle.DefaultWithName ||
-                       _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
-        if (showName)
-        {
-            var questName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
-                ? objective.TaskNameKo
-                : objective.TaskName;
-
-            var nameText = new TextBlock
-            {
-                Text = questName,
-                FontSize = _questNameTextSize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Brushes.White,
-                TextAlignment = TextAlignment.Center
-            };
-
-            var nameBorder = new Border
-            {
-                Background = new SolidColorBrush(Color.FromArgb(200, 0, 0, 0)),
-                CornerRadius = new CornerRadius(3),
-                Padding = new Thickness(6, 3, 6, 3),
-                Child = nameText
-            };
-
-            nameBorder.Tag = objective;
-            nameBorder.MouseLeftButtonDown += QuestMarkerText_Click;
-            nameBorder.Cursor = Cursors.Hand;
-
-            nameBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(nameBorder, -nameBorder.DesiredSize.Width / 2);
-            Canvas.SetTop(nameBorder, markerSize / 2 + 4);
-            centerCanvas.Children.Add(nameBorder);
-        }
-
-        // 완료 상태 표시
-        if (objective.IsCompleted)
-        {
-            var checkMarkSize = markerSize * 0.8;
-            var checkMark = new TextBlock
-            {
-                Text = "✓",
-                FontSize = checkMarkSize,
-                FontWeight = FontWeights.ExtraBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(76, 175, 80))
-            };
-            checkMark.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(checkMark, -checkMark.DesiredSize.Width / 2);
-            Canvas.SetTop(checkMark, -checkMark.DesiredSize.Height / 2);
-            centerCanvas.Children.Add(checkMark);
-            centerCanvas.Opacity = 0.7;
-        }
-
-        // 중앙 캔버스 위치 설정 및 역스케일 적용
-        Canvas.SetLeft(centerCanvas, centroidX);
-        Canvas.SetTop(centerCanvas, centroidY);
-        var inverseScale = 1.0 / _zoomLevel;
-        centerCanvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-        centerCanvas.RenderTransformOrigin = new Point(0, 0);
-
-        container.Children.Add(centerCanvas);
-
-        // 다른 층의 마커는 반투명 처리
-        if (!isOnCurrentFloor)
-        {
-            container.Opacity = 0.5;
-        }
-
-        // 클릭 이벤트
-        container.MouseLeftButtonDown += QuestMarker_Click;
-        container.Cursor = Cursors.Hand;
-
-        // 툴팁
-        var tooltipDesc = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.DescriptionKo)
-            ? objective.DescriptionKo
-            : objective.Description;
-        var tooltipName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
-            ? objective.TaskNameKo
-            : objective.TaskName;
-        var floorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        container.ToolTip = $"[Area] {tooltipName}\n{tooltipDesc}{floorIndicator}";
-
-        return container;
+        // 컴포넌트를 사용하여 마커 새로고침
+        if (_questMarkerManager == null) return;
+
+        // 컴포넌트 상태 동기화 (맵/층/줌 정보 필수!)
+        _questMarkerManager.SetCurrentMap(_currentMapKey);
+        _questMarkerManager.SetCurrentFloor(_currentFloorId);
+        _questMarkerManager.SetZoomLevel(_zoomLevel);
+        _questMarkerManager.SetShowQuestMarkers(_showQuestMarkers);
+        _questMarkerManager.SetQuestMarkerStyle(_questMarkerStyle);
+        _questMarkerManager.SetQuestNameTextSize(_questNameTextSize);
+        _questMarkerManager.SetHideCompletedObjectives(_hideCompletedObjectives);
+
+        // 마커 새로고침
+        _questMarkerManager.RefreshMarkers();
     }
 
     /// <summary>
@@ -2335,784 +2008,6 @@ public partial class MapPage : UserControl
     }
 
     /// <summary>
-    /// OR Pointer 마커를 생성합니다. OptionalPoints에서 생성된 위치에 사용됩니다.
-    /// </summary>
-    private FrameworkElement CreateOrPointerMarker(TaskObjectiveWithLocation objective, QuestObjectiveLocation location, ScreenPosition screenPos, bool isOnCurrentFloor = true)
-    {
-        // OR 마커는 주황색 (#FF5722)
-        var orColor = Color.FromRgb(255, 87, 34);
-
-        // 다른 층의 마커는 색상을 흐리게 처리
-        if (!isOnCurrentFloor)
-        {
-            orColor = Color.FromArgb(100, orColor.R, orColor.G, orColor.B);
-        }
-
-        var markerBrush = new SolidColorBrush(orColor);
-
-        // 설정에서 마커 크기 가져오기
-        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
-        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        var mapScale = mapConfig?.MarkerScale ?? 1.0;
-        var markerSize = baseMarkerSize * mapScale;
-
-        var canvas = new Canvas
-        {
-            Width = 0,
-            Height = 0,
-            Tag = objective
-        };
-
-        // 주황색 원형 마커
-        var orCircle = new Ellipse
-        {
-            Width = markerSize,
-            Height = markerSize,
-            Fill = markerBrush,
-            Stroke = Brushes.White,
-            StrokeThickness = 3
-        };
-        Canvas.SetLeft(orCircle, -markerSize / 2);
-        Canvas.SetTop(orCircle, -markerSize / 2);
-        canvas.Children.Add(orCircle);
-
-        // OR 인덱스 추출 (예: "_opt_1" -> 1, "_opt_0" -> 1)
-        var orIndex = 1;
-        var idxMatch = System.Text.RegularExpressions.Regex.Match(location.Id, @"_opt_(\d+)");
-        if (idxMatch.Success && int.TryParse(idxMatch.Groups[1].Value, out var parsedIdx))
-        {
-            // 0-indexed인 경우 1-indexed로 변환
-            orIndex = parsedIdx + 1;
-        }
-
-        // OR 레이블
-        var orLabel = new TextBlock
-        {
-            Text = $"OR{orIndex}",
-            FontSize = _questNameTextSize * 0.9,
-            FontWeight = FontWeights.Bold,
-            Foreground = Brushes.White
-        };
-
-        var orLabelBorder = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(200, 255, 87, 34)),
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(4, 2, 4, 2),
-            Child = orLabel
-        };
-
-        orLabelBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        Canvas.SetLeft(orLabelBorder, markerSize / 2 + 4);
-        Canvas.SetTop(orLabelBorder, -orLabelBorder.DesiredSize.Height / 2);
-        canvas.Children.Add(orLabelBorder);
-
-        // 퀘스트명 표시
-        var showName = _questMarkerStyle == QuestMarkerStyle.DefaultWithName ||
-                       _questMarkerStyle == QuestMarkerStyle.GreenCircleWithName;
-        if (showName)
-        {
-            var questName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
-                ? objective.TaskNameKo
-                : objective.TaskName;
-
-            var nameText = new TextBlock
-            {
-                Text = questName,
-                FontSize = _questNameTextSize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Brushes.White,
-                TextAlignment = TextAlignment.Center
-            };
-
-            var nameBorder = new Border
-            {
-                Background = new SolidColorBrush(Color.FromArgb(200, 0, 0, 0)),
-                CornerRadius = new CornerRadius(3),
-                Padding = new Thickness(6, 3, 6, 3),
-                Child = nameText
-            };
-
-            nameBorder.Tag = objective;
-            nameBorder.MouseLeftButtonDown += QuestMarkerText_Click;
-            nameBorder.Cursor = Cursors.Hand;
-
-            nameBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(nameBorder, -nameBorder.DesiredSize.Width / 2);
-            Canvas.SetTop(nameBorder, markerSize / 2 + 4);
-            canvas.Children.Add(nameBorder);
-        }
-
-        // 완료 상태 표시
-        if (objective.IsCompleted)
-        {
-            var checkMarkSize = markerSize * 0.8;
-            var checkMark = new TextBlock
-            {
-                Text = "✓",
-                FontSize = checkMarkSize,
-                FontWeight = FontWeights.ExtraBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(76, 175, 80))
-            };
-            checkMark.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-            Canvas.SetLeft(checkMark, -checkMark.DesiredSize.Width / 2);
-            Canvas.SetTop(checkMark, -checkMark.DesiredSize.Height / 2);
-            canvas.Children.Add(checkMark);
-            canvas.Opacity = 0.7;
-        }
-
-        // 위치 설정
-        Canvas.SetLeft(canvas, screenPos.X);
-        Canvas.SetTop(canvas, screenPos.Y);
-
-        // 줌에 상관없이 고정 크기 유지를 위한 역스케일 적용
-        var inverseScale = 1.0 / _zoomLevel;
-        canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-        canvas.RenderTransformOrigin = new Point(0, 0);
-
-        // 다른 층의 마커는 반투명 처리
-        if (!isOnCurrentFloor)
-        {
-            canvas.Opacity = 0.5;
-        }
-
-        // 클릭 이벤트
-        canvas.MouseLeftButtonDown += QuestMarker_Click;
-        canvas.Cursor = Cursors.Hand;
-
-        // 툴팁
-        var tooltipDesc = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.DescriptionKo)
-            ? objective.DescriptionKo
-            : objective.Description;
-        var tooltipName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
-            ? objective.TaskNameKo
-            : objective.TaskName;
-        var floorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        canvas.ToolTip = $"[OR{orIndex}] {tooltipName}\n{tooltipDesc}{floorIndicator}";
-
-        return canvas;
-    }
-
-    /// <summary>
-    /// 마커의 텍스트가 겹치는지 감지하고 그룹화합니다.
-    /// </summary>
-    private void DetectAndGroupOverlappingMarkers()
-    {
-        // 기존 그룹 마커 제거
-        ClearGroupedMarkers();
-
-        // 모든 텍스트 컨테이너(StackPanel)를 먼저 보이게 복원
-        foreach (var marker in _questMarkerElements)
-        {
-            if (marker is Canvas canvas)
-            {
-                ShowMarkerText(canvas);
-            }
-        }
-
-        if (_questMarkerElements.Count < 2) return;
-
-        // 마커와 텍스트 경계 정보 수집
-        var markerInfos = new List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)>();
-
-        foreach (var marker in _questMarkerElements)
-        {
-            if (marker is Canvas canvas)
-            {
-                var objective = GetObjectiveFromTag(canvas.Tag);
-                if (objective == null) continue;
-
-                // Area 마커인 경우 내부 centerCanvas에서 텍스트 찾기
-                Canvas? targetCanvas = canvas;
-                if (canvas.Tag is AreaMarkerTag)
-                {
-                    foreach (var child in canvas.Children)
-                    {
-                        if (child is Canvas innerCanvas && innerCanvas.Tag is TaskObjectiveWithLocation)
-                        {
-                            targetCanvas = innerCanvas;
-                            break;
-                        }
-                    }
-                }
-
-                // 텍스트 컨테이너 찾기 (StackPanel 또는 Border)
-                FrameworkElement? textContainer = null;
-                foreach (var child in targetCanvas.Children)
-                {
-                    // 새 방식: StackPanel (퀘스트명 + 층 배지)
-                    if (child is StackPanel stackPanel)
-                    {
-                        textContainer = stackPanel;
-                        break;
-                    }
-                    // 이전 방식 호환: 직접 Border
-                    if (child is Border border && border.Tag is TaskObjectiveWithLocation)
-                    {
-                        textContainer = border;
-                        break;
-                    }
-                }
-
-                if (textContainer != null)
-                {
-                    // 마커의 화면 위치 (Area 마커는 centerCanvas의 위치 사용)
-                    var markerX = Canvas.GetLeft(targetCanvas);
-                    var markerY = Canvas.GetTop(targetCanvas);
-
-                    // 텍스트 컨테이너의 상대 위치
-                    var textLeft = Canvas.GetLeft(textContainer);
-                    var textTop = Canvas.GetTop(textContainer);
-
-                    // 줌 레벨에 따른 역스케일 고려
-                    var textInverseScale = 1.0 / _zoomLevel;
-
-                    // 텍스트 컨테이너의 실제 크기
-                    textContainer.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-                    var textWidth = textContainer.DesiredSize.Width;
-                    var textHeight = textContainer.DesiredSize.Height;
-
-                    // 실제 화면상의 텍스트 경계 계산 (줌 적용)
-                    var bounds = new Rect(
-                        markerX + textLeft * textInverseScale,
-                        markerY + textTop * textInverseScale,
-                        textWidth * textInverseScale,
-                        textHeight * textInverseScale
-                    );
-
-                    markerInfos.Add((marker, bounds, objective));
-                }
-            }
-        }
-
-        // 겹치는 마커 그룹 찾기 (Union-Find 방식)
-        var groups = FindOverlappingGroups(markerInfos);
-
-        // 마커 크기 계산 (그룹 리스트 위치 예측용)
-        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
-        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        var mapScale = mapConfig?.MarkerScale ?? 1.0;
-        var markerSize = baseMarkerSize * mapScale;
-        var inverseScale = 1.0 / _zoomLevel;
-
-        // 2개 이상 겹치는 그룹만 처리
-        foreach (var group in groups.Where(g => g.Count >= 2).ToList())
-        {
-            // 그룹 리스트가 표시될 영역과 겹치는 텍스트를 반복적으로 추가
-            var expandedGroup = ExpandGroupToIncludeOverlappingTexts(group, markerInfos, markerSize, inverseScale);
-
-            // 마커들의 위치 정보 수집
-            var markerPositions = new List<(double X, double Y)>();
-            foreach (var info in expandedGroup)
-            {
-                if (info.Marker is Canvas c)
-                {
-                    // Area 마커의 경우 centerCanvas의 위치 사용
-                    var (posX, posY) = GetMarkerPosition(c);
-                    markerPositions.Add((posX, posY));
-                }
-            }
-
-            // 마커들의 중심 X와 가장 아래 Y 계산
-            var centerX = markerPositions.Average(p => p.X);
-            var bottomY = markerPositions.Max(p => p.Y);
-
-            // 그룹 내 각 마커의 텍스트만 숨기기 (마커 원은 그대로 유지)
-            foreach (var info in expandedGroup)
-            {
-                if (info.Marker is Canvas c)
-                {
-                    HideMarkerText(c);
-                }
-
-                // markerInfos에서 제거 (다른 그룹에서 중복 처리 방지)
-                markerInfos.RemoveAll(m => m.Objective.ObjectiveId == info.Objective.ObjectiveId);
-            }
-
-            // 텍스트 그룹 인디케이터 생성 (마커 아래에 위치)
-            var groupIndicator = CreateTextGroupIndicator(expandedGroup, centerX, bottomY);
-            _groupedMarkerElements.Add(groupIndicator);
-            QuestMarkersContainer.Children.Add(groupIndicator);
-        }
-    }
-
-    /// <summary>
-    /// 그룹 리스트가 표시될 영역과 겹치는 텍스트들을 그룹에 추가합니다.
-    /// </summary>
-    private List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> ExpandGroupToIncludeOverlappingTexts(
-        List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> initialGroup,
-        List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> allMarkers,
-        double markerSize, double inverseScale)
-    {
-        var expandedGroup = new List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)>(initialGroup);
-        var groupObjectiveIds = new HashSet<string>(initialGroup.Select(g => g.Objective.ObjectiveId));
-
-        bool changed;
-        do
-        {
-            changed = false;
-
-            // 현재 그룹의 마커 위치로 그룹 리스트 영역 계산
-            var markerPositions = expandedGroup
-                .Where(info => info.Marker is Canvas)
-                .Select(info => (Canvas.GetLeft((Canvas)info.Marker), Canvas.GetTop((Canvas)info.Marker)))
-                .ToList();
-
-            if (markerPositions.Count == 0) break;
-
-            var centerX = markerPositions.Average(p => p.Item1);
-            var bottomY = markerPositions.Max(p => p.Item2);
-
-            // 그룹 리스트의 예상 크기 계산 (항목당 약 20픽셀 높이, 최대 너비 200픽셀)
-            var estimatedListHeight = expandedGroup.Count * 20 * inverseScale;
-            var estimatedListWidth = 200 * inverseScale;
-
-            // 그룹 리스트가 표시될 영역 (마커 아래)
-            var groupListBounds = new Rect(
-                centerX - estimatedListWidth / 2,
-                bottomY + (markerSize / 2 + 4) * inverseScale,
-                estimatedListWidth,
-                estimatedListHeight
-            );
-
-            // 그룹에 포함되지 않은 마커들 중 그룹 리스트 영역과 겹치는 것 찾기
-            foreach (var marker in allMarkers.ToList())
-            {
-                if (groupObjectiveIds.Contains(marker.Objective.ObjectiveId))
-                    continue;
-
-                if (groupListBounds.IntersectsWith(marker.TextBounds))
-                {
-                    expandedGroup.Add(marker);
-                    groupObjectiveIds.Add(marker.Objective.ObjectiveId);
-                    changed = true;
-                }
-            }
-        } while (changed);
-
-        return expandedGroup;
-    }
-
-    /// <summary>
-    /// 겹치는 마커 그룹을 찾습니다 (Union-Find 알고리즘).
-    /// </summary>
-    private List<List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)>> FindOverlappingGroups(
-        List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> markerInfos)
-    {
-        var n = markerInfos.Count;
-        var parent = Enumerable.Range(0, n).ToArray();
-
-        int Find(int x)
-        {
-            if (parent[x] != x) parent[x] = Find(parent[x]);
-            return parent[x];
-        }
-
-        void Union(int x, int y)
-        {
-            var px = Find(x);
-            var py = Find(y);
-            if (px != py) parent[px] = py;
-        }
-
-        // 겹치는 마커끼리 연결
-        for (int i = 0; i < n; i++)
-        {
-            for (int j = i + 1; j < n; j++)
-            {
-                if (markerInfos[i].TextBounds.IntersectsWith(markerInfos[j].TextBounds))
-                {
-                    Union(i, j);
-                }
-            }
-        }
-
-        // 그룹화
-        var groups = new Dictionary<int, List<(FrameworkElement, Rect, TaskObjectiveWithLocation)>>();
-        for (int i = 0; i < n; i++)
-        {
-            var root = Find(i);
-            if (!groups.ContainsKey(root))
-                groups[root] = new List<(FrameworkElement, Rect, TaskObjectiveWithLocation)>();
-            groups[root].Add(markerInfos[i]);
-        }
-
-        return groups.Values.ToList();
-    }
-
-    /// <summary>
-    /// 겹치는 텍스트 그룹의 인디케이터를 생성합니다.
-    /// 마커 원은 그대로 두고 텍스트만 그룹화하여 리스트 형태로 표시합니다.
-    /// </summary>
-    private FrameworkElement CreateTextGroupIndicator(
-        List<(FrameworkElement Marker, Rect TextBounds, TaskObjectiveWithLocation Objective)> group,
-        double centerX, double bottomY)
-    {
-        var canvas = new Canvas
-        {
-            Width = 0,
-            Height = 0,
-            Tag = group.Select(g => g.Objective).ToList()
-        };
-
-        // 리스트 형태로 퀘스트 이름들을 표시하는 StackPanel
-        var stackPanel = new StackPanel
-        {
-            Orientation = Orientation.Vertical
-        };
-
-        foreach (var item in group)
-        {
-            var questName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(item.Objective.TaskNameKo)
-                ? item.Objective.TaskNameKo
-                : item.Objective.TaskName;
-
-            // StackPanel으로 이름과 층 배지를 나란히 배치
-            var itemPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Margin = new Thickness(0, 1, 0, 1)
-            };
-
-            var itemText = new TextBlock
-            {
-                Text = $"• {questName}",
-                FontSize = _questNameTextSize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = Brushes.White,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            // 완료 상태 표시
-            if (item.Objective.IsCompleted)
-            {
-                itemText.TextDecorations = TextDecorations.Strikethrough;
-                itemText.Foreground = new SolidColorBrush(Colors.LightGray);
-            }
-
-            itemPanel.Children.Add(itemText);
-
-            // 층 정보 추가 (위치가 있는 경우)
-            if (item.Objective.Locations.Count > 0)
-            {
-                var location = item.Objective.Locations[0];
-                var floorInfo = GetFloorIndicator(location.FloorId);
-                if (floorInfo.HasValue)
-                {
-                    var (arrow, floorText, indicatorColor) = floorInfo.Value;
-                    var floorBadge = new Border
-                    {
-                        Background = new SolidColorBrush(indicatorColor),
-                        CornerRadius = new CornerRadius(3),
-                        Padding = new Thickness(3, 1, 3, 1),
-                        Margin = new Thickness(4, 0, 0, 0),
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-                    var floorBadgeText = new TextBlock
-                    {
-                        Text = $"{arrow}{floorText}",
-                        FontSize = _questNameTextSize * 0.85,
-                        FontWeight = FontWeights.Bold,
-                        Foreground = Brushes.White
-                    };
-                    floorBadge.Child = floorBadgeText;
-                    itemPanel.Children.Add(floorBadge);
-                }
-            }
-
-            // 개별 항목에 Tag 설정 (클릭 시 사용)
-            var itemBorder = new Border
-            {
-                Child = itemPanel,
-                Tag = item.Objective,
-                Cursor = Cursors.Hand,
-                Padding = new Thickness(2, 0, 2, 0)
-            };
-
-            // 호버 효과
-            itemBorder.MouseEnter += (s, e) =>
-            {
-                itemBorder.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
-            };
-            itemBorder.MouseLeave += (s, e) =>
-            {
-                itemBorder.Background = Brushes.Transparent;
-            };
-
-            // 개별 클릭 이벤트
-            itemBorder.MouseLeftButtonDown += GroupListItem_Click;
-
-            stackPanel.Children.Add(itemBorder);
-        }
-
-        var groupBorder = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(220, 30, 30, 30)),
-            CornerRadius = new CornerRadius(3),
-            Padding = new Thickness(6, 4, 6, 4),
-            Child = stackPanel,
-            BorderBrush = new SolidColorBrush(Color.FromArgb(180, 70, 130, 180)),
-            BorderThickness = new Thickness(1)
-        };
-
-        // 크기 측정
-        groupBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var textWidth = groupBorder.DesiredSize.Width;
-
-        // 마커 크기 계산 (마커 아래에 배치하기 위함)
-        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
-        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        var mapScale = mapConfig?.MarkerScale ?? 1.0;
-        var markerSize = baseMarkerSize * mapScale;
-
-        // 마커 아래에 위치 (X는 중앙 정렬, Y는 마커 아래)
-        Canvas.SetLeft(groupBorder, -textWidth / 2);
-        Canvas.SetTop(groupBorder, markerSize / 2 + 4);  // 마커 반경 + 여백
-        canvas.Children.Add(groupBorder);
-
-        // 위치 설정 (마커들의 중심 X, 가장 아래 마커의 Y)
-        Canvas.SetLeft(canvas, centerX);
-        Canvas.SetTop(canvas, bottomY);
-
-        // 줌에 상관없이 고정 크기 유지
-        var inverseScale = 1.0 / _zoomLevel;
-        canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-        canvas.RenderTransformOrigin = new Point(0, 0);
-
-        return canvas;
-    }
-
-    /// <summary>
-    /// 그룹 리스트의 개별 항목 클릭 시 해당 퀘스트를 선택합니다.
-    /// </summary>
-    private void GroupListItem_Click(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is Border border && border.Tag is TaskObjectiveWithLocation objective)
-        {
-            ShowQuestDrawer(objective);
-            e.Handled = true;
-        }
-    }
-
-    /// <summary>
-    /// 그룹 인디케이터 클릭 시 퀘스트 목록 팝업을 표시합니다.
-    /// </summary>
-    private void GroupIndicator_Click(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is Canvas canvas && canvas.Tag is List<TaskObjectiveWithLocation> objectives)
-        {
-            ShowGroupPopup(canvas, objectives);
-            e.Handled = true;
-        }
-    }
-
-    /// <summary>
-    /// 겹치는 퀘스트 목록을 팝업으로 표시합니다.
-    /// </summary>
-    private void ShowGroupPopup(Canvas indicator, List<TaskObjectiveWithLocation> objectives)
-    {
-        // 기존 팝업 닫기
-        CloseGroupPopup();
-
-        var stackPanel = new StackPanel
-        {
-            Background = new SolidColorBrush(Color.FromArgb(240, 30, 30, 30)),
-            MinWidth = 200
-        };
-
-        foreach (var objective in objectives)
-        {
-            var questName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(objective.TaskNameKo)
-                ? objective.TaskNameKo
-                : objective.TaskName;
-
-            var itemBorder = new Border
-            {
-                Padding = new Thickness(10, 8, 10, 8),
-                BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
-                BorderThickness = new Thickness(0, 0, 0, 1),
-                Tag = objective,
-                Cursor = Cursors.Hand
-            };
-
-            var itemText = new TextBlock
-            {
-                Text = questName,
-                Foreground = Brushes.White,
-                FontSize = 13,
-                TextWrapping = TextWrapping.Wrap
-            };
-
-            // 완료 상태 표시
-            if (objective.IsCompleted)
-            {
-                itemText.TextDecorations = TextDecorations.Strikethrough;
-                itemText.Foreground = new SolidColorBrush(Colors.Gray);
-            }
-
-            itemBorder.Child = itemText;
-
-            // 호버 효과
-            itemBorder.MouseEnter += (s, ev) =>
-            {
-                itemBorder.Background = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255));
-            };
-            itemBorder.MouseLeave += (s, ev) =>
-            {
-                itemBorder.Background = Brushes.Transparent;
-            };
-
-            // 클릭 시 퀘스트 선택 및 층 변경
-            itemBorder.MouseLeftButtonDown += (s, ev) =>
-            {
-                if (itemBorder.Tag is TaskObjectiveWithLocation obj)
-                {
-                    CloseGroupPopup();
-                    // 해당 Objective의 층으로 변경
-                    SelectFloorForObjective(obj);
-                    ShowQuestDrawer(obj);
-                    ev.Handled = true;
-                }
-            };
-
-            stackPanel.Children.Add(itemBorder);
-        }
-
-        var popupBorder = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(240, 30, 30, 30)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(200, 70, 130, 180)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(5),
-            Child = stackPanel,
-            Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                BlurRadius = 10,
-                ShadowDepth = 3,
-                Opacity = 0.5
-            }
-        };
-
-        _markerGroupPopup = new Popup
-        {
-            Child = popupBorder,
-            PlacementTarget = indicator,
-            Placement = PlacementMode.Bottom,
-            StaysOpen = false,
-            AllowsTransparency = true,
-            PopupAnimation = PopupAnimation.Fade,
-            IsOpen = true
-        };
-
-        // 팝업 외부 클릭 시 닫기
-        _markerGroupPopup.Closed += (s, ev) => _markerGroupPopup = null;
-    }
-
-    /// <summary>
-    /// 그룹 팝업을 닫습니다.
-    /// </summary>
-    private void CloseGroupPopup()
-    {
-        if (_markerGroupPopup != null)
-        {
-            _markerGroupPopup.IsOpen = false;
-            _markerGroupPopup = null;
-        }
-    }
-
-    /// <summary>
-    /// 그룹 마커들을 제거합니다.
-    /// </summary>
-    private void ClearGroupedMarkers()
-    {
-        foreach (var marker in _groupedMarkerElements)
-        {
-            if (marker is Canvas c)
-            {
-                // 리스트 내 개별 항목의 이벤트 핸들러 해제
-                foreach (var child in c.Children)
-                {
-                    if (child is Border groupBorder && groupBorder.Child is StackPanel stackPanel)
-                    {
-                        foreach (var item in stackPanel.Children)
-                        {
-                            if (item is Border itemBorder)
-                            {
-                                itemBorder.MouseLeftButtonDown -= GroupListItem_Click;
-                            }
-                        }
-                    }
-                }
-            }
-            QuestMarkersContainer.Children.Remove(marker);
-        }
-        _groupedMarkerElements.Clear();
-        CloseGroupPopup();
-    }
-
-    private void ClearQuestMarkers()
-    {
-        // 그룹 마커 먼저 제거
-        ClearGroupedMarkers();
-
-        foreach (var marker in _questMarkerElements)
-        {
-            if (marker is Canvas c)
-            {
-                c.MouseLeftButtonDown -= QuestMarker_Click;
-                // 텍스트 Border의 클릭 이벤트도 해제
-                foreach (var child in c.Children)
-                {
-                    if (child is Border border)
-                    {
-                        border.MouseLeftButtonDown -= QuestMarkerText_Click;
-                    }
-                }
-            }
-        }
-        _questMarkerElements.Clear();
-        QuestMarkersContainer.Children.Clear();
-    }
-
-    private void QuestMarker_Click(object sender, MouseButtonEventArgs e)
-    {
-        TaskObjectiveWithLocation? objective = null;
-
-        if (sender is FrameworkElement element)
-        {
-            // 일반 마커 또는 OR 마커
-            if (element.Tag is TaskObjectiveWithLocation obj)
-            {
-                objective = obj;
-            }
-            // Area 마커
-            else if (element.Tag is AreaMarkerTag areaTag)
-            {
-                objective = areaTag.Objective;
-            }
-        }
-
-        if (objective != null)
-        {
-            // 해당 Objective의 층으로 변경
-            SelectFloorForObjective(objective);
-            ShowQuestDrawer(objective);
-            e.Handled = true;
-        }
-    }
-
-    private void QuestMarkerText_Click(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is FrameworkElement element && element.Tag is TaskObjectiveWithLocation objective)
-        {
-            // 해당 Objective의 층으로 변경
-            SelectFloorForObjective(objective);
-            ShowQuestDrawer(objective);
-            e.Handled = true;
-        }
-    }
-
-    /// <summary>
     /// Objective의 층으로 맵 층을 변경합니다.
     /// </summary>
     private void SelectFloorForObjective(TaskObjectiveWithLocation objective)
@@ -3166,8 +2061,8 @@ public partial class MapPage : UserControl
             _selectedObjective = null;
         }
 
-        // 맵의 마커 하이라이트 업데이트
-        UpdateMarkerHighlight();
+        // 맵의 마커 하이라이트 업데이트 (컴포넌트에 위임)
+        _questMarkerManager?.SetSelectedObjective(_selectedObjective);
 
         // Drawer 열기 (리사이즈 가능)
         QuestDrawerColumn.Width = new GridLength(320);
@@ -3182,87 +2077,6 @@ public partial class MapPage : UserControl
         if (_selectedObjective != null)
         {
             CenterOnObjective(_selectedObjective);
-        }
-    }
-
-    private void UpdateMarkerHighlight()
-    {
-        // 이전 선택 마커 하이라이트 제거
-        if (_selectedMarkerElement is Canvas prevCanvas)
-        {
-            RemoveMarkerHighlight(prevCanvas);
-        }
-        _selectedMarkerElement = null;
-
-        // 새로운 선택 마커 하이라이트 추가
-        if (_selectedObjective != null)
-        {
-            foreach (var marker in _questMarkerElements)
-            {
-                if (marker is Canvas canvas)
-                {
-                    var obj = GetObjectiveFromTag(canvas.Tag);
-                    if (obj != null && obj.ObjectiveId == _selectedObjective.ObjectiveId)
-                    {
-                        AddMarkerHighlight(canvas);
-                        _selectedMarkerElement = canvas;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    private void AddMarkerHighlight(Canvas markerCanvas)
-    {
-        // 강조 표시용 외곽 링 추가
-        var baseMarkerSize = _trackerService?.Settings.MarkerSize ?? 16;
-
-        // 맵별 마커 스케일 적용
-        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        var mapScale = mapConfig?.MarkerScale ?? 1.0;
-
-        var markerSize = baseMarkerSize * mapScale;
-        var highlightSize = markerSize * 2.5;
-
-        var highlightRing = new Ellipse
-        {
-            Width = highlightSize,
-            Height = highlightSize,
-            Stroke = new SolidColorBrush(Colors.Yellow),
-            StrokeThickness = 3,
-            Fill = Brushes.Transparent,
-            Tag = "HighlightRing"
-        };
-        Canvas.SetLeft(highlightRing, -highlightSize / 2);
-        Canvas.SetTop(highlightRing, -highlightSize / 2);
-        Panel.SetZIndex(highlightRing, -1);
-        markerCanvas.Children.Insert(0, highlightRing);
-
-        // 펄스 애니메이션 추가
-        var scaleTransform = new ScaleTransform(1, 1, highlightSize / 2, highlightSize / 2);
-        highlightRing.RenderTransform = scaleTransform;
-
-        var pulseAnimation = new System.Windows.Media.Animation.DoubleAnimation
-        {
-            From = 0.8,
-            To = 1.2,
-            Duration = TimeSpan.FromMilliseconds(800),
-            AutoReverse = true,
-            RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever
-        };
-        scaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, pulseAnimation);
-        scaleTransform.BeginAnimation(ScaleTransform.ScaleYProperty, pulseAnimation);
-    }
-
-    private void RemoveMarkerHighlight(Canvas markerCanvas)
-    {
-        // HighlightRing 태그가 있는 요소 찾아 제거
-        var highlightRing = markerCanvas.Children.OfType<Ellipse>()
-            .FirstOrDefault(e => e.Tag as string == "HighlightRing");
-        if (highlightRing != null)
-        {
-            markerCanvas.Children.Remove(highlightRing);
         }
     }
 
@@ -3299,7 +2113,7 @@ public partial class MapPage : UserControl
     {
         // 선택 상태 초기화
         _selectedObjective = null;
-        UpdateMarkerHighlight();
+        _questMarkerManager?.SetSelectedObjective(null);
 
         QuestDrawerColumn.Width = new GridLength(0);
         QuestDrawerColumn.MinWidth = 0;
@@ -3319,7 +2133,8 @@ public partial class MapPage : UserControl
             // 해당 Objective의 층으로 변경
             SelectFloorForObjective(_selectedObjective);
 
-            UpdateMarkerHighlight();
+            // 마커 하이라이트 업데이트 (컴포넌트에 위임)
+            _questMarkerManager?.SetSelectedObjective(_selectedObjective);
 
             // 사이드바 리스트 업데이트 (선택 상태 반영) - RefreshQuestDrawer()를 호출하여 그룹화 상태 유지
             RefreshQuestDrawer();
@@ -3415,64 +2230,21 @@ public partial class MapPage : UserControl
 
     private void RefreshExtractMarkers()
     {
-        if (string.IsNullOrEmpty(_currentMapKey)) return;
-        if (!_extractService.IsLoaded) return;
+        // 컴포넌트를 사용하여 마커 새로고침
+        if (_extractMarkerManager == null) return;
 
-        // 기존 마커 제거
-        ClearExtractMarkers();
+        // 컴포넌트 상태 동기화 (맵/층/줌 정보 필수!)
+        _extractMarkerManager.SetCurrentMap(_currentMapKey);
+        _extractMarkerManager.SetCurrentFloor(_currentFloorId);
+        _extractMarkerManager.SetZoomLevel(_zoomLevel);
+        _extractMarkerManager.SetShowExtractMarkers(_showExtractMarkers);
+        _extractMarkerManager.SetShowPmcExtracts(_showPmcExtracts);
+        _extractMarkerManager.SetShowScavExtracts(_showScavExtracts);
+        _extractMarkerManager.SetShowTransitExtracts(_showTransitExtracts);
+        _extractMarkerManager.SetExtractNameTextSize(_extractNameTextSize);
 
-        if (!_showExtractMarkers) return;
-
-        // 맵 설정 가져오기
-        var config = _trackerService?.GetMapConfig(_currentMapKey);
-        if (config == null) return;
-
-        // 디버그: CalibratedTransform 확인
-        if (config.CalibratedTransform == null)
-        {
-            System.Diagnostics.Debug.WriteLine($"[MapPage] WARNING: CalibratedTransform is NULL for map '{_currentMapKey}'");
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine($"[MapPage] CalibratedTransform for '{_currentMapKey}': [{string.Join(", ", config.CalibratedTransform)}]");
-        }
-
-        // 현재 맵의 탈출구 가져오기 (MapConfig의 Aliases 사용)
-        var extracts = _extractService.GetExtractsForMap(_currentMapKey, config);
-
-        // 디버그: 로드된 탈출구 목록 출력
-        System.Diagnostics.Debug.WriteLine($"[MapPage] Loaded {extracts.Count} extracts for '{_currentMapKey}':");
-        foreach (var e in extracts)
-        {
-            System.Diagnostics.Debug.WriteLine($"  - {e.Name} ({e.Faction}) FloorId={e.FloorId ?? "null"}");
-        }
-
-        // 모든 탈출구를 개별적으로 표시 (그룹화 없음)
-        foreach (var extract in extracts)
-        {
-            // 진영 필터 적용
-            if (!ShouldShowExtract(extract.Faction)) continue;
-
-            // TarkovDBEditor 방식: config.GameToScreen 직접 사용
-            var (screenX, screenY) = config.GameToScreen(extract.X, extract.Z);
-
-            // 디버그: 탈출구 좌표 변환 결과 출력
-            System.Diagnostics.Debug.WriteLine($"[MapPage] Extract '{extract.Name}': Game({extract.X:F2}, {extract.Z:F2}) -> Screen({screenX:F2}, {screenY:F2})");
-
-            var screenPos = new ScreenPosition
-            {
-                MapKey = _currentMapKey!,
-                X = screenX,
-                Y = screenY
-            };
-
-            // 층 정보 확인: 현재 선택된 층과 탈출구의 층 비교
-            var isOnCurrentFloor = IsMarkerOnCurrentFloor(extract.FloorId);
-
-            var marker = CreateExtractMarker(extract, screenPos, null, isOnCurrentFloor);
-            _extractMarkerElements.Add(marker);
-            ExtractMarkersContainer.Children.Add(marker);
-        }
+        // 마커 새로고침
+        _extractMarkerManager.RefreshMarkers();
     }
 
     /// <summary>
@@ -3632,212 +2404,6 @@ public partial class MapPage : UserControl
             ExtractFaction.Transit => _showTransitExtracts,
             _ => true
         };
-    }
-
-    private FrameworkElement CreateExtractMarker(MapExtract extract, ScreenPosition screenPos, ExtractFaction? overrideFaction = null, bool isOnCurrentFloor = true)
-    {
-        // 맵별 마커 스케일 적용
-        var mapConfig = _trackerService?.GetMapConfig(_currentMapKey ?? "");
-        var mapScale = mapConfig?.MarkerScale ?? 1.0;
-
-        var baseSize = 20.0;
-        var markerSize = baseSize * mapScale;
-
-        // 진영 결정 (오버라이드 또는 기본)
-        var faction = overrideFaction ?? extract.Faction;
-
-        // 진영별 색상 설정
-        var (fillColor, strokeColor) = GetExtractStyle(faction);
-
-        // 다른 층의 마커는 색상을 흐리게 처리
-        if (!isOnCurrentFloor)
-        {
-            fillColor = Color.FromArgb(100, fillColor.R, fillColor.G, fillColor.B);
-            strokeColor = Color.FromArgb(150, strokeColor.R, strokeColor.G, strokeColor.B);
-        }
-
-        var canvas = new Canvas
-        {
-            Width = 0,
-            Height = 0,
-            Tag = extract
-        };
-
-        // 탈출구 이름 텍스트 (마커 위에 표시)
-        var displayName = _loc.CurrentLanguage == AppLanguage.KO && !string.IsNullOrEmpty(extract.NameKo)
-            ? extract.NameKo
-            : extract.Name;
-
-        var textSize = _extractNameTextSize * mapScale;
-
-        // 이름과 층 뱃지를 담을 StackPanel
-        var labelStackPanel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Center
-        };
-
-        // 이름 라벨
-        var nameLabel = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(200, 30, 30, 30)),
-            CornerRadius = new CornerRadius(3 * mapScale),
-            Padding = new Thickness(4 * mapScale, 2 * mapScale, 4 * mapScale, 2 * mapScale),
-            Child = new TextBlock
-            {
-                Text = displayName,
-                FontSize = textSize,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(fillColor),
-                TextAlignment = TextAlignment.Center
-            }
-        };
-        labelStackPanel.Children.Add(nameLabel);
-
-        // 층 뱃지 (다층 맵에서 다른 층일 때만 표시) - GetFloorIndicator 사용하여 화살표 포함
-        var floorInfo = GetFloorIndicator(extract.FloorId);
-        if (floorInfo.HasValue)
-        {
-            var (arrow, floorText, indicatorColor) = floorInfo.Value;
-
-            var floorBadge = new Border
-            {
-                Background = new SolidColorBrush(indicatorColor),
-                CornerRadius = new CornerRadius(3 * mapScale),
-                Padding = new Thickness(4 * mapScale, 2 * mapScale, 4 * mapScale, 2 * mapScale),
-                Margin = new Thickness(3 * mapScale, 0, 0, 0),
-                Child = new TextBlock
-                {
-                    Text = $"{arrow}{floorText}",
-                    FontSize = textSize * 0.9,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = Brushes.White,
-                    TextAlignment = TextAlignment.Center
-                }
-            };
-            labelStackPanel.Children.Add(floorBadge);
-        }
-
-        // 이름 라벨 위치 측정 및 설정
-        labelStackPanel.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var labelWidth = labelStackPanel.DesiredSize.Width;
-        var labelHeight = labelStackPanel.DesiredSize.Height;
-        Canvas.SetLeft(labelStackPanel, -labelWidth / 2);
-        Canvas.SetTop(labelStackPanel, -markerSize - labelHeight - 4 * mapScale);
-        canvas.Children.Add(labelStackPanel);
-
-        // 배경 원 (글로우 효과)
-        var glowSize = markerSize * 1.5;
-        var glow = new Ellipse
-        {
-            Width = glowSize,
-            Height = glowSize,
-            Fill = new SolidColorBrush(Color.FromArgb(80, fillColor.R, fillColor.G, fillColor.B))
-        };
-        Canvas.SetLeft(glow, -glowSize / 2);
-        Canvas.SetTop(glow, -glowSize / 2);
-        canvas.Children.Add(glow);
-
-        // 메인 원
-        var mainCircle = new Ellipse
-        {
-            Width = markerSize,
-            Height = markerSize,
-            Fill = new SolidColorBrush(fillColor),
-            Stroke = new SolidColorBrush(strokeColor),
-            StrokeThickness = 2 * mapScale
-        };
-        Canvas.SetLeft(mainCircle, -markerSize / 2);
-        Canvas.SetTop(mainCircle, -markerSize / 2);
-        canvas.Children.Add(mainCircle);
-
-        // 탈출구 아이콘 (비상대피 아이콘)
-        var iconSize = markerSize * 0.7;
-        var iconPath = CreateExtractIcon(iconSize, strokeColor);
-        Canvas.SetLeft(iconPath, -iconSize / 2);
-        Canvas.SetTop(iconPath, -iconSize / 2);
-        canvas.Children.Add(iconPath);
-
-        // 위치 설정
-        Canvas.SetLeft(canvas, screenPos.X);
-        Canvas.SetTop(canvas, screenPos.Y);
-
-        // 줌에 상관없이 고정 크기 유지를 위한 역스케일 적용
-        var inverseScale = 1.0 / _zoomLevel;
-        canvas.RenderTransform = new ScaleTransform(inverseScale, inverseScale);
-        canvas.RenderTransformOrigin = new Point(0, 0);
-
-        // 다른 층의 마커는 반투명 처리
-        if (!isOnCurrentFloor)
-        {
-            canvas.Opacity = 0.5;
-        }
-
-        // 툴팁
-        var factionText = faction switch
-        {
-            ExtractFaction.Pmc => "PMC",
-            ExtractFaction.Scav => "Scav",
-            _ => "Extract"
-        };
-        var tooltipFloorText = !string.IsNullOrEmpty(extract.FloorId) ? $" ({extract.FloorId})" : "";
-        var differentFloorIndicator = !isOnCurrentFloor ? " ⬆⬇" : "";
-        canvas.ToolTip = $"[{factionText}] {displayName}{tooltipFloorText}{differentFloorIndicator}";
-        canvas.Cursor = Cursors.Hand;
-
-        // 보정 모드용 드래그 이벤트 설정
-        SetupExtractMarkerForCalibration(canvas, extract);
-
-        return canvas;
-    }
-
-    private static (Color fill, Color stroke) GetExtractStyle(ExtractFaction faction)
-    {
-        return faction switch
-        {
-            ExtractFaction.Pmc => (
-                Color.FromRgb(76, 175, 80),    // Green
-                Colors.White),
-            ExtractFaction.Scav => (
-                Color.FromRgb(158, 158, 158),  // Gray (회색)
-                Colors.White),
-            ExtractFaction.Shared => (
-                Color.FromRgb(76, 175, 80),    // Green (Shared도 PMC로 처리)
-                Colors.White),
-            ExtractFaction.Transit => (
-                Color.FromRgb(255, 152, 0),    // Orange (주황색)
-                Colors.White),
-            _ => (
-                Color.FromRgb(158, 158, 158),  // Gray
-                Colors.White)
-        };
-    }
-
-    private static FrameworkElement CreateExtractIcon(double size, Color strokeColor)
-    {
-        // 비상대피 아이콘 (uxwing.com emergency-exit-icon)
-        // 원본 viewBox: 0 0 108.01 122.88
-        var path = new System.Windows.Shapes.Path
-        {
-            Fill = new SolidColorBrush(strokeColor),
-            Stretch = Stretch.Uniform,
-            Width = size,
-            Height = size
-        };
-
-        // uxwing.com emergency exit icon path data
-        // 뛰는 사람 + 문 아이콘
-        var pathData = "M.5,0H15a.51.51,0,0,1,.5.5V83.38L35.16,82h.22l.24,0c2.07-.14,3.65-.26,4.73-1.23l1.86-2.17a1.12,1.12,0,0,1,1.49-.18l9.35,6.28a1.15,1.15,0,0,1,.49,1c0,.55-.19.7-.61,1.08A11.28,11.28,0,0,0,51.78,88a27.27,27.27,0,0,1-3,3.1,15.84,15.84,0,0,1-3.68,2.45c-2.8,1.36-5.45,1.54-8.59,1.76l-.24,0-.21,0L15.5,96.77v25.61a.52.52,0,0,1-.5.5H.5a.51.51,0,0,1-.5-.5V.5A.5.5,0,0,1,.5,0ZM46,59.91l9-19.12-.89-.25a12.43,12.43,0,0,0-4.77-.82c-1.9.28-3.68,1.42-5.67,2.7-.83.53-1.69,1.09-2.62,1.63-.7.33-1.51.86-2.19,1.25l-8.7,5a1.11,1.11,0,0,1-1.51-.42l-5.48-9.64a1.1,1.1,0,0,1,.42-1.51c3.43-2,7.42-4,10.75-6.14,4-2.49,7.27-4.48,11.06-5.42s8-.8,13.89,1c2.12.59,4.55,1.48,6.55,2.2,1,.35,1.8.66,2.44.87,9.86,3.29,13.19,9.66,15.78,14.6,1.12,2.13,2.09,4,3.34,5,.51.42,1.67.27,3,.09a21.62,21.62,0,0,1,2.64-.23c4.32-.41,8.66-.66,13-1a1.1,1.1,0,0,1,1.18,1L108,61.86A1.11,1.11,0,0,1,107,63L95,63.9c-5.33.38-9.19.66-15-2.47l-.12-.07a23.23,23.23,0,0,1-7.21-8.5l0,0L65.73,68.4a63.9,63.9,0,0,0,5.85,5.32c6,5,11,9.21,9.38,20.43a23.89,23.89,0,0,1-.65,2.93c-.27,1-.56,1.9-.87,2.84-2.29,6.54-4.22,13.5-6.29,20.13a1.1,1.1,0,0,1-1,.81l-11.66.78a1,1,0,0,1-.39,0,1.12,1.12,0,0,1-.75-1.38c2.45-8.12,5-16.25,7.39-24.38a29,29,0,0,0,.87-3,7,7,0,0,0,.08-2.65l0-.24a4.16,4.16,0,0,0-.73-2.22,53.23,53.23,0,0,0-8.76-5.57c-3.75-2.07-7.41-4.08-10.25-7a12.15,12.15,0,0,1-3.59-7.36A14.76,14.76,0,0,1,46,59.91ZM80.07,6.13a12.29,12.29,0,0,1,13.1,11.39v0a12.29,12.29,0,0,1-24.52,1.72v0A12.3,12.3,0,0,1,80,6.13ZM3.34,35H6.69V51.09H3.34V35Z";
-
-        path.Data = Geometry.Parse(pathData);
-
-        return path;
-    }
-
-    private void ClearExtractMarkers()
-    {
-        _extractMarkerElements.Clear();
-        ExtractMarkersContainer.Children.Clear();
     }
 
     #region Calibration Mode

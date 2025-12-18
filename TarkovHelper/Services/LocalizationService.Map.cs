@@ -1,257 +1,13 @@
-using System.ComponentModel;
-using System.IO;
-using System.Text.Json;
-using TarkovHelper.Debug;
 using TarkovHelper.Models;
 
 namespace TarkovHelper.Services;
 
 /// <summary>
-/// Supported languages
+/// Map-related localization strings for LocalizationService.
+/// Includes: Map Tracker, Quest Drawer, Map Area, Legend, Settings, etc.
 /// </summary>
-public enum AppLanguage
+public partial class LocalizationService
 {
-    EN,
-    KO,
-    JA
-}
-
-/// <summary>
-/// Centralized localization service for managing UI language
-/// Settings are stored in user_data.db (UserSettings table)
-/// </summary>
-public class LocalizationService : INotifyPropertyChanged
-{
-    private static LocalizationService? _instance;
-    public static LocalizationService Instance => _instance ??= new LocalizationService();
-
-    private readonly UserDataDbService _userDataDb = UserDataDbService.Instance;
-    private const string KeyLanguage = "app.language";
-
-    private AppLanguage _currentLanguage = AppLanguage.EN;
-
-    public LocalizationService()
-    {
-        LoadSettings();
-    }
-
-    public AppLanguage CurrentLanguage
-    {
-        get => _currentLanguage;
-        set
-        {
-            if (_currentLanguage != value)
-            {
-                _currentLanguage = value;
-                OnPropertyChanged(nameof(CurrentLanguage));
-                LanguageChanged?.Invoke(this, value);
-                SaveSettings();
-            }
-        }
-    }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-    public event EventHandler<AppLanguage>? LanguageChanged;
-
-    protected void OnPropertyChanged(string propertyName)
-    {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-    }
-
-    #region Settings Persistence
-
-    private void SaveSettings()
-    {
-        try
-        {
-            _userDataDb.SetSetting(KeyLanguage, _currentLanguage.ToString());
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Save failed: {ex.Message}");
-        }
-    }
-
-    private void LoadSettings()
-    {
-        try
-        {
-            // First check if JSON migration is needed
-            MigrateFromJsonIfNeeded();
-
-            // Load from DB
-            var langStr = _userDataDb.GetSetting(KeyLanguage);
-            if (!string.IsNullOrEmpty(langStr) && Enum.TryParse<AppLanguage>(langStr, out var lang))
-            {
-                _currentLanguage = lang;
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Load failed: {ex.Message}");
-            _currentLanguage = AppLanguage.EN;
-        }
-    }
-
-    /// <summary>
-    /// Migrate from legacy settings.json if it exists
-    /// </summary>
-    private void MigrateFromJsonIfNeeded()
-    {
-        // Check old Data/settings.json path
-        var dataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
-        var jsonPath = Path.Combine(dataDir, "settings.json");
-
-        if (!File.Exists(jsonPath)) return;
-
-        try
-        {
-            var json = File.ReadAllText(jsonPath);
-            var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-            var settings = JsonSerializer.Deserialize<LegacySettings>(json, options);
-
-            if (settings != null && Enum.TryParse<AppLanguage>(settings.Language, out var lang))
-            {
-                _userDataDb.SetSetting(KeyLanguage, lang.ToString());
-            }
-
-            // Delete the JSON file after migration
-            File.Delete(jsonPath);
-            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Migrated and deleted: {jsonPath}");
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[LocalizationService] Migration failed: {ex.Message}");
-        }
-    }
-
-    private class LegacySettings
-    {
-        public string Language { get; set; } = "EN";
-    }
-
-    #endregion
-
-    #region UI Strings
-
-    public string Welcome => CurrentLanguage switch
-    {
-        AppLanguage.KO => "Tarkov Helper에 오신 것을 환영합니다",
-        AppLanguage.JA => "Tarkov Helperへようこそ",
-        _ => "Welcome to Tarkov Helper"
-    };
-
-    #endregion
-
-    #region In-Progress Quest Input
-
-    public string InProgressQuestInputButton => CurrentLanguage switch
-    {
-        AppLanguage.KO => "진행중 퀘스트 입력",
-        AppLanguage.JA => "進行中クエスト入力",
-        _ => "Enter In-Progress Quests"
-    };
-
-    public string InProgressQuestInputTitle => CurrentLanguage switch
-    {
-        AppLanguage.KO => "진행중 퀘스트 입력",
-        AppLanguage.JA => "進行中クエスト入力",
-        _ => "Enter In-Progress Quests"
-    };
-
-    public string QuestSelection => CurrentLanguage switch
-    {
-        AppLanguage.KO => "퀘스트 선택",
-        AppLanguage.JA => "クエスト選択",
-        _ => "Quest Selection"
-    };
-
-    public string SearchQuestsPlaceholder => CurrentLanguage switch
-    {
-        AppLanguage.KO => "퀘스트 검색...",
-        AppLanguage.JA => "クエスト検索...",
-        _ => "Search quests..."
-    };
-
-    public string TraderFilter => CurrentLanguage switch
-    {
-        AppLanguage.KO => "트레이더:",
-        AppLanguage.JA => "トレーダー:",
-        _ => "Trader:"
-    };
-
-    public string AllTraders => CurrentLanguage switch
-    {
-        AppLanguage.KO => "전체",
-        AppLanguage.JA => "全て",
-        _ => "All"
-    };
-
-    public string PrerequisitesPreview => CurrentLanguage switch
-    {
-        AppLanguage.KO => "선행 퀘스트 미리보기",
-        AppLanguage.JA => "先行クエストプレビュー",
-        _ => "Prerequisites Preview"
-    };
-
-    public string PrerequisitesDescription => CurrentLanguage switch
-    {
-        AppLanguage.KO => "체크된 퀘스트의 선행 퀘스트가 여기에 표시됩니다.\n적용 시 자동으로 완료 처리됩니다.",
-        AppLanguage.JA => "選択されたクエストの先行クエストがここに表示されます。\n適用時に自動完了されます。",
-        _ => "Prerequisites of selected quests will be shown here.\nThese will be auto-completed on apply."
-    };
-
-    public string SelectedQuestsCount => CurrentLanguage switch
-    {
-        AppLanguage.KO => "선택된 퀘스트: {0}개",
-        AppLanguage.JA => "選択されたクエスト: {0}件",
-        _ => "Selected quests: {0}"
-    };
-
-    public string PrerequisitesToComplete => CurrentLanguage switch
-    {
-        AppLanguage.KO => "자동 완료될 선행 퀘스트: {0}개",
-        AppLanguage.JA => "自動完了される先行クエスト: {0}件",
-        _ => "Prerequisites to complete: {0}"
-    };
-
-    public string Cancel => CurrentLanguage switch
-    {
-        AppLanguage.KO => "취소",
-        AppLanguage.JA => "キャンセル",
-        _ => "Cancel"
-    };
-
-    public string Apply => CurrentLanguage switch
-    {
-        AppLanguage.KO => "적용",
-        AppLanguage.JA => "適用",
-        _ => "Apply"
-    };
-
-    public string QuestDataNotLoaded => CurrentLanguage switch
-    {
-        AppLanguage.KO => "퀘스트 데이터가 로드되지 않았습니다. 먼저 데이터를 새로고침 해주세요.",
-        AppLanguage.JA => "クエストデータがロードされていません。まずデータを更新してください。",
-        _ => "Quest data is not loaded. Please refresh data first."
-    };
-
-    public string NoQuestsSelected => CurrentLanguage switch
-    {
-        AppLanguage.KO => "선택된 퀘스트가 없습니다.",
-        AppLanguage.JA => "選択されたクエストがありません。",
-        _ => "No quests selected."
-    };
-
-    public string QuestsAppliedSuccess => CurrentLanguage switch
-    {
-        AppLanguage.KO => "{0}개의 퀘스트가 Active로 설정되고, {1}개의 선행 퀘스트가 완료 처리되었습니다.",
-        AppLanguage.JA => "{0}件のクエストがActiveに設定され、{1}件の先行クエストが完了処理されました。",
-        _ => "{0} quest(s) set to Active, {1} prerequisite(s) marked as completed."
-    };
-
-    #endregion
-
     #region Map Tracker Page
 
     public string MapPositionTracker => CurrentLanguage switch
@@ -301,13 +57,6 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "전체 화면 종료",
         AppLanguage.JA => "全画面終了",
         _ => "Exit Full Screen"
-    };
-
-    public string Settings => CurrentLanguage switch
-    {
-        AppLanguage.KO => "설정",
-        AppLanguage.JA => "設定",
-        _ => "Settings"
     };
 
     public string StartTracking => CurrentLanguage switch
@@ -364,13 +113,6 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "이 맵 진행률",
         AppLanguage.JA => "このマップの進捗",
         _ => "Progress on this map"
-    };
-
-    public string FilterAll => CurrentLanguage switch
-    {
-        AppLanguage.KO => "전체",
-        AppLanguage.JA => "全て",
-        _ => "All"
     };
 
     public string FilterIncomplete => CurrentLanguage switch
@@ -448,20 +190,6 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "스크린샷 폴더",
         AppLanguage.JA => "スクリーンショットフォルダ",
         _ => "Screenshot Folder"
-    };
-
-    public string AutoDetect => CurrentLanguage switch
-    {
-        AppLanguage.KO => "자동 감지",
-        AppLanguage.JA => "自動検出",
-        _ => "Auto Detect"
-    };
-
-    public string Browse => CurrentLanguage switch
-    {
-        AppLanguage.KO => "찾아보기",
-        AppLanguage.JA => "参照",
-        _ => "Browse"
     };
 
     public string MarkerSettings => CurrentLanguage switch
@@ -606,94 +334,6 @@ public class LocalizationService : INotifyPropertyChanged
 
     #endregion
 
-    #region Quest Recommendations
-
-    public string RecommendedQuests => CurrentLanguage switch
-    {
-        AppLanguage.KO => "추천 퀘스트",
-        AppLanguage.JA => "おすすめクエスト",
-        _ => "Recommended Quests"
-    };
-
-    public string ReadyToComplete => CurrentLanguage switch
-    {
-        AppLanguage.KO => "지금 완료 가능",
-        AppLanguage.JA => "今すぐ完了可能",
-        _ => "Ready to Complete"
-    };
-
-    public string ItemHandInOnly => CurrentLanguage switch
-    {
-        AppLanguage.KO => "아이템 제출만",
-        AppLanguage.JA => "アイテム提出のみ",
-        _ => "Item Hand-in Only"
-    };
-
-    public string KappaPriority => CurrentLanguage switch
-    {
-        AppLanguage.KO => "카파 필수",
-        AppLanguage.JA => "Kappa必須",
-        _ => "Kappa Priority"
-    };
-
-    public string UnlocksMany => CurrentLanguage switch
-    {
-        AppLanguage.KO => "다수 해금",
-        AppLanguage.JA => "複数解放",
-        _ => "Unlocks Many"
-    };
-
-    public string EasyQuest => CurrentLanguage switch
-    {
-        AppLanguage.KO => "쉬운 퀘스트",
-        AppLanguage.JA => "簡単なクエスト",
-        _ => "Easy Quest"
-    };
-
-    public string NoRecommendations => CurrentLanguage switch
-    {
-        AppLanguage.KO => "현재 추천 퀘스트가 없습니다",
-        AppLanguage.JA => "現在おすすめクエストはありません",
-        _ => "No recommendations at this time"
-    };
-
-    public string ShowMore => CurrentLanguage switch
-    {
-        AppLanguage.KO => "더 보기",
-        AppLanguage.JA => "もっと見る",
-        _ => "Show More"
-    };
-
-    public string ShowLess => CurrentLanguage switch
-    {
-        AppLanguage.KO => "접기",
-        AppLanguage.JA => "閉じる",
-        _ => "Show Less"
-    };
-
-    public string ItemsOwned => CurrentLanguage switch
-    {
-        AppLanguage.KO => "보유",
-        AppLanguage.JA => "所持",
-        _ => "owned"
-    };
-
-    public string ItemsNeeded => CurrentLanguage switch
-    {
-        AppLanguage.KO => "필요",
-        AppLanguage.JA => "必要",
-        _ => "needed"
-    };
-
-    public string UnlocksQuests => CurrentLanguage switch
-    {
-        AppLanguage.KO => "개 퀘스트 해금",
-        AppLanguage.JA => "クエスト解放",
-        _ => "quest(s) unlock"
-    };
-
-    #endregion
-
     #region Map Page - Quest Drawer
 
     public string Quest => CurrentLanguage switch
@@ -722,13 +362,6 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "표시 옵션",
         AppLanguage.JA => "表示オプション",
         _ => "Display Options"
-    };
-
-    public string Close => CurrentLanguage switch
-    {
-        AppLanguage.KO => "닫기",
-        AppLanguage.JA => "閉じる",
-        _ => "Close"
     };
 
     public string CloseWithShortcut => CurrentLanguage switch
@@ -904,13 +537,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Drag"
     };
 
-    public string Reset => CurrentLanguage switch
-    {
-        AppLanguage.KO => "리셋",
-        AppLanguage.JA => "リセット",
-        _ => "Reset"
-    };
-
     public string LoadingMap => CurrentLanguage switch
     {
         AppLanguage.KO => "맵 로딩 중...",
@@ -1066,20 +692,6 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Other"
     };
 
-    public string SelectAll => CurrentLanguage switch
-    {
-        AppLanguage.KO => "전체 선택",
-        AppLanguage.JA => "すべて選択",
-        _ => "Select All"
-    };
-
-    public string DeselectAll => CurrentLanguage switch
-    {
-        AppLanguage.KO => "전체 해제",
-        AppLanguage.JA => "すべて解除",
-        _ => "Deselect All"
-    };
-
     #endregion
 
     #region Map Page - Minimap
@@ -1138,13 +750,6 @@ public class LocalizationService : INotifyPropertyChanged
     };
 
     // Display Tab
-    public string Layers => CurrentLanguage switch
-    {
-        AppLanguage.KO => "레이어",
-        AppLanguage.JA => "レイヤー",
-        _ => "Layers"
-    };
-
     public string Trail => CurrentLanguage switch
     {
         AppLanguage.KO => "이동 경로",
@@ -1171,13 +776,6 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "퀘스트 필터",
         AppLanguage.JA => "クエストフィルター",
         _ => "Quest Filter"
-    };
-
-    public string Legend => CurrentLanguage switch
-    {
-        AppLanguage.KO => "범례",
-        AppLanguage.JA => "凡例",
-        _ => "Legend"
     };
 
     // Marker Tab
@@ -1231,53 +829,11 @@ public class LocalizationService : INotifyPropertyChanged
         _ => "Tracker Status"
     };
 
-    public string Waiting => CurrentLanguage switch
-    {
-        AppLanguage.KO => "대기 중",
-        AppLanguage.JA => "待機中",
-        _ => "Waiting"
-    };
-
-    public string Tracking => CurrentLanguage switch
-    {
-        AppLanguage.KO => "추적 중",
-        AppLanguage.JA => "追跡中",
-        _ => "Tracking"
-    };
-
     public string NoFolderSelected => CurrentLanguage switch
     {
         AppLanguage.KO => "폴더 미선택",
         AppLanguage.JA => "フォルダ未選択",
         _ => "No folder selected"
-    };
-
-    public string Folder => CurrentLanguage switch
-    {
-        AppLanguage.KO => "폴더",
-        AppLanguage.JA => "フォルダ",
-        _ => "Folder"
-    };
-
-    public string Open => CurrentLanguage switch
-    {
-        AppLanguage.KO => "열기",
-        AppLanguage.JA => "開く",
-        _ => "Open"
-    };
-
-    public string Start => CurrentLanguage switch
-    {
-        AppLanguage.KO => "시작",
-        AppLanguage.JA => "開始",
-        _ => "Start"
-    };
-
-    public string Stop => CurrentLanguage switch
-    {
-        AppLanguage.KO => "중지",
-        AppLanguage.JA => "停止",
-        _ => "Stop"
     };
 
     public string SelectScreenshotFolder => CurrentLanguage switch
@@ -1327,13 +883,6 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "경로 두께",
         AppLanguage.JA => "経路太さ",
         _ => "Path Thickness"
-    };
-
-    public string Automation => CurrentLanguage switch
-    {
-        AppLanguage.KO => "자동화",
-        AppLanguage.JA => "自動化",
-        _ => "Automation"
     };
 
     public string AutoTrackOnMapLoad => CurrentLanguage switch
@@ -1415,13 +964,6 @@ public class LocalizationService : INotifyPropertyChanged
     };
 
     // Footer
-    public string ResetAll => CurrentLanguage switch
-    {
-        AppLanguage.KO => "초기화",
-        AppLanguage.JA => "リセット",
-        _ => "Reset"
-    };
-
     public string ResetAllSettings => CurrentLanguage switch
     {
         AppLanguage.KO => "모든 설정 초기화",
@@ -1445,34 +987,6 @@ public class LocalizationService : INotifyPropertyChanged
         AppLanguage.KO => "좌표 복사",
         AppLanguage.JA => "座標コピー",
         _ => "Copy Coordinates"
-    };
-
-    public string ShowAll => CurrentLanguage switch
-    {
-        AppLanguage.KO => "전체 표시",
-        AppLanguage.JA => "すべて表示",
-        _ => "Show All"
-    };
-
-    public string HideAll => CurrentLanguage switch
-    {
-        AppLanguage.KO => "전체 숨기기",
-        AppLanguage.JA => "すべて非表示",
-        _ => "Hide All"
-    };
-
-    public string ExpandAll => CurrentLanguage switch
-    {
-        AppLanguage.KO => "전체 펼치기",
-        AppLanguage.JA => "すべて展開",
-        _ => "Expand All"
-    };
-
-    public string CollapseAll => CurrentLanguage switch
-    {
-        AppLanguage.KO => "전체 접기",
-        AppLanguage.JA => "すべて折りたたむ",
-        _ => "Collapse All"
     };
 
     #endregion

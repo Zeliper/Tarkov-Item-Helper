@@ -226,7 +226,9 @@
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" Margin="0,4"
-                                                                Opacity="{Binding ItemOpacity}">
+                                                                Opacity="{Binding ItemOpacity}"
+                                                                Cursor="Hand"
+                                                                MouseLeftButtonUp="ItemName_Click">
                                                         <!-- Item Icon -->
                                                         <Border Width="28" Height="28" CornerRadius="3"
                                                                 Background="{StaticResource BackgroundMediumBrush}"
@@ -325,7 +327,9 @@
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
                                             <StackPanel Orientation="Horizontal" Margin="0,4"
-                                                        Opacity="{Binding ItemOpacity}">
+                                                        Opacity="{Binding ItemOpacity}"
+                                                        Cursor="Hand"
+                                                        MouseLeftButtonUp="ItemName_Click">
                                                 <!-- Item Icon -->
                                                 <Border Width="28" Height="28" CornerRadius="3"
                                                         Background="{StaticResource BackgroundMediumBrush}"

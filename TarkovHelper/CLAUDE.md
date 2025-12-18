@@ -37,10 +37,11 @@ User Data (read-write):
     ├── ObjectiveProgress table (quest objective completion)
     ├── HideoutProgress table (module levels)
     ├── ItemInventory table (owned FIR/non-FIR counts)
-    └── UserSettings table (app settings, language, map tracker settings)
+    ├── UserSettings table (app settings, language, map tracker settings)
+    └── RaidHistory table (raid history with PMC/SCAV, map, timing)
         ↓
   QuestProgressService, HideoutProgressService, ItemInventoryService
-  SettingsService, LocalizationService, MapTrackerService
+  SettingsService, LocalizationService, MapTrackerService, EftRaidEventService
 ```
 
 ### Key Components
@@ -50,6 +51,7 @@ User Data (read-write):
 - `TarkovItem.cs` - Item model with EN/KO/JA names, wiki links, icons
 - `TarkovTrader.cs` - Trader model with EN/KO/JA names, images
 - `HideoutModule.cs` - Hideout station/module with levels, requirements, EN/KO/JA names
+- `EftRaidEvent.cs` - EFT raid event models (EftRaidInfo, EftProfileInfo, RaidType, GameMode)
 
 **Services/**
 - `QuestDbService.cs` - Loads quests from tarkov_data.db (Quests, QuestRequiredItems tables)
@@ -65,6 +67,8 @@ User Data (read-write):
 - `ItemRequirementService.cs` - Item requirement aggregation across quests
 - `MapMarkerDbService.cs` - Map marker data from tarkov_data.db
 - `MapTrackerService.cs` - Map position tracking, settings persisted to user_data.db
+- `EftRaidEventService.cs` - EFT log monitoring for raid events (profile, PMC/SCAV detection, raid lifecycle)
+- `LogSyncService.cs` - Quest progress synchronization from game logs
 
 **Services/Logging/**
 - `LogLevel.cs` - Log level enumeration (Trace, Debug, Info, Warning, Error, Critical, None)
@@ -254,6 +258,99 @@ public class MyService
 - `FirQuantity`, `NonFirQuantity` - Owned counts
 - `UpdatedAt` - Timestamp
 
+**RaidHistory table:**
+- `Id` - Auto-increment primary key
+- `RaidId`, `SessionId`, `ShortId` - Raid identifiers
+- `ProfileId` - Player profile ID
+- `RaidType` - PMC(1) or SCAV(2)
+- `GameMode` - PVP(1) or PVE(2)
+- `MapName`, `MapKey` - Map information
+- `ServerIp`, `ServerPort` - Server details
+- `IsParty`, `PartyLeaderAccountId` - Party info
+- `StartTime`, `EndTime`, `DurationSeconds` - Timing
+- `Rtt`, `PacketLoss`, `PacketsSent`, `PacketsReceived` - Network stats
+
+## EFT Log Event System
+
+### Overview
+
+The `EftRaidEventService` monitors EFT game logs in real-time to detect:
+- Profile selection (PMC vs SCAV)
+- Game mode (PVE vs PVP)
+- Raid lifecycle (matching, connecting, in-raid, ended)
+- Network statistics
+
+### Profile Detection
+
+```
+EFT Log Location: %LOCALAPPDATA%\Battlestate Games\EFT\Logs\
+  └── log_YYYY.MM.DD_HH-MM-SS_VERSION/
+      ├── application_000.log  (profile, map, session info)
+      └── network-connection_000.log  (network events)
+```
+
+Profile IDs are 24-character hex strings:
+- PMC and SCAV profiles differ only in the last hex digit
+- SCAV Profile ID = PMC Profile ID + 1 (hex)
+- Example: PMC `69193861844e4f097e00ec2d` → SCAV `69193861844e4f097e00ec2e`
+
+### Subscribable Events
+
+```csharp
+// Usage example
+var raidService = EftRaidEventService.Instance;
+
+// Profile changes (PMC/SCAV detection)
+raidService.ProfileChanged += (sender, args) =>
+{
+    var profile = args.ProfileInfo;
+    Console.WriteLine($"PMC ID: {profile.PmcProfileId}");
+    Console.WriteLine($"SCAV ID: {profile.ScavProfileId}");
+};
+
+// Raid lifecycle events
+raidService.RaidEvent += (sender, args) =>
+{
+    switch (args.EventType)
+    {
+        case EftRaidEventType.RaidStarted:
+            var raid = args.RaidInfo;
+            Console.WriteLine($"Raid started: {raid.MapKey} as {raid.RaidType}");
+            break;
+        case EftRaidEventType.RaidEnded:
+            Console.WriteLine($"Raid ended after {raid.Duration?.TotalMinutes:F1} min");
+            break;
+    }
+};
+
+// Start monitoring
+raidService.StartMonitoring();
+```
+
+### Event Types
+
+| Event | Description | RaidInfo Available |
+|-------|-------------|-------------------|
+| `SessionModeDetected` | PVE/PVP mode detected | No |
+| `ProfileSelected` | Profile selected (login) | No |
+| `MatchingStarted` | Matching queue started | No |
+| `MapLoadingStarted` | Map loading started | Yes (partial) |
+| `Connecting` | Connecting to server | Yes |
+| `Connected` | Connected, raid starting | Yes |
+| `RaidStarted` | In raid | Yes |
+| `Disconnected` | Disconnected from server | Yes |
+| `RaidEnded` | Raid completed | Yes (full) |
+| `NetworkTimeout` | Network timeout occurred | Yes |
+| `NetworkError` | Network error occurred | Yes |
+
+### Settings (user_data.db)
+
+| Setting Key | Description |
+|-------------|-------------|
+| `eft.pmcProfileId` | Saved PMC profile ID |
+| `eft.scavProfileId` | Saved SCAV profile ID |
+| `eft.accountId` | Saved account ID |
+
 ## Claude Code Configuration
 
 ### Available SubAgents
@@ -267,6 +364,7 @@ Specialized agents for specific tasks (located in `.claude/agents/`):
 | `service-architect` | Service design, DI patterns | Service refactoring |
 | `map-feature-specialist` | Map tracking, coordinates, markers | Map 탭 기능 작업 |
 | `prd-manager` | PRD 관리, 작업 계획, 에이전트 조율 | 기능 계획 및 관리 |
+| `tarkov-log-analyst` | EFT 게임 로그 분석, 에러 진단, 레이드 추적 | 인게임 로그 분석 |
 
 ### Agent Self-Learning
 
@@ -331,6 +429,11 @@ Custom commands (located in `.claude/commands/`):
 
 # Service design → service-architect
 "How should I structure a new notification service?"
+
+# Game log analysis → tarkov-log-analyst
+"Why did I get disconnected from the last raid?"
+"What errors occurred in my last game session?"
+"Parse my game logs and find network issues"
 
 # Quick commands
 /build-and-run    # Build and launch the app

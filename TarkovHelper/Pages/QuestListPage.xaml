@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:components="clr-namespace:TarkovHelper.Pages.Components"
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="900"
              Background="{StaticResource BackgroundDarkBrush}">
@@ -285,108 +286,8 @@
         </Border>
 
         <!-- Recommended Quests Section (Collapsible) -->
-        <Expander x:Name="RecommendationsExpander" Grid.Row="2" Margin="0,0,0,12"
-                  IsExpanded="False" Visibility="Collapsed">
-            <Expander.Header>
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock x:Name="TxtRecommendationsHeader" Text="Recommended Quests"
-                               FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
-                               Foreground="{StaticResource AccentBrush}"
-                               VerticalAlignment="Center"/>
-                    <Border x:Name="RecommendationCountBadge" Padding="6,2" CornerRadius="10"
-                            Background="{StaticResource AccentBrush}" Margin="8,0,0,0"
-                            VerticalAlignment="Center">
-                        <TextBlock x:Name="TxtRecommendationCount" Text="0"
-                                   FontSize="{DynamicResource FontSizeTiny}" FontWeight="Bold"
-                                   Foreground="White"/>
-                    </Border>
-                </StackPanel>
-            </Expander.Header>
-            <Border Background="{StaticResource BackgroundMediumBrush}"
-                    CornerRadius="6" Padding="12" Margin="0,8,0,0">
-                <StackPanel>
-                    <!-- No Recommendations Message -->
-                    <TextBlock x:Name="TxtNoRecommendations" Text="No recommendations at this time"
-                               FontSize="{DynamicResource FontSizeXSmall}"
-                               Foreground="{StaticResource TextSecondaryBrush}"
-                               HorizontalAlignment="Center" Margin="0,8"
-                               Visibility="Collapsed"/>
-
-                    <!-- Recommendations List -->
-                    <ItemsControl x:Name="RecommendationsList">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Padding="10,8" Margin="0,0,0,6" CornerRadius="4"
-                                        Background="{StaticResource BackgroundDarkBrush}"
-                                        Cursor="Hand"
-                                        MouseLeftButtonDown="Recommendation_Click">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background" Value="{StaticResource BackgroundLightBrush}"/>
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-
-                                        <!-- Type Badge -->
-                                        <Border Grid.Column="0" Padding="6,3" CornerRadius="3"
-                                                Background="{Binding TypeBackground}"
-                                                VerticalAlignment="Center" Margin="0,0,10,0">
-                                            <TextBlock Text="{Binding TypeText}"
-                                                       FontSize="{DynamicResource FontSizeTiny}"
-                                                       Foreground="White" FontWeight="SemiBold"/>
-                                        </Border>
-
-                                        <!-- Quest Info -->
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                            <StackPanel Orientation="Horizontal">
-                                                <TextBlock Text="{Binding QuestName}"
-                                                           FontSize="{DynamicResource FontSizeXSmall}"
-                                                           Foreground="{StaticResource TextPrimaryBrush}"
-                                                           TextTrimming="CharacterEllipsis"
-                                                           MaxWidth="280"/>
-                                                <!-- Kappa Badge -->
-                                                <Border Padding="4,1" CornerRadius="3"
-                                                        Background="#9C27B0"
-                                                        VerticalAlignment="Center" Margin="6,0,0,0"
-                                                        Visibility="{Binding KappaBadgeVisibility}"
-                                                        ToolTip="Required for Kappa Container">
-                                                    <TextBlock Text="κ" FontSize="{DynamicResource FontSizeTiny}"
-                                                               Foreground="White" FontWeight="Bold"/>
-                                                </Border>
-                                            </StackPanel>
-                                            <TextBlock Text="{Binding Reason}"
-                                                       FontSize="{DynamicResource FontSizeTiny}"
-                                                       Foreground="{StaticResource TextSecondaryBrush}"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       MaxWidth="280"/>
-                                        </StackPanel>
-
-                                        <!-- Trader Initial -->
-                                        <Border Grid.Column="2" Width="28" Height="28"
-                                                CornerRadius="4" Background="{StaticResource BackgroundMediumBrush}"
-                                                VerticalAlignment="Center" Margin="8,0,0,0">
-                                            <TextBlock Text="{Binding TraderInitial}"
-                                                       FontSize="{DynamicResource FontSizeXSmall}" FontWeight="Bold"
-                                                       Foreground="{StaticResource AccentBrush}"
-                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                    </Grid>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Border>
-        </Expander>
+        <components:QuestRecommendationsPanel x:Name="RecommendationsPanel" Grid.Row="2" Margin="0,0,0,12"
+                                               RecommendationClicked="RecommendationsPanel_RecommendationClicked"/>
 
         <!-- Main Content -->
         <Grid Grid.Row="3">
