@@ -63,6 +63,8 @@
                 <MenuItem Header="Quest Objective Editor..." Click="OpenQuestObjectiveEditor_Click"/>
                 <MenuItem Header="Map Preview..." Click="OpenMapPreview_Click"/>
                 <MenuItem Header="Map Transfer..." Click="OpenMapTransfer_Click"/>
+                <Separator/>
+                <MenuItem Header="Publish DB Update..." Click="PublishDbUpdate_Click" ToolTip="Publish DB and assets to TarkovHelper"/>
             </MenuItem>
         </Menu>
 

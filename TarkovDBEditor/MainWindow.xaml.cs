@@ -902,4 +902,10 @@ public partial class MainWindow : Window
             IsEnabled = true;
         }
     }
+
+    private void PublishDbUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new DataPublishWindow { Owner = this };
+        window.Show();
+    }
 }
