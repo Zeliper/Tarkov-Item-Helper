@@ -272,6 +272,9 @@ namespace TarkovHelper.Pages
             SettingsService.Instance.HasUnheardEditionChanged += OnEditionChanged;
             SettingsService.Instance.PrestigeLevelChanged += OnPrestigeLevelChanged;
             SettingsService.Instance.DspDecodeCountChanged += OnDspDecodeCountChanged;
+            QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+            HideoutDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+            ItemDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
 
             Loaded += ItemsPage_Loaded;
             Unloaded += ItemsPage_Unloaded;
@@ -291,6 +294,9 @@ namespace TarkovHelper.Pages
             SettingsService.Instance.HasUnheardEditionChanged -= OnEditionChanged;
             SettingsService.Instance.PrestigeLevelChanged -= OnPrestigeLevelChanged;
             SettingsService.Instance.DspDecodeCountChanged -= OnDspDecodeCountChanged;
+            QuestDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+            HideoutDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+            ItemDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
         }
 
         private void OnInventoryChanged(object? sender, EventArgs e)
@@ -305,6 +311,25 @@ namespace TarkovHelper.Pages
                     vm.OwnedNonFirQuantity = inventory.NonFirQuantity;
                 }
                 UpdateDetailPanel();
+            });
+        }
+
+        private async void OnDatabaseRefreshed(object? sender, EventArgs e)
+        {
+            // DB 업데이트 후 데이터 다시 로드
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                // Item lookup 새로고침
+                _itemLookup = new Dictionary<string, TarkovItem>(
+                    ItemDbService.Instance.GetItemLookup(), StringComparer.OrdinalIgnoreCase);
+
+                // Items 데이터 다시 로드
+                await LoadItemsAsync();
+                ApplyFilters();
+                UpdateDetailPanel();
+
+                // 아이콘 백그라운드 로드
+                _ = LoadImagesInBackgroundAsync();
             });
         }
 
@@ -323,6 +348,9 @@ namespace TarkovHelper.Pages
                 SettingsService.Instance.HasUnheardEditionChanged += OnEditionChanged;
                 SettingsService.Instance.PrestigeLevelChanged += OnPrestigeLevelChanged;
                 SettingsService.Instance.DspDecodeCountChanged += OnDspDecodeCountChanged;
+                QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+                HideoutDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+                ItemDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
             }
 
             // Check if data needs refresh (changes might have occurred while unloaded)

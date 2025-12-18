@@ -540,10 +540,14 @@ namespace TarkovDBEditor.Services
                     }
                     dbQuest.Trader = trader;
 
-                    // Location - PageContent에서 파싱
+                    // Location - PageContent에서 파싱, null이면 "Any"
                     if (!string.IsNullOrEmpty(cached.PageContent))
                     {
-                        dbQuest.Location = ExtractLocationFromContent(cached.PageContent);
+                        dbQuest.Location = ExtractLocationFromContent(cached.PageContent) ?? "Any";
+                    }
+                    else
+                    {
+                        dbQuest.Location = "Any";
                     }
 
                     // MinLevel, MinScavKarma - 캐시에 있으면 사용, 없으면 PageContent에서 파싱
@@ -1220,10 +1224,14 @@ namespace TarkovDBEditor.Services
                 }
                 dbQuest.Trader = trader;
 
-                // Location 파싱
+                // Location 파싱, null이면 "Any"
                 if (!string.IsNullOrEmpty(cached.PageContent))
                 {
-                    dbQuest.Location = ExtractLocationFromContent(cached.PageContent);
+                    dbQuest.Location = ExtractLocationFromContent(cached.PageContent) ?? "Any";
+                }
+                else
+                {
+                    dbQuest.Location = "Any";
                 }
 
                 // MinLevel, MinScavKarma
@@ -3193,13 +3201,18 @@ namespace TarkovDBEditor.Services
                 return null;
 
             // |location = [[Woods]] 또는 |location = [[Customs]], [[Woods]] 형식
+            // 다음 필드(|) 또는 infobox 끝(}}) 전까지만 매칭
             var match = System.Text.RegularExpressions.Regex.Match(
-                content, @"\|location\s*=\s*(.+?)(?=\n\||\n\}|\}\})",
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Singleline);
+                content, @"\|location\s*=\s*([^|\n\r]*?)(?=\n|\r|\||\}\}|$)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
             if (match.Success)
             {
                 var locationValue = match.Groups[1].Value.Trim();
+
+                // 빈 값이면 null 반환
+                if (string.IsNullOrEmpty(locationValue))
+                    return null;
 
                 // [[Location]] 형식에서 이름만 추출 (여러 개일 수 있음)
                 var locations = new List<string>();

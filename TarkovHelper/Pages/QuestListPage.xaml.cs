@@ -188,6 +188,7 @@ namespace TarkovHelper.Pages
             SettingsService.Instance.PrestigeLevelChanged += OnPrestigeLevelChanged;
             SettingsService.Instance.DspDecodeCountChanged += OnDspDecodeCountChanged;
             SettingsService.Instance.PlayerFactionChanged += OnPlayerFactionChanged;
+            QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
 
             Loaded += QuestListPage_Loaded;
             Unloaded += QuestListPage_Unloaded;
@@ -204,6 +205,7 @@ namespace TarkovHelper.Pages
             SettingsService.Instance.PrestigeLevelChanged -= OnPrestigeLevelChanged;
             SettingsService.Instance.DspDecodeCountChanged -= OnDspDecodeCountChanged;
             SettingsService.Instance.PlayerFactionChanged -= OnPlayerFactionChanged;
+            QuestDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
         }
 
         private async void QuestListPage_Loaded(object sender, RoutedEventArgs e)
@@ -219,6 +221,7 @@ namespace TarkovHelper.Pages
                 SettingsService.Instance.PrestigeLevelChanged += OnPrestigeLevelChanged;
                 SettingsService.Instance.DspDecodeCountChanged += OnDspDecodeCountChanged;
                 SettingsService.Instance.PlayerFactionChanged += OnPlayerFactionChanged;
+                QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
             }
 
             // Skip if already loaded (prevents re-initialization on tab switching)
@@ -268,6 +271,24 @@ namespace TarkovHelper.Pages
             Dispatcher.Invoke(() =>
             {
                 RefreshQuestStatuses();
+                ApplyFilters();
+                UpdateDetailPanel();
+                UpdateRecommendations();
+            });
+        }
+
+        private async void OnDatabaseRefreshed(object? sender, EventArgs e)
+        {
+            // DB 업데이트 후 데이터 다시 로드
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                // Item lookup 새로고침
+                _itemLookup = ItemDbService.Instance.GetItemLookup();
+
+                // Quest 데이터 다시 로드
+                LoadQuests();
+                PopulateTraderFilter();
+                PopulateMapFilter();
                 ApplyFilters();
                 UpdateDetailPanel();
                 UpdateRecommendations();

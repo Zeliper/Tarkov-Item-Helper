@@ -103,6 +103,8 @@ public partial class MapPage : UserControl
             _trackerService.StatusMessage += OnStatusMessage;
             _trackerService.WatchingStateChanged += OnWatchingStateChanged;
             _loc.LanguageChanged += OnLanguageChanged;
+            MapMarkerDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+            QuestObjectiveDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
 
             Loaded += MapTrackerPage_Loaded;
             Unloaded += MapTrackerPage_Unloaded;
@@ -182,6 +184,8 @@ public partial class MapPage : UserControl
         // 이벤트 구독 해제
         _progressService.ProgressChanged -= OnQuestProgressChanged;
         _progressService.ObjectiveProgressChanged -= OnObjectiveProgressChanged;
+        MapMarkerDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+        QuestObjectiveDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
 
         // Global Keyboard Hook 중지
         GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
@@ -203,6 +207,22 @@ public partial class MapPage : UserControl
         settingsService.MapLastZoomLevel = _zoomLevel;
         settingsService.MapLastTranslateX = MapTranslate.X;
         settingsService.MapLastTranslateY = MapTranslate.Y;
+    }
+
+    private async void OnDatabaseRefreshed(object? sender, EventArgs e)
+    {
+        // DB 업데이트 후 마커 데이터 다시 로드
+        await Dispatcher.InvokeAsync(async () =>
+        {
+            // 퀘스트 목표 데이터 다시 로드
+            await LoadQuestObjectivesAsync();
+
+            // 탈출구 데이터 다시 로드
+            await LoadExtractsAsync();
+
+            // 퀘스트 마커 갱신
+            RefreshQuestMarkers();
+        });
     }
 
     private void RestoreMapState()

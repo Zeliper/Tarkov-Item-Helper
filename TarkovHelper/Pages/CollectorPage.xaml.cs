@@ -238,6 +238,8 @@ namespace TarkovHelper.Pages
             _loc.LanguageChanged += OnLanguageChanged;
             _questProgressService.ProgressChanged += OnProgressChanged;
             _inventoryService.InventoryChanged += OnInventoryChanged;
+            QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+            ItemDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
 
             Loaded += CollectorPage_Loaded;
             Unloaded += CollectorPage_Unloaded;
@@ -250,6 +252,8 @@ namespace TarkovHelper.Pages
             _loc.LanguageChanged -= OnLanguageChanged;
             _questProgressService.ProgressChanged -= OnProgressChanged;
             _inventoryService.InventoryChanged -= OnInventoryChanged;
+            QuestDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
+            ItemDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
         }
 
         private void OnInventoryChanged(object? sender, EventArgs e)
@@ -266,6 +270,24 @@ namespace TarkovHelper.Pages
             });
         }
 
+        private async void OnDatabaseRefreshed(object? sender, EventArgs e)
+        {
+            // DB 업데이트 후 데이터 다시 로드
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                // Item lookup 새로고침
+                _itemLookup = ItemDbService.Instance.GetItemLookup();
+
+                // Collector items 데이터 다시 로드
+                await LoadItemsAsync();
+                ApplyFilters();
+                UpdateDetailPanel();
+
+                // 아이콘 백그라운드 로드
+                _ = LoadImagesInBackgroundAsync();
+            });
+        }
+
         private async void CollectorPage_Loaded(object sender, RoutedEventArgs e)
         {
             if (_isUnloaded)
@@ -274,6 +296,8 @@ namespace TarkovHelper.Pages
                 _loc.LanguageChanged += OnLanguageChanged;
                 _questProgressService.ProgressChanged += OnProgressChanged;
                 _inventoryService.InventoryChanged += OnInventoryChanged;
+                QuestDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
+                ItemDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
             }
 
             // Check if data needs refresh (changes might have occurred while unloaded)

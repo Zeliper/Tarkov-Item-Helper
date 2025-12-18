@@ -111,6 +111,7 @@ namespace TarkovHelper.Pages
             InitializeComponent();
             _loc.LanguageChanged += OnLanguageChanged;
             _progressService.ProgressChanged += OnProgressChanged;
+            HideoutDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
 
             Loaded += HideoutPage_Loaded;
             Unloaded += HideoutPage_Unloaded;
@@ -122,6 +123,7 @@ namespace TarkovHelper.Pages
             // Unsubscribe from events to prevent memory leaks
             _loc.LanguageChanged -= OnLanguageChanged;
             _progressService.ProgressChanged -= OnProgressChanged;
+            HideoutDbService.Instance.DataRefreshed -= OnDatabaseRefreshed;
         }
 
         private async void HideoutPage_Loaded(object sender, RoutedEventArgs e)
@@ -132,6 +134,7 @@ namespace TarkovHelper.Pages
                 _isUnloaded = false;
                 _loc.LanguageChanged += OnLanguageChanged;
                 _progressService.ProgressChanged += OnProgressChanged;
+                HideoutDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
             }
 
             // Show loading overlay
@@ -176,6 +179,21 @@ namespace TarkovHelper.Pages
                 ApplyFilters();
                 UpdateDetailPanel();
                 UpdateStatistics();
+            });
+        }
+
+        private async void OnDatabaseRefreshed(object? sender, EventArgs e)
+        {
+            // DB 업데이트 후 데이터 다시 로드
+            await Dispatcher.InvokeAsync(async () =>
+            {
+                await LoadModulesAsync();
+                ApplyFilters();
+                UpdateDetailPanel();
+                UpdateStatistics();
+
+                // 아이콘 백그라운드 로드
+                _ = LoadModuleIconsInBackgroundAsync();
             });
         }
 

@@ -19,6 +19,12 @@ public sealed class QuestObjectiveDbService
 
     public bool IsLoaded => _isLoaded;
 
+    /// <summary>
+    /// 데이터가 새로고침되었을 때 발생하는 이벤트.
+    /// UI 페이지들은 이 이벤트를 구독하여 화면을 갱신해야 함.
+    /// </summary>
+    public event EventHandler? DataRefreshed;
+
     private QuestObjectiveDbService()
     {
         _databasePath = DatabaseUpdateService.Instance.DatabasePath;
@@ -44,6 +50,28 @@ public sealed class QuestObjectiveDbService
         System.Diagnostics.Debug.WriteLine("[QuestObjectiveDbService] Refreshing objective data...");
         // 기존 데이터를 클리어하지 않음 - LoadObjectivesAsync()에서 atomic swap으로 교체
         await LoadObjectivesAsync();
+
+        // 데이터 새로고침 완료 이벤트 발생
+        OnDataRefreshed();
+    }
+
+    /// <summary>
+    /// 데이터 새로고침 이벤트 발생
+    /// </summary>
+    private void OnDataRefreshed()
+    {
+        // UI 스레드에서 이벤트 발생
+        if (System.Windows.Application.Current?.Dispatcher != null)
+        {
+            System.Windows.Application.Current.Dispatcher.BeginInvoke(() =>
+            {
+                DataRefreshed?.Invoke(this, EventArgs.Empty);
+            });
+        }
+        else
+        {
+            DataRefreshed?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>
