@@ -25,18 +25,60 @@ public sealed class LogMapWatcherService : IDisposable
     // 맵 설정 키는 map_configs.json의 "key" 필드와 일치해야 함
     private static readonly Dictionary<string, string> MapNameMapping = new(StringComparer.OrdinalIgnoreCase)
     {
+        // Woods
+        { "woods", "Woods" },
+        { "woods_preset", "Woods" },
+
+        // Customs
+        { "customs", "Customs" },
+        { "customs_preset", "Customs" },
         { "bigmap", "Customs" },
+
+        // Shoreline
+        { "shoreline", "Shoreline" },
+        { "shoreline_preset", "Shoreline" },
+
+        // Interchange
+        { "interchange", "Interchange" },
+        { "shopping_mall", "Interchange" },
+
+        // Reserve
+        { "reserve", "Reserve" },
+        { "rezervbase", "Reserve" },
+        { "rezerv_base_preset", "Reserve" },
+
+        // Lighthouse
+        { "lighthouse", "Lighthouse" },
+        { "lighthouse_preset", "Lighthouse" },
+
+        // Streets of Tarkov
+        { "tarkovstreets", "StreetsOfTarkov" },
+        { "streets", "StreetsOfTarkov" },
+        { "city_preset", "StreetsOfTarkov" },
+
+        // Factory - Day/Night are same map
+        { "factory", "Factory" },
         { "factory4_day", "Factory" },
         { "factory4_night", "Factory" },
-        { "woods", "Woods" },
-        { "shoreline", "Shoreline" },
-        { "interchange", "Interchange" },
-        { "lighthouse", "Lighthouse" },
-        { "rezervbase", "Reserve" },
-        { "laboratory", "Labs" },
-        { "tarkovstreets", "StreetsOfTarkov" },
+        { "factory_day_preset", "Factory" },
+        { "factory_night_preset", "Factory" },
+
+        // Ground Zero - All levels are same map
+        { "groundzero", "GroundZero" },
         { "sandbox", "GroundZero" },
         { "sandbox_high", "GroundZero" },
+        { "sandbox_start", "GroundZero" },
+        { "sandbox_preset", "GroundZero" },
+        { "sandbox_high_preset", "GroundZero" },
+
+        // Labs
+        { "laboratory", "Labs" },
+        { "laboratory_preset", "Labs" },
+        { "labs", "Labs" },
+
+        // Labyrinth
+        { "labyrinth", "Labyrinth" },
+        { "labyrinth_preset", "Labyrinth" },
     };
 
     // 로그에서 맵 로딩을 감지하는 정규식 패턴들

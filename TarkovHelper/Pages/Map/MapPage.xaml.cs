@@ -60,8 +60,11 @@ public partial class MapPage : UserControl
     private double _extractNameTextSize = 10.0;
     private bool _hideCompletedObjectives = true;
 
-    // 로그 맵 감시 서비스 (자동 맵 전환용)
-    private readonly LogMapWatcherService _logMapWatcher = LogMapWatcherService.Instance;
+    // EFT 레이드 이벤트 서비스 (자동 맵 전환 및 레이드 감지용)
+    private readonly EftRaidEventService _raidEventService = EftRaidEventService.Instance;
+
+    // 맵별 줌 레벨 캐시 (DB 접근 최소화)
+    private readonly Dictionary<string, double> _mapZoomLevelCache = new(StringComparer.OrdinalIgnoreCase);
 
     // 퀘스트 드로어 필터링 옵션
     private string _drawerStatusFilter = "All";
@@ -198,8 +201,8 @@ public partial class MapPage : UserControl
 
             PopulateMapComboBox();
 
-            // 로그 맵 감시 시작 (자동 맵 전환용) - RestoreMapState 전에 호출하여 마지막 플레이 맵 우선
-            StartLogMapWatching();
+            // 레이드 이벤트 모니터링 시작 (자동 맵 전환 및 레이드 감지용)
+            StartRaidEventMonitoring();
 
             // 로그에서 맵이 감지되지 않은 경우에만 저장된 맵 상태 복원
             RestoreMapState();
@@ -253,8 +256,8 @@ public partial class MapPage : UserControl
         // 자동 Tracking 중지 (다른 탭으로 이동 시)
         StopAutoTracking();
 
-        // 로그 맵 감시 중지
-        StopLogMapWatching();
+        // 레이드 이벤트 모니터링 중지
+        StopRaidEventMonitoring();
     }
 
     private void SaveMapState()
@@ -510,8 +513,9 @@ public partial class MapPage : UserControl
     }
 
     /// <summary>
-    /// Y 좌표(높이)를 기반으로 층을 자동 전환합니다.
-    /// DB의 MapFloorLocations 테이블에 설정된 Y 범위를 사용합니다.
+    /// X, Y, Z 좌표를 기반으로 층을 자동 전환합니다.
+    /// DB의 MapFloorLocations 테이블에 설정된 범위를 사용합니다.
+    /// XZ 범위가 설정된 영역은 해당 영역 내에서만 층이 전환됩니다.
     /// </summary>
     private void TryAutoSwitchFloor(ScreenPosition position)
     {
@@ -522,13 +526,15 @@ public partial class MapPage : UserControl
         if (CmbFloorSelect.Visibility != Visibility.Visible)
             return;
 
-        // 원본 EFT 좌표에서 Y(높이) 가져오기
+        // 원본 EFT 좌표에서 X, Y, Z 가져오기
         var originalPos = position.OriginalPosition;
         if (originalPos == null)
             return;
 
-        // FloorDetectionService로 층 감지
-        var detectedFloorId = FloorDetectionService.Instance.DetectFloor(_currentMapKey, originalPos.Y);
+        // FloorDetectionService로 층 감지 (X, Y, Z 좌표 모두 사용)
+        // Z가 null인 경우 0으로 처리 (XZ 범위 체크 시 영향 없음)
+        var detectedFloorId = FloorDetectionService.Instance.DetectFloor(
+            _currentMapKey, originalPos.X, originalPos.Y, originalPos.Z ?? 0);
         // 어떤 Boundary에도 해당하지 않으면 main 층으로 기본 설정
         if (string.IsNullOrEmpty(detectedFloorId))
             detectedFloorId = "main";
@@ -607,67 +613,240 @@ public partial class MapPage : UserControl
     }
 
     /// <summary>
-    /// 로그 맵 감시를 시작합니다 (자동 맵 전환용).
+    /// 레이드 이벤트 모니터링을 시작합니다 (자동 맵 전환 및 레이드 감지용).
     /// </summary>
-    private void StartLogMapWatching()
+    private void StartRaidEventMonitoring()
     {
         // 이벤트 구독
-        _logMapWatcher.MapChanged += OnLogMapChanged;
+        _raidEventService.RaidEvent += OnRaidEvent;
 
         // Settings에서 설정된 로그 폴더 경로 사용
         var logFolderPath = SettingsService.Instance.LogFolderPath;
-        _logMapWatcher.StartWatching(logFolderPath);
+        _raidEventService.StartMonitoring(logFolderPath);
     }
 
     /// <summary>
-    /// 로그 맵 감시를 중지합니다.
+    /// 레이드 이벤트 모니터링을 중지합니다.
     /// </summary>
-    private void StopLogMapWatching()
+    private void StopRaidEventMonitoring()
     {
         // 이벤트 구독 해제
-        _logMapWatcher.MapChanged -= OnLogMapChanged;
+        _raidEventService.RaidEvent -= OnRaidEvent;
 
-        // 로그 감시 중지
-        _logMapWatcher.StopWatching();
+        // 모니터링 중지
+        _raidEventService.StopMonitoring();
     }
 
     /// <summary>
-    /// 로그에서 맵 변경이 감지되었을 때 호출됩니다.
-    /// 자동으로 맵을 전환하고 Trail을 초기화합니다.
+    /// 레이드 이벤트가 발생했을 때 호출됩니다.
+    /// RaidStarted: 맵 자동 전환, 중앙 정렬, 맵별 줌 레벨 적용
+    /// RaidEnded/Disconnected: Trail 초기화
     /// </summary>
-    private void OnLogMapChanged(object? sender, MapChangedEventArgs e)
+    private void OnRaidEvent(object? sender, EftRaidEventArgs e)
     {
         Dispatcher.Invoke(() =>
         {
-            // 현재 맵과 같으면 스킵
-            if (string.Equals(_currentMapKey, e.NewMapKey, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            // 맵 콤보박스에서 해당 맵 찾기
-            for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+            switch (e.EventType)
             {
-                if (CmbMapSelect.Items[i] is ComboBoxItem item &&
-                    string.Equals(item.Tag as string, e.NewMapKey, StringComparison.OrdinalIgnoreCase))
-                {
-                    // 새 맵 시작이므로 Trail 먼저 초기화 (맵 전환 전에)
-                    _trackerService?.ClearTrail();
-                    TrailPath.Points.Clear();
-                    PlayerMarker.Visibility = Visibility.Collapsed;
-                    PlayerDot.Visibility = Visibility.Collapsed;
-                    TxtCoordinates.Text = "--";
-                    TxtLastUpdateTime.Text = "--";
-
-                    // 맵 선택 변경 (이로 인해 CmbMapSelect_SelectionChanged가 호출됨)
-                    CmbMapSelect.SelectedIndex = i;
-
-                    // 로그에서 맵 감지 시 100% 배율로 리셋
-                    SetZoom(1.0);
-
-                    TxtStatus.Text = $"맵 감지: {e.NewMapKey}";
+                case EftRaidEventType.RaidStarted:
+                    HandleRaidStarted(e);
                     break;
-                }
+
+                case EftRaidEventType.RaidEnded:
+                case EftRaidEventType.Disconnected:
+                    HandleRaidEnded(e);
+                    break;
             }
         });
+    }
+
+    /// <summary>
+    /// 레이드 시작 시 맵 자동 전환, 중앙 정렬, 맵별 줌 레벨 적용, Extraction 자동 스위칭
+    /// </summary>
+    private void HandleRaidStarted(EftRaidEventArgs e)
+    {
+        var mapKey = e.RaidInfo?.MapKey;
+        if (string.IsNullOrEmpty(mapKey))
+            return;
+
+        var raidType = e.RaidInfo?.RaidType ?? RaidType.Unknown;
+
+        // PMC/SCAV에 따른 Extraction 자동 스위칭
+        ApplyRaidTypeExtracts(raidType);
+
+        // 현재 맵과 같으면 Trail만 초기화
+        if (string.Equals(_currentMapKey, mapKey, StringComparison.OrdinalIgnoreCase))
+        {
+            ClearTrailAndMarkers();
+            var raidTypeStr = raidType == RaidType.PMC ? "PMC" : "SCAV";
+            TxtStatus.Text = $"레이드 시작: {mapKey} ({raidTypeStr})";
+            return;
+        }
+
+        // 맵 콤보박스에서 해당 맵 찾기
+        for (int i = 0; i < CmbMapSelect.Items.Count; i++)
+        {
+            if (CmbMapSelect.Items[i] is ComboBoxItem item &&
+                string.Equals(item.Tag as string, mapKey, StringComparison.OrdinalIgnoreCase))
+            {
+                // 현재 맵의 줌 레벨 저장 (맵 전환 전에)
+                if (!string.IsNullOrEmpty(_currentMapKey))
+                {
+                    SaveMapZoomLevel(_currentMapKey, _zoomLevel);
+                }
+
+                // Trail 초기화
+                ClearTrailAndMarkers();
+
+                // 맵 선택 변경 (이로 인해 CmbMapSelect_SelectionChanged가 호출됨)
+                CmbMapSelect.SelectedIndex = i;
+
+                // 해당 맵의 저장된 줌 레벨 적용
+                var savedZoom = LoadMapZoomLevel(mapKey);
+                SetZoom(savedZoom);
+
+                // 맵을 중앙으로 이동
+                CenterMapInView();
+
+                var raidTypeStr = raidType == RaidType.PMC ? "PMC" : "SCAV";
+                TxtStatus.Text = $"레이드 시작: {mapKey} ({raidTypeStr})";
+                break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// RaidType에 따라 Extraction 표시를 자동으로 스위칭합니다.
+    /// PMC: PMC Extracts + Shared 표시, SCAV Extracts 숨김
+    /// SCAV: SCAV Extracts 표시, PMC Extracts 숨김 (Shared는 PMC 설정을 따름)
+    /// </summary>
+    private void ApplyRaidTypeExtracts(RaidType raidType)
+    {
+        bool showPmc, showScav;
+
+        switch (raidType)
+        {
+            case RaidType.PMC:
+                showPmc = true;
+                showScav = false;
+                break;
+            case RaidType.Scav:
+                showPmc = false;
+                showScav = true;
+                break;
+            default:
+                // Unknown인 경우 둘 다 표시
+                showPmc = true;
+                showScav = true;
+                break;
+        }
+
+        // 내부 상태 업데이트
+        _showPmcExtracts = showPmc;
+        _showScavExtracts = showScav;
+
+        // UI 체크박스 업데이트 (이벤트 트리거 방지)
+        ChkShowPmcExtracts.Checked -= ChkExtractFilter_Changed;
+        ChkShowPmcExtracts.Unchecked -= ChkExtractFilter_Changed;
+        ChkShowScavExtracts.Checked -= ChkExtractFilter_Changed;
+        ChkShowScavExtracts.Unchecked -= ChkExtractFilter_Changed;
+
+        ChkShowPmcExtracts.IsChecked = showPmc;
+        ChkShowScavExtracts.IsChecked = showScav;
+
+        ChkShowPmcExtracts.Checked += ChkExtractFilter_Changed;
+        ChkShowPmcExtracts.Unchecked += ChkExtractFilter_Changed;
+        ChkShowScavExtracts.Checked += ChkExtractFilter_Changed;
+        ChkShowScavExtracts.Unchecked += ChkExtractFilter_Changed;
+
+        // ExtractMarkerManager에 설정 적용
+        if (_extractMarkerManager != null)
+        {
+            _extractMarkerManager.SetShowPmcExtracts(showPmc);
+            _extractMarkerManager.SetShowScavExtracts(showScav);
+        }
+
+        // 마커 새로고침
+        RefreshExtractMarkers();
+    }
+
+    /// <summary>
+    /// 레이드 종료 시 Trail 초기화
+    /// </summary>
+    private void HandleRaidEnded(EftRaidEventArgs e)
+    {
+        ClearTrailAndMarkers();
+
+        var mapKey = e.RaidInfo?.MapKey ?? _currentMapKey;
+        var duration = e.RaidInfo?.Duration;
+        var durationStr = duration.HasValue ? $" ({duration.Value.Minutes}분 {duration.Value.Seconds}초)" : "";
+        TxtStatus.Text = $"레이드 종료: {mapKey}{durationStr}";
+    }
+
+    /// <summary>
+    /// Trail과 플레이어 마커를 초기화합니다.
+    /// </summary>
+    private void ClearTrailAndMarkers()
+    {
+        _trackerService?.ClearTrail();
+        TrailPath.Points.Clear();
+        PlayerMarker.Visibility = Visibility.Collapsed;
+        PlayerDot.Visibility = Visibility.Collapsed;
+        TxtCoordinates.Text = "--";
+        TxtLastUpdateTime.Text = "--";
+    }
+
+    /// <summary>
+    /// 특정 맵의 줌 레벨을 DB에 저장합니다.
+    /// </summary>
+    private void SaveMapZoomLevel(string mapKey, double zoomLevel)
+    {
+        _mapZoomLevelCache[mapKey] = zoomLevel;
+
+        // 백그라운드에서 DB에 저장
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var settingKey = $"map.zoomLevel.{mapKey}";
+                await UserDataDbService.Instance.SetSettingAsync(settingKey, zoomLevel.ToString("F2"));
+            }
+            catch
+            {
+                // 저장 실패 시 무시
+            }
+        });
+    }
+
+    /// <summary>
+    /// 특정 맵의 저장된 줌 레벨을 로드합니다.
+    /// </summary>
+    private double LoadMapZoomLevel(string mapKey)
+    {
+        // 캐시에서 먼저 확인
+        if (_mapZoomLevelCache.TryGetValue(mapKey, out var cachedZoom))
+        {
+            return cachedZoom;
+        }
+
+        // DB에서 로드
+        try
+        {
+            var settingKey = $"map.zoomLevel.{mapKey}";
+            var value = UserDataDbService.Instance.GetSetting(settingKey);
+            if (!string.IsNullOrEmpty(value) && double.TryParse(value, out var zoom))
+            {
+                _mapZoomLevelCache[mapKey] = zoom;
+                return zoom;
+            }
+        }
+        catch
+        {
+            // 로드 실패 시 무시
+        }
+
+        // 기본값 1.0 (100%)
+        return 1.0;
     }
 
     #endregion
