@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:sys="clr-namespace:System;assembly=mscorlib"
              xmlns:local="clr-namespace:TarkovHelper"
+             ShutdownMode="OnMainWindowClose"
 >
     <Application.Resources>
         <!-- Custom Font -->

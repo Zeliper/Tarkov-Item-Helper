@@ -13,6 +13,7 @@ using SharpVectors.Renderers.Wpf;
 using TarkovHelper.Models;
 using TarkovHelper.Models.Map;
 using TarkovHelper.Services;
+using TarkovHelper.Services.Logging;
 using TarkovHelper.Services.Map;
 using TarkovHelper.Pages.Map.Components;
 using LegacyMapConfig = TarkovHelper.Models.Map.MapConfig;
@@ -26,10 +27,12 @@ namespace TarkovHelper.Pages.Map;
 /// </summary>
 public partial class MapPage : UserControl
 {
+    private static readonly ILogger _log = Log.For<MapPage>();
     private readonly MapTrackerService? _trackerService;
     private readonly QuestObjectiveService _objectiveService = QuestObjectiveService.Instance;
     private readonly QuestProgressService _progressService = QuestProgressService.Instance;
     private readonly LocalizationService _loc = LocalizationService.Instance;
+    private readonly OverlayMiniMapService _overlayService = OverlayMiniMapService.Instance;
     private string? _currentMapKey;
     private double _zoomLevel = 1.0;
     private const double MinZoom = 0.1;
@@ -229,6 +232,9 @@ public partial class MapPage : UserControl
             GlobalKeyboardHookService.Instance.FloorKeyPressed += OnFloorKeyPressed;
             GlobalKeyboardHookService.Instance.IsEnabled = true;
 
+            // 오버레이 미니맵 서비스 초기화
+            await InitializeOverlayServiceAsync();
+
             // 자동 Tracking 시작 (Map 탭 활성화 시)
             StartAutoTracking();
         }
@@ -252,6 +258,9 @@ public partial class MapPage : UserControl
         // Global Keyboard Hook 중지
         GlobalKeyboardHookService.Instance.FloorKeyPressed -= OnFloorKeyPressed;
         GlobalKeyboardHookService.Instance.IsEnabled = false;
+
+        // 오버레이 숨기기 (Map 탭 이탈 시)
+        _overlayService.HideOverlay();
 
         // 자동 Tracking 중지 (다른 탭으로 이동 시)
         StopAutoTracking();
@@ -874,6 +883,19 @@ public partial class MapPage : UserControl
         PlayerDot.Visibility = Visibility.Collapsed;
         TxtCoordinates.Text = "--";
         TxtLastUpdateTime.Text = "--";
+    }
+
+    private async Task InitializeOverlayServiceAsync()
+    {
+        try
+        {
+            await _overlayService.InitializeAsync();
+            _log.Info("Overlay MiniMap service initialized");
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Failed to initialize Overlay MiniMap service", ex);
+        }
     }
 
     private void BtnSettings_Click(object sender, RoutedEventArgs e)
@@ -1833,6 +1855,9 @@ public partial class MapPage : UserControl
 
         // DB에 저장
         SettingsService.Instance.MapShowQuests = _showQuestMarkers;
+
+        // 오버레이 맵도 새로고침
+        OverlayMiniMapService.Instance.RefreshMap();
     }
 
     /// <summary>
@@ -2512,6 +2537,9 @@ public partial class MapPage : UserControl
 
         // DB에 저장
         SettingsService.Instance.MapShowExtracts = _showExtractMarkers;
+
+        // 오버레이 맵도 새로고침
+        OverlayMiniMapService.Instance.RefreshMap();
     }
 
     private void ChkExtractFilter_Changed(object sender, RoutedEventArgs e)
@@ -2528,6 +2556,9 @@ public partial class MapPage : UserControl
 
         // 마커 새로고침
         RefreshExtractMarkers();
+
+        // 오버레이 맵도 새로고침
+        OverlayMiniMapService.Instance.RefreshMap();
     }
 
     private void SliderExtractTextSize_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -2676,6 +2707,9 @@ public partial class MapPage : UserControl
         {
             RefreshQuestDrawer();
         }
+
+        // 오버레이 맵도 새로고침
+        OverlayMiniMapService.Instance.RefreshMap();
     }
 
     private void RefreshQuestDrawer()
