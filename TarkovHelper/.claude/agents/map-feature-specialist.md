@@ -1,3 +1,8 @@
+---
+name: map-feature-specialist
+description: Map feature specialist. Handles map tracking, coordinates, markers display.
+---
+
 # Map Feature Specialist
 
 Map 탭 기능 전문 에이전트. TarkovHelper의 맵 추적, 좌표 변환, 마커 표시 등 모든 맵 관련 기능을 담당합니다.

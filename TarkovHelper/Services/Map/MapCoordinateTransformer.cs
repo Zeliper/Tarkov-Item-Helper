@@ -39,6 +39,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
         return TryTransformGameCoordinate(
             worldPosition.MapName,
             worldPosition.X,
+            worldPosition.Y,
             worldPosition.Z,
             worldPosition.Angle,
             out screenPosition);
@@ -47,15 +48,15 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
     /// <inheritdoc />
     public bool TryTransform(string mapKey, double worldX, double worldY, double? angle, out ScreenPosition? screenPosition)
     {
-        // worldX = position.x, worldY = position.z
-        return TryTransformGameCoordinate(mapKey, worldX, worldY, angle, out screenPosition);
+        // worldX = position.x, worldY = position.z (이 오버로드는 높이 정보 없음)
+        return TryTransformGameCoordinate(mapKey, worldX, 0, worldY, angle, out screenPosition);
     }
 
     /// <inheritdoc />
     public bool TryTransformApiCoordinate(string mapKey, double apiX, double apiY, double? apiZ, out ScreenPosition? screenPosition)
     {
-        // API 좌표: apiX=position.x, apiZ=position.z
-        return TryTransformGameCoordinate(mapKey, apiX, apiZ, null, out screenPosition);
+        // API 좌표: apiX=position.x, apiY=position.y(높이), apiZ=position.z
+        return TryTransformGameCoordinate(mapKey, apiX, apiY, apiZ, null, out screenPosition);
     }
 
     /// <summary>
@@ -67,6 +68,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
         return TryTransformPlayerPosition(
             worldPosition.MapName,
             worldPosition.X,
+            worldPosition.Y,
             worldPosition.Z,
             worldPosition.Angle,
             out screenPosition);
@@ -76,7 +78,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
     /// 플레이어 마커 전용 좌표 변환.
     /// playerMarkerTransform이 있으면 우선 사용합니다.
     /// </summary>
-    public bool TryTransformPlayerPosition(string mapKey, double gameX, double? gameZ, double? angle, out ScreenPosition? screenPosition)
+    public bool TryTransformPlayerPosition(string mapKey, double gameX, double gameY, double? gameZ, double? angle, out ScreenPosition? screenPosition)
     {
         screenPosition = null;
 
@@ -114,7 +116,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
             else
             {
                 // 기존 Transform 방식으로 폴백
-                return TryTransformGameCoordinate(mapKey, gameX, gameZ, angle, out screenPosition);
+                return TryTransformGameCoordinate(mapKey, gameX, gameY, gameZ, angle, out screenPosition);
             }
 
             screenPosition = new ScreenPosition
@@ -127,7 +129,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
                 {
                     MapName = mapKey,
                     X = gameX,
-                    Y = 0,
+                    Y = gameY,
                     Z = gameZ,
                     Angle = angle,
                     Timestamp = DateTime.Now
@@ -147,11 +149,12 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
     /// </summary>
     /// <param name="mapKey">맵 키</param>
     /// <param name="gameX">게임 position.x 좌표</param>
+    /// <param name="gameY">게임 position.y 좌표 (높이)</param>
     /// <param name="gameZ">게임 position.z 좌표</param>
     /// <param name="angle">플레이어 방향 각도 (선택)</param>
     /// <param name="screenPosition">변환된 화면 좌표</param>
     /// <returns>변환 성공 여부</returns>
-    private bool TryTransformGameCoordinate(string mapKey, double gameX, double? gameZ, double? angle, out ScreenPosition? screenPosition)
+    private bool TryTransformGameCoordinate(string mapKey, double gameX, double gameY, double? gameZ, double? angle, out ScreenPosition? screenPosition)
     {
         screenPosition = null;
 
@@ -220,7 +223,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
                 {
                     MapName = mapKey,
                     X = gameX,
-                    Y = 0,
+                    Y = gameY,
                     Z = gameZ,
                     Angle = angle,
                     Timestamp = DateTime.Now
@@ -340,11 +343,12 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
     /// </summary>
     /// <param name="mapKey">맵 키</param>
     /// <param name="gameX">게임 X 좌표</param>
+    /// <param name="gameY">게임 Y 좌표 (높이)</param>
     /// <param name="gameZ">게임 Z 좌표</param>
     /// <param name="angle">방향 각도</param>
     /// <param name="screenPosition">변환된 화면 좌표</param>
     /// <returns>변환 성공 여부</returns>
-    public bool TryTransformWithAutoCalibration(string mapKey, double gameX, double gameZ, double? angle, out ScreenPosition? screenPosition)
+    public bool TryTransformWithAutoCalibration(string mapKey, double gameX, double gameY, double gameZ, double? angle, out ScreenPosition? screenPosition)
     {
         screenPosition = null;
 
@@ -373,13 +377,13 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
                     else
                     {
                         // 폴백: IDW 변환
-                        return TryTransformGameCoordinate(mapKey, gameX, gameZ, angle, out screenPosition);
+                        return TryTransformGameCoordinate(mapKey, gameX, gameY, gameZ, angle, out screenPosition);
                     }
                 }
                 else
                 {
                     // 폴백: IDW 변환
-                    return TryTransformGameCoordinate(mapKey, gameX, gameZ, angle, out screenPosition);
+                    return TryTransformGameCoordinate(mapKey, gameX, gameY, gameZ, angle, out screenPosition);
                 }
             }
             else
@@ -404,7 +408,7 @@ public sealed class MapCoordinateTransformer : IMapCoordinateTransformer
                 {
                     MapName = mapKey,
                     X = gameX,
-                    Y = 0,
+                    Y = gameY,
                     Z = gameZ,
                     Angle = angle,
                     Timestamp = DateTime.Now

@@ -1,3 +1,8 @@
+---
+name: service-architect
+description: Service architecture expert for TarkovHelper. Manages dependencies, DI patterns.
+---
+
 # Service Architecture Expert
 
 Service architecture expert for TarkovHelper. Manages dependencies, service registration, design patterns, and service interactions.

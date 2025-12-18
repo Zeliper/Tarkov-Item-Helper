@@ -1,3 +1,8 @@
+---
+name: wpf-xaml-specialist
+description: WPF/XAML and C# UI expert for TarkovHelper. Handles XAML binding, view models, events.
+---
+
 # WPF/XAML Specialist
 
 WPF/XAML and C# UI expert for TarkovHelper. Handles XAML binding, view models, event handling, layout optimization.

@@ -44,6 +44,16 @@ namespace TarkovDBEditor.Services
             "Quests"  // 퀘스트 개요 페이지
         };
 
+        // 트레이더 본명 -> 일반 이름 매핑
+        private static readonly Dictionary<string, string> TraderNameAliases = new(StringComparer.OrdinalIgnoreCase)
+        {
+            { "Pavel Yegorovich Romanenko", "Prapor" },
+            { "Elvira Khabibullina", "Therapist" },
+            { "Alexander Fyodorovich Kiselyov", "Skier" },
+            { "Abramyan Arshavir Sarkisivich", "Ragman" },
+            { "Arshavir Sarkisivich", "Ragman" }
+        };
+
         public WikiQuestService(string? basePath = null)
         {
             _httpClient = new HttpClient();
@@ -503,7 +513,7 @@ namespace TarkovDBEditor.Services
             // "given by" (공백 포함) 또는 "givenby" (공백 없음) 둘 다 지원
             var match = Regex.Match(content, @"\|given\s*by\s*=\s*\[\[([^\]|]+)", RegexOptions.IgnoreCase);
             if (match.Success)
-                return match.Groups[1].Value.Trim();
+                return NormalizeTraderName(match.Groups[1].Value.Trim());
 
             // 링크 없이 직접 트레이더 이름만 있는 경우
             match = Regex.Match(content, @"\|given\s*by\s*=\s*([^\|\}\[\]\n]+)", RegexOptions.IgnoreCase);
@@ -511,10 +521,25 @@ namespace TarkovDBEditor.Services
             {
                 var trader = match.Groups[1].Value.Trim();
                 if (!string.IsNullOrEmpty(trader))
-                    return trader;
+                    return NormalizeTraderName(trader);
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// 트레이더 본명을 일반적인 트레이더 이름으로 변환
+        /// </summary>
+        private static string NormalizeTraderName(string traderName)
+        {
+            if (string.IsNullOrEmpty(traderName))
+                return traderName;
+
+            // 본명 매핑에 있으면 일반 이름으로 변환
+            if (TraderNameAliases.TryGetValue(traderName, out var normalizedName))
+                return normalizedName;
+
+            return traderName;
         }
 
         /// <summary>

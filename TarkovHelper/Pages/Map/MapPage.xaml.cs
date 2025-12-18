@@ -450,8 +450,9 @@ public partial class MapPage : UserControl
 
         // FloorDetectionService로 층 감지
         var detectedFloorId = FloorDetectionService.Instance.DetectFloor(_currentMapKey, originalPos.Y);
+        // 어떤 Boundary에도 해당하지 않으면 main 층으로 기본 설정
         if (string.IsNullOrEmpty(detectedFloorId))
-            return;
+            detectedFloorId = "main";
 
         // 현재 층과 같으면 스킵
         if (string.Equals(_currentFloorId, detectedFloorId, StringComparison.OrdinalIgnoreCase))

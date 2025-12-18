@@ -1,3 +1,8 @@
+---
+name: db-schema-analyzer
+description: SQLite database schema expert for TarkovHelper. Analyzes tarkov_data.db and user_data.db.
+---
+
 # Database Schema Analyzer
 
 SQLite database schema expert for TarkovHelper. Analyzes tarkov_data.db and user_data.db schema, migrations, queries.
