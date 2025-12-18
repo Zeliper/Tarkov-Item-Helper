@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Windows;
 using AutoUpdaterDotNET;
 using TarkovHelper.Services;
+using TarkovHelper.Services.Logging;
 
 namespace TarkovHelper
 {
@@ -11,6 +12,8 @@ namespace TarkovHelper
     /// </summary>
     public partial class App : Application
     {
+        private static readonly ILogger _log = Log.For<App>();
+
         private const string UpdateXmlUrl = "https://raw.githubusercontent.com/Zeliper/Tarkov-Item-Helper/main/update.xml";
 
         private static string DataDirectory => Path.Combine(
@@ -48,6 +51,57 @@ namespace TarkovHelper
 
             // Note: AutoUpdater is now managed by UpdateService in MainWindow
             // It will show update dialog only when user clicks "Update to vX.X.X" button
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            _log.Info("Application shutting down...");
+
+            try
+            {
+                // Stop background database updates
+                DatabaseUpdateService.Instance.Dispose();
+                _log.Debug("DatabaseUpdateService disposed");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Error disposing DatabaseUpdateService", ex);
+            }
+
+            try
+            {
+                // Dispose overlay service (closes overlay window and unsubscribes events)
+                OverlayMiniMapService.Instance.Dispose();
+                _log.Debug("OverlayMiniMapService disposed");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Error disposing OverlayMiniMapService", ex);
+            }
+
+            try
+            {
+                // Dispose keyboard hook (releases Windows hook)
+                GlobalKeyboardHookService.Instance.IsEnabled = false;
+                GlobalKeyboardHookService.Instance.Dispose();
+                _log.Debug("GlobalKeyboardHookService disposed");
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Error disposing GlobalKeyboardHookService", ex);
+            }
+
+            try
+            {
+                // Flush and dispose logging service
+                LoggingService.Instance.Dispose();
+            }
+            catch
+            {
+                // Ignore logging errors during shutdown
+            }
+
+            base.OnExit(e);
         }
 
         /// <summary>

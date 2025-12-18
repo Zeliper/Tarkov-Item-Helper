@@ -56,6 +56,11 @@ public sealed class MapTrackerService : IDisposable
     public string? CurrentMapKey => _currentMapKey;
 
     /// <summary>
+    /// 마지막 위치
+    /// </summary>
+    public ScreenPosition? LastPosition => _currentPosition;
+
+    /// <summary>
     /// 감시 중 여부
     /// </summary>
     public bool IsWatching => _watcher.IsWatching;
@@ -94,6 +99,11 @@ public sealed class MapTrackerService : IDisposable
     /// 감시 상태 변경 이벤트
     /// </summary>
     public event EventHandler<bool>? WatchingStateChanged;
+
+    /// <summary>
+    /// 맵 변경 이벤트
+    /// </summary>
+    public event Action<string>? MapChanged;
 
     private MapTrackerService()
     {
@@ -176,7 +186,11 @@ public sealed class MapTrackerService : IDisposable
     /// </summary>
     public void SetCurrentMap(string mapKey)
     {
-        _currentMapKey = mapKey;
+        if (_currentMapKey != mapKey)
+        {
+            _currentMapKey = mapKey;
+            MapChanged?.Invoke(mapKey);
+        }
     }
 
     /// <summary>
