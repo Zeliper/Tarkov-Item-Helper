@@ -374,14 +374,14 @@ public class DataPublishService : IDisposable
 
         try
         {
-            // 1. Copy database
+            // 1. Copy database (using stream to handle files open by other processes)
             if (comparison.DbChanged)
             {
                 progress?.Invoke("Copying database...");
                 var sourceDbPath = Path.Combine(_sourceBasePath, "tarkov_data.db");
                 var targetDbPath = Path.Combine(_targetBasePath, "tarkov_data.db");
 
-                File.Copy(sourceDbPath, targetDbPath, overwrite: true);
+                await CopyFileWithShareAsync(sourceDbPath, targetDbPath);
                 result.CopiedFiles.Add("tarkov_data.db");
                 result.FilesCopied++;
             }
@@ -468,9 +468,36 @@ public class DataPublishService : IDisposable
     private async Task<string> ComputeFileHashAsync(string filePath)
     {
         using var md5 = MD5.Create();
-        await using var stream = File.OpenRead(filePath);
+        // Use FileShare.ReadWrite to allow reading files that are open by other processes (like SQLite DB)
+        await using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         var hash = await md5.ComputeHashAsync(stream);
         return Convert.ToHexString(hash);
+    }
+
+    /// <summary>
+    /// Copy a file using FileShare.ReadWrite to handle files that are open by other processes (like SQLite DB)
+    /// </summary>
+    private async Task CopyFileWithShareAsync(string sourcePath, string targetPath)
+    {
+        const int bufferSize = 81920; // 80KB buffer
+
+        await using var sourceStream = new FileStream(
+            sourcePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.ReadWrite,
+            bufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        await using var targetStream = new FileStream(
+            targetPath,
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None,
+            bufferSize,
+            FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+        await sourceStream.CopyToAsync(targetStream);
     }
 
     public void Dispose()
