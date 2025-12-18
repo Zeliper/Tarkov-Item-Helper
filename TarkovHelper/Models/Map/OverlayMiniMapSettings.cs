@@ -59,7 +59,7 @@ public sealed class OverlayMiniMapSettings
     /// <summary>
     /// 뷰 모드 (고정/플레이어 추적)
     /// </summary>
-    public MiniMapViewMode ViewMode { get; set; } = MiniMapViewMode.Fixed;
+    public MiniMapViewMode ViewMode { get; set; } = MiniMapViewMode.PlayerTracking;
 
     /// <summary>
     /// Click-through 모드 (마우스 클릭 통과)
@@ -143,7 +143,7 @@ public sealed class OverlayMiniMapSettings
         Height = 300;
         Opacity = 0.8;
         ZoomLevel = 1.0;
-        ViewMode = MiniMapViewMode.Fixed;
+        ViewMode = MiniMapViewMode.PlayerTracking;
         ClickThrough = false;
         ShowQuestMarkers = true;
         ShowExtractMarkers = true;

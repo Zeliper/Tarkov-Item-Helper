@@ -581,9 +581,13 @@ public partial class OverlayMiniMapWindow : Window
         MapScale.ScaleX = zoom;
         MapScale.ScaleY = zoom;
 
-        // 항상 오프셋 적용 (팬 기능이 모든 모드에서 작동하도록)
-        MapTranslate.X = _settings.MapOffsetX;
-        MapTranslate.Y = _settings.MapOffsetY;
+        // 바운더리 제한 적용 후 오프셋 설정
+        var (clampedX, clampedY) = ClampMapOffset(_settings.MapOffsetX, _settings.MapOffsetY);
+        _settings.MapOffsetX = clampedX;
+        _settings.MapOffsetY = clampedY;
+
+        MapTranslate.X = clampedX;
+        MapTranslate.Y = clampedY;
 
         _log.Debug($"UpdateMapView: Scale=({MapScale.ScaleX:F4}, {MapScale.ScaleY:F4}), Translate=({MapTranslate.X:F1}, {MapTranslate.Y:F1}), ViewMode={_settings.ViewMode}");
     }
@@ -601,14 +605,50 @@ public partial class OverlayMiniMapWindow : Window
         var viewHeight = MapContainer.ActualHeight;
         var zoom = _settings.ZoomLevel;
 
-        MapTranslate.X = (viewWidth / 2) - (position.X * zoom);
-        MapTranslate.Y = (viewHeight / 2) - (position.Y * zoom);
+        var newOffsetX = (viewWidth / 2) - (position.X * zoom);
+        var newOffsetY = (viewHeight / 2) - (position.Y * zoom);
+
+        // 바운더리 제한 적용
+        (newOffsetX, newOffsetY) = ClampMapOffset(newOffsetX, newOffsetY);
+
+        MapTranslate.X = newOffsetX;
+        MapTranslate.Y = newOffsetY;
 
         if (_settings.ViewMode == MiniMapViewMode.Fixed)
         {
-            _settings.MapOffsetX = MapTranslate.X;
-            _settings.MapOffsetY = MapTranslate.Y;
+            _settings.MapOffsetX = newOffsetX;
+            _settings.MapOffsetY = newOffsetY;
         }
+    }
+
+    /// <summary>
+    /// 맵 오프셋을 바운더리 내로 제한합니다.
+    /// 맵의 최소 25%가 항상 화면에 보이도록 합니다.
+    /// </summary>
+    private (double x, double y) ClampMapOffset(double offsetX, double offsetY)
+    {
+        if (_currentMapConfig == null) return (offsetX, offsetY);
+
+        var viewWidth = MapContainer.ActualWidth > 0 ? MapContainer.ActualWidth : ActualWidth;
+        var viewHeight = MapContainer.ActualHeight > 0 ? MapContainer.ActualHeight : ActualHeight;
+        var zoom = _settings.ZoomLevel;
+
+        var scaledMapWidth = _currentMapConfig.ImageWidth * zoom;
+        var scaledMapHeight = _currentMapConfig.ImageHeight * zoom;
+
+        // 맵의 최소 25%가 보이도록 바운더리 설정
+        // 최소 오프셋: 맵이 왼쪽/위로 너무 이동하지 않도록 (맵의 오른쪽/아래가 화면에 25% 이상 보임)
+        var minOffsetX = viewWidth * 0.25 - scaledMapWidth;
+        var minOffsetY = viewHeight * 0.25 - scaledMapHeight;
+
+        // 최대 오프셋: 맵이 오른쪽/아래로 너무 이동하지 않도록 (맵의 왼쪽/위가 화면에 25% 이상 보임)
+        var maxOffsetX = viewWidth * 0.75;
+        var maxOffsetY = viewHeight * 0.75;
+
+        var clampedX = Math.Clamp(offsetX, minOffsetX, maxOffsetX);
+        var clampedY = Math.Clamp(offsetY, minOffsetY, maxOffsetY);
+
+        return (clampedX, clampedY);
     }
 
     #endregion
@@ -707,11 +747,14 @@ public partial class OverlayMiniMapWindow : Window
             var deltaX = currentPoint.X - _panStartPoint.X;
             var deltaY = currentPoint.Y - _panStartPoint.Y;
 
-            _settings.MapOffsetX = _panStartOffsetX + deltaX;
-            _settings.MapOffsetY = _panStartOffsetY + deltaY;
+            var newOffsetX = _panStartOffsetX + deltaX;
+            var newOffsetY = _panStartOffsetY + deltaY;
 
-            // 디버깅: 실제 오프셋 값 로깅 (너무 많으면 주석 처리)
-            // _log.Debug($"Pan MOVE: delta=({deltaX:F0}, {deltaY:F0}), newOffset=({_settings.MapOffsetX:F0}, {_settings.MapOffsetY:F0})");
+            // 바운더리 제한 적용
+            (newOffsetX, newOffsetY) = ClampMapOffset(newOffsetX, newOffsetY);
+
+            _settings.MapOffsetX = newOffsetX;
+            _settings.MapOffsetY = newOffsetY;
 
             UpdateMapView();
             e.Handled = true;
@@ -724,13 +767,53 @@ public partial class OverlayMiniMapWindow : Window
 
     public void ZoomIn()
     {
-        _settings.ZoomIn();
-        UpdateMapView();
+        ZoomAroundCenter(true);
     }
 
     public void ZoomOut()
     {
-        _settings.ZoomOut();
+        ZoomAroundCenter(false);
+    }
+
+    /// <summary>
+    /// 화면 중앙을 기준으로 줌인/줌아웃합니다.
+    /// </summary>
+    private void ZoomAroundCenter(bool zoomIn)
+    {
+        if (_currentMapConfig == null)
+        {
+            if (zoomIn)
+                _settings.ZoomIn();
+            else
+                _settings.ZoomOut();
+            UpdateMapView();
+            return;
+        }
+
+        var viewWidth = MapContainer.ActualWidth > 0 ? MapContainer.ActualWidth : ActualWidth;
+        var viewHeight = MapContainer.ActualHeight > 0 ? MapContainer.ActualHeight : ActualHeight;
+
+        // 화면 중앙 좌표
+        var centerX = viewWidth / 2;
+        var centerY = viewHeight / 2;
+
+        // 현재 줌에서 화면 중앙이 가리키는 맵 좌표 계산
+        var oldZoom = _settings.ZoomLevel;
+        var mapX = (centerX - _settings.MapOffsetX) / oldZoom;
+        var mapY = (centerY - _settings.MapOffsetY) / oldZoom;
+
+        // 줌 레벨 변경
+        if (zoomIn)
+            _settings.ZoomIn();
+        else
+            _settings.ZoomOut();
+
+        var newZoom = _settings.ZoomLevel;
+
+        // 새 줌에서 같은 맵 좌표가 화면 중앙에 오도록 오프셋 조정
+        _settings.MapOffsetX = centerX - (mapX * newZoom);
+        _settings.MapOffsetY = centerY - (mapY * newZoom);
+
         UpdateMapView();
     }
 
