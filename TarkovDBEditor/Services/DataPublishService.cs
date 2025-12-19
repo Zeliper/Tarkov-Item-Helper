@@ -319,44 +319,77 @@ public class DataPublishService : IDisposable
 
         var sourceFiles = Directory.GetFiles(sourceDir, pattern, SearchOption.TopDirectoryOnly);
 
-        foreach (var sourceFile in sourceFiles)
+        // Process files in parallel for better performance (especially for large icon folders)
+        var parallelOptions = new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount };
+        var results = new System.Collections.Concurrent.ConcurrentBag<FileChangeInfo>();
+
+        await Parallel.ForEachAsync(sourceFiles, parallelOptions, async (sourceFile, ct) =>
         {
             var fileName = Path.GetFileName(sourceFile);
             var targetFile = Path.Combine(targetDir, fileName);
+            var sourceSize = new FileInfo(sourceFile).Length;
 
             var info = new FileChangeInfo
             {
                 FileName = fileName,
                 SourcePath = sourceFile,
                 TargetPath = targetFile,
-                SourceSize = new FileInfo(sourceFile).Length
+                SourceSize = sourceSize
             };
 
             if (!File.Exists(targetFile))
             {
                 info.Type = ChangeType.Added;
-                added++;
-                changes.Add(info);
+                results.Add(info);
             }
             else
             {
-                info.TargetSize = new FileInfo(targetFile).Length;
+                var targetSize = new FileInfo(targetFile).Length;
+                info.TargetSize = targetSize;
 
-                var sourceHash = await ComputeFileHashAsync(sourceFile);
-                var targetHash = await ComputeFileHashAsync(targetFile);
-
-                if (sourceHash != targetHash)
+                // Quick check: if file sizes differ, they're definitely different
+                if (sourceSize != targetSize)
                 {
                     info.Type = ChangeType.Updated;
-                    updated++;
-                    changes.Add(info);
+                    results.Add(info);
                 }
                 else
                 {
-                    info.Type = ChangeType.Unchanged;
+                    // Same size - need to compare content via hash
+                    var sourceHash = await ComputeFileHashAsync(sourceFile);
+                    var targetHash = await ComputeFileHashAsync(targetFile);
+
+                    if (sourceHash != targetHash)
+                    {
+                        info.Type = ChangeType.Updated;
+                        results.Add(info);
+                    }
+                    else
+                    {
+                        info.Type = ChangeType.Unchanged;
+                        results.Add(info);
+                    }
+                }
+            }
+        });
+
+        // Count results
+        foreach (var info in results)
+        {
+            switch (info.Type)
+            {
+                case ChangeType.Added:
+                    added++;
+                    changes.Add(info);
+                    break;
+                case ChangeType.Updated:
+                    updated++;
+                    changes.Add(info);
+                    break;
+                case ChangeType.Unchanged:
                     unchanged++;
                     // Don't add unchanged files to reduce list size
-                }
+                    break;
             }
         }
 
