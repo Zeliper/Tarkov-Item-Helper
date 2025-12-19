@@ -192,15 +192,15 @@
         <Border Grid.Row="0" Background="{StaticResource BackgroundMediumBrush}"
                 CornerRadius="6" Padding="12,10" Margin="0,0,0,12">
             <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <!-- Search Box -->
-                <TextBox x:Name="TxtSearch" Grid.Column="0"
+                <!-- Search Box Row -->
+                <TextBox x:Name="TxtSearch" Grid.Row="0"
                          TextChanged="TxtSearch_TextChanged"
-                         Margin="0,0,16,0">
+                         Margin="0,0,0,8">
                     <TextBox.Style>
                         <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
                             <Setter Property="Tag" Value="Search items..."/>
@@ -208,18 +208,24 @@
                     </TextBox.Style>
                 </TextBox>
 
-                <!-- Filter Toggles -->
-                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <!-- Filter Toggles Row -->
+                <WrapPanel Grid.Row="1" Orientation="Horizontal">
                     <!-- Source Filter -->
-                    <ComboBox x:Name="CmbSource" Width="100" Margin="0,0,8,0"
+                    <ComboBox x:Name="CmbSource" MinWidth="70" Margin="0,0,8,4"
                               SelectionChanged="CmbSource_SelectionChanged">
                         <ComboBoxItem Content="All" Tag="All" IsSelected="True"/>
                         <ComboBoxItem Content="Quest" Tag="Quest"/>
                         <ComboBoxItem Content="Hideout" Tag="Hideout"/>
                     </ComboBox>
 
+                    <!-- Category Filter -->
+                    <ComboBox x:Name="CmbCategory" MinWidth="120" MaxWidth="220" Margin="0,0,8,4"
+                              SelectionChanged="CmbCategory_SelectionChanged">
+                        <ComboBoxItem Content="All Categories" Tag="All" IsSelected="True"/>
+                    </ComboBox>
+
                     <!-- Fulfillment Filter -->
-                    <ComboBox x:Name="CmbFulfillment" Width="100" Margin="0,0,8,0"
+                    <ComboBox x:Name="CmbFulfillment" MinWidth="90" Margin="0,0,8,4"
                               SelectionChanged="CmbFulfillment_SelectionChanged">
                         <ComboBoxItem Content="All Status" Tag="All" IsSelected="True"/>
                         <ComboBoxItem Content="Not Started" Tag="NotStarted"/>
@@ -231,18 +237,18 @@
                     <CheckBox x:Name="ChkFirOnly" Content="FIR Only"
                               Foreground="{StaticResource TextPrimaryBrush}"
                               VerticalContentAlignment="Center"
-                              Margin="0,0,8,0" Cursor="Hand"
+                              Margin="0,0,8,4" Cursor="Hand"
                               Checked="Filter_Changed" Unchecked="Filter_Changed"/>
 
                     <!-- Hide Fulfilled -->
                     <CheckBox x:Name="ChkHideFulfilled" Content="Hide Fulfilled"
                               Foreground="{StaticResource TextPrimaryBrush}"
                               VerticalContentAlignment="Center"
-                              Margin="0,0,8,0" Cursor="Hand"
+                              Margin="0,0,8,4" Cursor="Hand"
                               Checked="Filter_Changed" Unchecked="Filter_Changed"/>
 
                     <!-- Sort By -->
-                    <ComboBox x:Name="CmbSort" Width="110"
+                    <ComboBox x:Name="CmbSort" MinWidth="100" Margin="0,0,0,4"
                               SelectionChanged="CmbSort_SelectionChanged">
                         <ComboBoxItem Content="Name" Tag="Name" IsSelected="True"/>
                         <ComboBoxItem Content="Total Count" Tag="Total"/>
@@ -250,7 +256,7 @@
                         <ComboBoxItem Content="Hideout" Tag="Hideout"/>
                         <ComboBoxItem Content="Progress" Tag="Progress"/>
                     </ComboBox>
-                </StackPanel>
+                </WrapPanel>
             </Grid>
         </Border>
 
@@ -292,13 +298,13 @@
 
                         <TextBlock Grid.Column="0" Text="" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}"/>
-                        <TextBlock Grid.Column="1" Text="Item Name" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
+                        <TextBlock x:Name="HeaderItemName" Grid.Column="1" Text="Item Name" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}" Margin="12,0,0,0"/>
-                        <TextBlock Grid.Column="3" Text="Quest" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
+                        <TextBlock x:Name="HeaderQuest" Grid.Column="3" Text="Quest" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock Grid.Column="4" Text="Hideout" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
+                        <TextBlock x:Name="HeaderHideout" Grid.Column="4" Text="Hideout" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource TextSecondaryBrush}" HorizontalAlignment="Center"/>
-                        <TextBlock Grid.Column="5" Text="Total" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
+                        <TextBlock x:Name="HeaderTotal" Grid.Column="5" Text="Total" FontSize="{DynamicResource FontSizeTiny}" FontWeight="SemiBold"
                                    Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center"/>
                     </Grid>
                 </Border>
@@ -415,7 +421,7 @@
                             </Border>
 
                             <!-- Inventory Input Section -->
-                            <TextBlock Text="Your Inventory" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                            <TextBlock x:Name="LblYourInventory" Text="Your Inventory" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        Margin="0,0,0,8"/>
                             <Border Background="{StaticResource BackgroundDarkBrush}"
@@ -515,7 +521,7 @@
                                             </Grid.ColumnDefinitions>
 
                                             <StackPanel Grid.Column="0">
-                                                <TextBlock Text="Progress" FontSize="{DynamicResource FontSizeTiny}"
+                                                <TextBlock x:Name="LblProgress" Text="Progress" FontSize="{DynamicResource FontSizeTiny}"
                                                            Foreground="{StaticResource TextSecondaryBrush}"/>
                                                 <ProgressBar x:Name="DetailProgressBar"
                                                              Height="6" Margin="0,4,8,0"
@@ -539,7 +545,7 @@
 
                             <!-- Quest Requirements Section -->
                             <StackPanel x:Name="QuestSection">
-                                <TextBlock Text="Required for Quests" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                <TextBlock x:Name="LblRequiredForQuests" Text="Required for Quests" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            Margin="0,0,0,8"/>
                                 <Border Background="{StaticResource BackgroundDarkBrush}"
@@ -614,7 +620,7 @@
 
                             <!-- Hideout Requirements Section -->
                             <StackPanel x:Name="HideoutSection">
-                                <TextBlock Text="Required for Hideout" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
+                                <TextBlock x:Name="LblRequiredForHideout" Text="Required for Hideout" FontSize="{DynamicResource FontSizeSmall}" FontWeight="SemiBold"
                                            Foreground="{StaticResource TextPrimaryBrush}"
                                            Margin="0,0,0,8"/>
                                 <Border Background="{StaticResource BackgroundDarkBrush}"

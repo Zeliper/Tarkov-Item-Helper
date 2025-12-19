@@ -17,6 +17,7 @@ namespace TarkovHelper.Pages
         private readonly ImageCacheService _imageCache = ImageCacheService.Instance;
         private List<AggregatedItemViewModel> _allItemViewModels = new();
         private Dictionary<string, TarkovItem>? _itemLookup;
+        private HashSet<string> _allCategories = new(StringComparer.OrdinalIgnoreCase);
         private bool _isInitializing = true;
         private bool _isDataLoaded = false;
         private bool _isUnloaded = false;
@@ -30,6 +31,125 @@ namespace TarkovHelper.Pages
         };
 
         private static bool IsCurrency(string normalizedName) => CurrencyItems.Contains(normalizedName);
+
+        // Category grouping: map detailed categories to broader parent categories
+        private static readonly Dictionary<string, string> CategoryMapping = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Provisions (Food & Drinks)
+            { "Food", "Provisions" },
+            { "Drinks", "Provisions" },
+
+            // Medical
+            { "Medkits", "Medical" },
+            { "Medical supplies", "Medical" },
+            { "Injury treatment", "Medical" },
+            { "Stimulants", "Medical" },
+            { "Drugs", "Medical" },
+
+            // Gear
+            { "Armor vests", "Gear" },
+            { "Armor plates", "Gear" },
+            { "Chest rigs", "Gear" },
+            { "Backpacks", "Gear" },
+            { "Headwear", "Gear" },
+            { "Eyewear", "Gear" },
+            { "Face cover", "Gear" },
+            { "Earpieces", "Gear" },
+            { "Armbands", "Gear" },
+            { "Special equipment", "Gear" },
+
+            // Barter items
+            { "Electronics", "Barter" },
+            { "Building materials", "Barter" },
+            { "Flammable materials", "Barter" },
+            { "Energy elements", "Barter" },
+            { "Household goods", "Barter" },
+            { "Tools", "Barter" },
+            { "Valuables", "Barter" },
+            { "Other", "Barter" },
+
+            // Info & Keys
+            { "Info items", "Info & Keys" },
+            { "Keys", "Info & Keys" },
+            { "Keycards", "Info & Keys" },
+            { "Maps", "Info & Keys" },
+            { "Extraction intel", "Info & Keys" },
+
+            // Containers
+            { "Containers & cases", "Containers" },
+            { "Secure containers", "Containers" },
+
+            // Money
+            { "Money", "Money" },
+
+            // Ammo
+            { "Rounds", "Ammo" },
+            { "Ammo boxes", "Ammo" },
+            { "Shrapnel", "Ammo" },
+
+            // Weapon mods
+            { "Mounts", "Weapon Mods" },
+            { "Stocks & chassis", "Weapon Mods" },
+            { "Handguards", "Weapon Mods" },
+            { "Barrels", "Weapon Mods" },
+            { "Magazines", "Weapon Mods" },
+            { "Flash hiders & muzzle brakes", "Weapon Mods" },
+            { "Suppressors", "Weapon Mods" },
+            { "Muzzle adapters", "Weapon Mods" },
+            { "Iron sights", "Weapon Mods" },
+            { "Pistol grips", "Weapon Mods" },
+            { "Receivers and slides", "Weapon Mods" },
+            { "Charging handles", "Weapon Mods" },
+            { "Gas blocks", "Weapon Mods" },
+            { "Foregrips", "Weapon Mods" },
+            { "Auxiliary parts", "Weapon Mods" },
+            { "Bipods", "Weapon Mods" },
+            { "Underbarrel grenade launchers", "Weapon Mods" },
+
+            // Optics
+            { "Scopes", "Optics" },
+            { "Assault scopes", "Optics" },
+            { "Reflex sights", "Optics" },
+            { "Compact reflex sights", "Optics" },
+            { "Night vision scopes", "Optics" },
+            { "Thermal vision sights", "Optics" },
+
+            // Tactical devices
+            { "Flashlights", "Tactical" },
+            { "Tactical combo devices", "Tactical" },
+
+            // Helmet mods
+            { "Helmet mods", "Helmet Mods" },
+
+            // Weapons
+            { "Weapons", "Weapons" },
+
+            // Quest items
+            { "Quest Items", "Quest Items" },
+
+            // Misc
+            { "Posters", "Misc" },
+            { "Dogtag", "Misc" },
+        };
+
+        /// <summary>
+        /// Get the parent/grouped category for a given category
+        /// </summary>
+        private static string GetParentCategory(string? category)
+        {
+            if (string.IsNullOrEmpty(category))
+                return "Other";
+
+            // If category contains "|", take the first part (parent category)
+            var baseCategory = category.Contains('|') ? category.Split('|')[0] : category;
+
+            // Check if we have a mapping for this category
+            if (CategoryMapping.TryGetValue(baseCategory, out var parentCategory))
+                return parentCategory;
+
+            // Return base category if no mapping found
+            return baseCategory;
+        }
 
         public ItemsPage()
         {
@@ -124,6 +244,9 @@ namespace TarkovHelper.Pages
                 ItemDbService.Instance.DataRefreshed += OnDatabaseRefreshed;
             }
 
+            // Apply localization on every load (language might have changed)
+            UpdateLocalizedUIStrings();
+
             // Check if data needs refresh (changes might have occurred while unloaded)
             if (_isDataLoaded && _needsRefreshOnLoad)
             {
@@ -206,12 +329,91 @@ namespace TarkovHelper.Pages
         {
             Dispatcher.Invoke(async () =>
             {
+                // Update localized UI elements
+                UpdateLocalizedUIStrings();
+
                 await LoadItemsAsync();
                 ApplyFilters();
                 UpdateDetailPanel();
                 // Load images in background
                 _ = LoadImagesInBackgroundAsync();
             });
+        }
+
+        /// <summary>
+        /// Update all UI strings that need localization
+        /// </summary>
+        private void UpdateLocalizedUIStrings()
+        {
+            // Update search placeholder
+            TxtSearch.Tag = _loc.ItemsSearchPlaceholder;
+
+            // Update Source filter
+            if (CmbSource.Items.Count >= 3)
+            {
+                ((ComboBoxItem)CmbSource.Items[0]).Content = _loc.ItemsFilterAll;
+                ((ComboBoxItem)CmbSource.Items[1]).Content = _loc.ItemsFilterQuest;
+                ((ComboBoxItem)CmbSource.Items[2]).Content = _loc.ItemsFilterHideout;
+            }
+
+            // Update Category dropdown (with localized category names)
+            UpdateCategoryDropdown();
+
+            // Update Fulfillment filter
+            if (CmbFulfillment.Items.Count >= 4)
+            {
+                ((ComboBoxItem)CmbFulfillment.Items[0]).Content = _loc.ItemsFilterAllStatus;
+                ((ComboBoxItem)CmbFulfillment.Items[1]).Content = _loc.ItemsFilterNotStarted;
+                ((ComboBoxItem)CmbFulfillment.Items[2]).Content = _loc.ItemsFilterInProgress;
+                ((ComboBoxItem)CmbFulfillment.Items[3]).Content = _loc.ItemsFilterFulfilled;
+            }
+
+            // Update checkboxes
+            ChkFirOnly.Content = _loc.ItemsFilterFirOnly;
+            ChkHideFulfilled.Content = _loc.ItemsFilterHideFulfilled;
+
+            // Update Sort dropdown
+            if (CmbSort.Items.Count >= 5)
+            {
+                ((ComboBoxItem)CmbSort.Items[0]).Content = _loc.ItemsSortName;
+                ((ComboBoxItem)CmbSort.Items[1]).Content = _loc.ItemsSortTotalCount;
+                ((ComboBoxItem)CmbSort.Items[2]).Content = _loc.ItemsSortQuestCount;
+                ((ComboBoxItem)CmbSort.Items[3]).Content = _loc.ItemsFilterHideout;
+                ((ComboBoxItem)CmbSort.Items[4]).Content = _loc.ItemsSortProgress;
+            }
+
+            // Update column headers
+            UpdateColumnHeaders();
+
+            // Update detail panel labels
+            UpdateDetailPanelLabels();
+
+            // Update loading text
+            LoadingStatusText.Text = _loc.ItemsLoading;
+        }
+
+        /// <summary>
+        /// Update column header texts
+        /// </summary>
+        private void UpdateColumnHeaders()
+        {
+            HeaderItemName.Text = _loc.ItemsHeaderItemName;
+            HeaderQuest.Text = _loc.ItemsHeaderQuest;
+            HeaderHideout.Text = _loc.ItemsHeaderHideout;
+            HeaderTotal.Text = _loc.ItemsHeaderTotal;
+        }
+
+        /// <summary>
+        /// Update detail panel label texts
+        /// </summary>
+        private void UpdateDetailPanelLabels()
+        {
+            TxtSelectItem.Text = _loc.ItemsSelectItem;
+            BtnWiki.Content = _loc.ItemsOpenWiki;
+            LblYourInventory.Text = _loc.ItemsYourInventory;
+            LblProgress.Text = _loc.ItemsProgress;
+            LblRequiredForQuests.Text = _loc.ItemsRequiredForQuests;
+            LblRequiredForHideout.Text = _loc.ItemsRequiredForHideout;
         }
 
         private void OnProgressChanged(object? sender, EventArgs e)
@@ -292,11 +494,13 @@ namespace TarkovHelper.Pages
                 var (displayName, subtitle, showSubtitle) = GetLocalizedNames(
                     hideoutItem.ItemName, hideoutItem.ItemNameKo, hideoutItem.ItemNameJa);
 
-                // Get wiki link from item lookup
+                // Get wiki link and category from item lookup
                 string? wikiLink = null;
+                string? category = null;
                 if (_itemLookup != null && _itemLookup.TryGetValue(hideoutItem.ItemNormalizedName, out var itemInfo))
                 {
                     wikiLink = itemInfo.WikiLink;
+                    category = itemInfo.Category;
                 }
 
                 mergedItems[kvp.Key] = new AggregatedItemViewModel
@@ -306,6 +510,8 @@ namespace TarkovHelper.Pages
                     DisplayName = displayName,
                     SubtitleName = subtitle,
                     SubtitleVisibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed,
+                    Category = category,
+                    ParentCategory = GetParentCategory(category),
                     QuestCount = 0,
                     QuestFIRCount = 0,
                     HideoutCount = hideoutItem.HideoutCount,
@@ -333,6 +539,12 @@ namespace TarkovHelper.Pages
                     // Copy wiki link if not already set
                     if (string.IsNullOrEmpty(existing.WikiLink))
                         existing.WikiLink = questItem.WikiLink;
+                    // Copy category if not already set
+                    if (string.IsNullOrEmpty(existing.Category))
+                    {
+                        existing.Category = questItem.Category;
+                        existing.ParentCategory = GetParentCategory(questItem.Category);
+                    }
                 }
                 else
                 {
@@ -346,6 +558,8 @@ namespace TarkovHelper.Pages
                         DisplayName = displayName,
                         SubtitleName = subtitle,
                         SubtitleVisibility = showSubtitle ? Visibility.Visible : Visibility.Collapsed,
+                        Category = questItem.Category,
+                        ParentCategory = GetParentCategory(questItem.Category),
                         QuestCount = questItem.QuestCount,
                         QuestFIRCount = questItem.QuestFIRCount,
                         HideoutCount = 0,
@@ -361,6 +575,23 @@ namespace TarkovHelper.Pages
 
             _allItemViewModels = mergedItems.Values.ToList();
 
+            // Build parent category list from loaded items
+            var newCategories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var vm in _allItemViewModels)
+            {
+                if (!string.IsNullOrEmpty(vm.ParentCategory))
+                {
+                    newCategories.Add(vm.ParentCategory);
+                }
+            }
+
+            // Update category dropdown if categories changed
+            if (!newCategories.SetEquals(_allCategories))
+            {
+                _allCategories = newCategories;
+                UpdateCategoryDropdown();
+            }
+
             // Load inventory data (fast, synchronous)
             foreach (var vm in _allItemViewModels)
             {
@@ -370,6 +601,29 @@ namespace TarkovHelper.Pages
             }
 
             // Note: Image loading is now done separately via LoadImagesInBackgroundAsync()
+        }
+
+        /// <summary>
+        /// Update the category filter dropdown with available categories
+        /// </summary>
+        private void UpdateCategoryDropdown()
+        {
+            var selectedTag = (CmbCategory.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "All";
+
+            CmbCategory.Items.Clear();
+            CmbCategory.Items.Add(new ComboBoxItem { Content = _loc.ItemsFilterAllCategories, Tag = "All" });
+
+            // Sort categories alphabetically by localized name
+            foreach (var category in _allCategories.OrderBy(c => _loc.GetCategoryName(c)))
+            {
+                CmbCategory.Items.Add(new ComboBoxItem { Content = _loc.GetCategoryName(category), Tag = category });
+            }
+
+            // Restore selection or default to "All"
+            var itemToSelect = CmbCategory.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(item => item.Tag?.ToString() == selectedTag)
+                ?? CmbCategory.Items[0];
+            CmbCategory.SelectedItem = itemToSelect;
         }
 
         /// <summary>
@@ -584,6 +838,7 @@ namespace TarkovHelper.Pages
                             ItemNormalizedName = questItem.ItemNormalizedName,
                             IconLink = iconLink,
                             WikiLink = wikiLink,
+                            Category = itemInfo?.Category,
                             QuestCount = countToAdd,
                             QuestFIRCount = firCountToAdd,
                             FoundInRaid = questItem.FoundInRaid
@@ -624,6 +879,7 @@ namespace TarkovHelper.Pages
         {
             var searchText = TxtSearch.Text?.Trim().ToLowerInvariant() ?? string.Empty;
             var sourceFilter = (CmbSource.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "All";
+            var categoryFilter = (CmbCategory.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "All";
             var fulfillmentFilter = (CmbFulfillment.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "All";
             var firOnly = ChkFirOnly.IsChecked == true;
             var hideFulfilled = ChkHideFulfilled.IsChecked == true;
@@ -644,6 +900,13 @@ namespace TarkovHelper.Pages
                     return false;
                 if (sourceFilter == "Hideout" && vm.HideoutCount == 0)
                     return false;
+
+                // Category filter (uses parent/grouped category)
+                if (categoryFilter != "All")
+                {
+                    if (!string.Equals(vm.ParentCategory, categoryFilter, StringComparison.OrdinalIgnoreCase))
+                        return false;
+                }
 
                 // FIR filter
                 if (firOnly && !vm.FoundInRaid)
@@ -707,6 +970,11 @@ namespace TarkovHelper.Pages
         }
 
         private void CmbSource_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (!_isInitializing) ApplyFilters();
+        }
+
+        private void CmbCategory_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_isInitializing) ApplyFilters();
         }
@@ -794,6 +1062,9 @@ namespace TarkovHelper.Pages
 
             // Reset source filter to "All"
             CmbSource.SelectedIndex = 0;
+
+            // Reset category filter to "All Categories"
+            CmbCategory.SelectedIndex = 0;
 
             // Reset fulfillment filter to "All"
             CmbFulfillment.SelectedIndex = 0;
@@ -892,6 +1163,9 @@ namespace TarkovHelper.Pages
 
             // Reset source filter to "All"
             CmbSource.SelectedIndex = 0; // "All"
+
+            // Reset category filter to "All Categories"
+            CmbCategory.SelectedIndex = 0;
 
             // Reset fulfillment filter to "All"
             CmbFulfillment.SelectedIndex = 0; // "All Status"

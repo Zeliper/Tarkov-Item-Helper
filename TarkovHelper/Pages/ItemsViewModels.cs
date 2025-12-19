@@ -16,6 +16,8 @@ namespace TarkovHelper.Pages
         public string DisplayName { get; set; } = string.Empty;
         public string SubtitleName { get; set; } = string.Empty;
         public Visibility SubtitleVisibility { get; set; } = Visibility.Collapsed;
+        public string? Category { get; set; }
+        public string ParentCategory { get; set; } = "Other";
         public int QuestCount { get; set; }
         public int QuestFIRCount { get; set; }
         public int HideoutCount { get; set; }
@@ -227,6 +229,7 @@ namespace TarkovHelper.Pages
         public string ItemNormalizedName { get; set; } = string.Empty;
         public string? IconLink { get; set; }
         public string? WikiLink { get; set; }
+        public string? Category { get; set; }
         public int QuestCount { get; set; }
         public int QuestFIRCount { get; set; }
         public bool FoundInRaid { get; set; }
