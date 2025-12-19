@@ -53,7 +53,7 @@
       "imageHeight": 3900,
       "aliases": ["interchange", "INTERCHANGE"],
       "calibratedTransform": [-4.3629135184885035, -0.46787647488898804, 0.01740221516511105, 4.08171562795115, 2309.0213766878187, 1987.6213844573472],
-      "playerMarkerTransform": [-2, 0, 0, 2, 2166, 2005.5],
+      "playerMarkerTransform": [-2.0, 0, 0, 2.0, 2166.0, 2004.0],
       "svgBounds": [-470, 450, -390, 570],
       "floors": [
         {"layerId": "main", "displayName": "Ground Floor", "order": 0, "isDefault": true},

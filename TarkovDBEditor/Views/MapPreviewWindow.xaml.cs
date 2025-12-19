@@ -434,20 +434,13 @@ public partial class MapPreviewWindow : Window
                 }
             }
 
-            // Load SVG with floor filtering - only main floor shown as dimmed background
-            if (visibleFloors != null)
-            {
-                var preprocessor = new SvgStylePreprocessor();
-                var processedSvg = preprocessor.ProcessSvgFile(svgPath, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
+            // Load SVG with preprocessing (always use preprocessor to fix wrapper rect bounding box issue)
+            var preprocessor = new SvgStylePreprocessor();
+            var processedSvg = preprocessor.ProcessSvgFile(svgPath, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity);
 
-                var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"map_preview_{Guid.NewGuid()}.svg");
-                File.WriteAllText(tempPath, processedSvg);
-                MapSvg.Source = new Uri(tempPath, UriKind.Absolute);
-            }
-            else
-            {
-                MapSvg.Source = new Uri(svgPath, UriKind.Absolute);
-            }
+            var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"map_preview_{Guid.NewGuid()}.svg");
+            File.WriteAllText(tempPath, processedSvg);
+            MapSvg.Source = new Uri(tempPath, UriKind.Absolute);
 
             MapSvg.Width = config.ImageWidth;
             MapSvg.Height = config.ImageHeight;
@@ -716,20 +709,10 @@ public partial class MapPreviewWindow : Window
             .Where(o => _currentMapConfig.MatchesMapName(o.EffectiveMapName))
             .ToList();
 
-        System.Diagnostics.Debug.WriteLine($"[RedrawObjectives] CurrentMap: Key={_currentMapConfig.Key}, Transform={string.Join(",", _currentMapConfig.CalibratedTransform ?? Array.Empty<double>())}");
-        System.Diagnostics.Debug.WriteLine($"[RedrawObjectives] Found {objectivesForMap.Count} objectives for this map");
-
         foreach (var objective in objectivesForMap)
         {
             // Skip only if BOTH LocationPoints AND OptionalPoints are empty
             if (objective.LocationPoints.Count == 0 && objective.OptionalPoints.Count == 0) continue;
-
-            System.Diagnostics.Debug.WriteLine($"[RedrawObjectives] Objective: {objective.Id}, EffectiveMapName={objective.EffectiveMapName}, LocationPoints={objective.LocationPoints.Count}, OptionalPoints={objective.OptionalPoints.Count}");
-            foreach (var pt in objective.LocationPoints)
-            {
-                var (sx, sy) = _currentMapConfig.GameToScreen(pt.X, pt.Z);
-                System.Diagnostics.Debug.WriteLine($"  Point: Game({pt.X:F2}, {pt.Z:F2}) -> Screen({sx:F2}, {sy:F2}), Floor={pt.FloorId}");
-            }
 
             // Get points for the current floor
             var currentFloorPoints = objective.LocationPoints
@@ -943,7 +926,6 @@ public partial class MapPreviewWindow : Window
             }
 
             // Draw Optional Points (OR locations) - orange markers
-            System.Diagnostics.Debug.WriteLine($"[RedrawObjectives] Objective {objective.Id}: OptionalPoints.Count = {objective.OptionalPoints.Count}");
             if (objective.OptionalPoints.Count > 0)
             {
                 var optMarkerSize = 40 * inverseScale;
@@ -1442,8 +1424,13 @@ public partial class MapPreviewWindow : Window
 
         PlayerCanvas.Children.Clear();
 
-        // Convert game coords to screen coords
-        var (screenX, screenY) = _currentMapConfig.GameToScreen(position.X, position.Z);
+        // Convert game coords to screen coords (use PlayerMarkerTransform if available)
+        var (screenX, screenY) = _currentMapConfig.GameToScreenForPlayer(position.X, position.Z);
+
+        // Debug: Log coordinates and SVG actual size
+        System.Diagnostics.Debug.WriteLine($"[DrawPlayerMarker] Game: ({position.X:F2}, {position.Z:F2}) -> Screen: ({screenX:F2}, {screenY:F2})");
+        System.Diagnostics.Debug.WriteLine($"[DrawPlayerMarker] SVG ActualSize: {MapSvg.ActualWidth}x{MapSvg.ActualHeight}, Config: {_currentMapConfig.ImageWidth}x{_currentMapConfig.ImageHeight}");
+        System.Diagnostics.Debug.WriteLine($"[DrawPlayerMarker] PlayerMarkerTransform: [{string.Join(", ", _currentMapConfig.PlayerMarkerTransform ?? Array.Empty<double>())}]");
 
         // Scale for current zoom level
         double inverseScale = 1.0 / _zoomLevel;

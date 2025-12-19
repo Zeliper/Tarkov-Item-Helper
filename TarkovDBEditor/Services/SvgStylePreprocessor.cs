@@ -140,6 +140,9 @@ public partial class SvgStylePreprocessor
         HashSet<string>? visibleFloors = visibleFloorIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
         HashSet<string>? allFloors = allFloorIds?.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+        // wrapper rect의 fill:none을 fill:transparent로 변경 (bounding box 문제 해결)
+        FixWrapperRect(doc.DocumentElement!);
+
         // class 속성이 있는 모든 요소 처리 + 층 필터링
         ProcessElementsWithClass(doc.DocumentElement!, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
 
@@ -293,6 +296,60 @@ public partial class SvgStylePreprocessor
         }
 
         return string.Join(";", baseProps.Select(p => $"{p.Key}:{p.Value}"));
+    }
+
+    /// <summary>
+    /// wrapper 그룹 내의 rect 요소에서 fill:none을 fill:transparent로 변경합니다.
+    /// SharpVectors가 fill:none인 요소를 bounding box 계산에서 제외하는 문제를 해결합니다.
+    /// </summary>
+    private void FixWrapperRect(XmlElement root)
+    {
+        // id="wrapper"인 그룹 찾기
+        var wrapperGroups = root.GetElementsByTagName("g");
+        System.Diagnostics.Debug.WriteLine($"[FixWrapperRect] Found {wrapperGroups.Count} g elements");
+
+        foreach (XmlNode node in wrapperGroups)
+        {
+            if (node is not XmlElement group) continue;
+
+            var groupId = group.GetAttribute("id");
+            if (groupId == "wrapper")
+            {
+                System.Diagnostics.Debug.WriteLine($"[FixWrapperRect] Found wrapper group");
+
+                // wrapper 내의 모든 rect 요소 처리
+                var rects = group.GetElementsByTagName("rect");
+                System.Diagnostics.Debug.WriteLine($"[FixWrapperRect] Found {rects.Count} rect elements in wrapper");
+
+                foreach (XmlNode rectNode in rects)
+                {
+                    if (rectNode is not XmlElement rect) continue;
+
+                    var style = rect.GetAttribute("style");
+                    System.Diagnostics.Debug.WriteLine($"[FixWrapperRect] Rect style: '{style}'");
+
+                    if (!string.IsNullOrEmpty(style) && style.Contains("fill:none"))
+                    {
+                        // fill:transparent는 SharpVectors bounding box에 포함되지 않음
+                        // fill-opacity:0인 색상을 사용해야 함
+                        rect.SetAttribute("style", style.Replace("fill:none", "fill:#000000;fill-opacity:0"));
+                        System.Diagnostics.Debug.WriteLine($"[FixWrapperRect] Changed fill:none to fill:#000000;fill-opacity:0");
+                    }
+                    else if (string.IsNullOrEmpty(style))
+                    {
+                        // fill 속성이 직접 설정된 경우
+                        var fill = rect.GetAttribute("fill");
+                        if (fill == "none")
+                        {
+                            rect.SetAttribute("fill", "#000000");
+                            rect.SetAttribute("fill-opacity", "0");
+                            System.Diagnostics.Debug.WriteLine($"[FixWrapperRect] Changed fill attribute to #000000 with opacity 0");
+                        }
+                    }
+                }
+                break;
+            }
+        }
     }
 
     /// <summary>
