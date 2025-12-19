@@ -706,19 +706,15 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
             return new LocationPoint(apiMarker.X, apiMarker.Y ?? 0, apiMarker.Z, apiMarker.FloorId);
         }
 
-        // MapPreviewWindow에서 API 마커 표시 방식:
-        // var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(marker.Z, marker.X);
-        // 즉, marker.Z를 gameX로, marker.X를 gameZ로 사용 (스왑)
-        var playerGameX = apiMarker.Z;
-        var playerGameZ = apiMarker.X;
+        // API 마커 좌표는 이제 올바르게 저장됨 (X = 게임 X, Z = 게임 Z)
+        var playerGameX = apiMarker.X;
+        var playerGameZ = apiMarker.Z;
 
         // PlayerMarkerTransform으로 화면 좌표 계산
         var (screenX, screenY) = mapConfig.GameToScreenForPlayer(playerGameX, playerGameZ);
 
-        // PlayerMarkerTransform 체계로 통일되었으므로 스왑된 좌표를 직접 사용
         System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] Map={apiMarker.MapKey}");
-        System.Diagnostics.Debug.WriteLine($"  API raw: X={apiMarker.X:F2}, Z={apiMarker.Z:F2}");
-        System.Diagnostics.Debug.WriteLine($"  Player (swapped): gameX={playerGameX:F2}, gameZ={playerGameZ:F2}");
+        System.Diagnostics.Debug.WriteLine($"  API: X={apiMarker.X:F2}, Z={apiMarker.Z:F2}");
         System.Diagnostics.Debug.WriteLine($"  Screen: X={screenX:F2}, Y={screenY:F2}");
 
         return new LocationPoint(playerGameX, apiMarker.Y ?? 0, playerGameZ, apiMarker.FloorId);

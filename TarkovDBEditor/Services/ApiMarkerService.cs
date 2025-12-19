@@ -42,7 +42,7 @@ public class ApiMarkerService
 
                 -- 위치 정보
                 MapKey TEXT NOT NULL,
-                X REAL NOT NULL,
+                X REAL NOT NULL,    
                 Y REAL,
                 Z REAL NOT NULL,
                 FloorId TEXT,

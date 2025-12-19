@@ -791,6 +791,7 @@ public partial class MapTransferWindow : Window
                 var floorId = MarkerMatchingService.MapLevelToFloorId(
                     m.Level, _currentMapConfig.Key, _currentMapConfig.Floors);
 
+                // tarkov-market 좌표 체계: geometry.Y = gameX, geometry.X = gameZ
                 return new ApiMarker
                 {
                     Id = Guid.NewGuid().ToString(),
@@ -800,9 +801,9 @@ public partial class MapTransferWindow : Window
                     Category = m.Category,
                     SubCategory = m.SubCategory,
                     MapKey = _currentMapConfig.Key,
-                    X = m.GameX ?? m.Geometry!.X,  // 변환된 게임 X 좌표 (없으면 SVG X 사용)
+                    X = m.GameX ?? m.Geometry!.Y,  // 변환된 게임 X 좌표 (없으면 Geometry.Y = 게임 X)
                     Y = m.Level ?? 0,              // Level 값 저장 (층 정보)
-                    Z = m.GameZ ?? m.Geometry!.Y,  // 변환된 게임 Z 좌표 (없으면 SVG Y 사용)
+                    Z = m.GameZ ?? m.Geometry!.X,  // 변환된 게임 Z 좌표 (없으면 Geometry.X = 게임 Z)
                     FloorId = floorId,
                     QuestBsgId = quest?.BsgId,
                     QuestNameEn = quest?.NameEn,

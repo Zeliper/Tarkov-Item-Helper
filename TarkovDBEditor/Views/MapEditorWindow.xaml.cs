@@ -15,6 +15,7 @@ using Cursors = System.Windows.Input.Cursors;
 using Color = System.Windows.Media.Color;
 using Brushes = System.Windows.Media.Brushes;
 using Image = System.Windows.Controls.Image;
+using CheckBox = System.Windows.Controls.CheckBox;
 
 namespace TarkovDBEditor.Views;
 
@@ -62,6 +63,14 @@ public partial class MapEditorWindow : Window
     // Icon cache for marker images
     private static readonly Dictionary<MapMarkerType, BitmapImage?> _iconCache = new();
 
+    // Filter state
+    private HashSet<MapMarkerType> _activeFilters = new();
+    private readonly Dictionary<MapMarkerType, System.Windows.Controls.Button> _filterButtons = new();
+
+    // Editing state
+    private MapMarker? _editingMarker;
+    private bool _isUpdatingEditorFields;
+
     // Screenshot watcher for player position
     private readonly ScreenshotWatcherService _watcherService = ScreenshotWatcherService.Instance;
     private readonly FloorLocationService _floorLocationService = FloorLocationService.Instance;
@@ -75,6 +84,8 @@ public partial class MapEditorWindow : Window
         InitializeComponent();
         LoadMapConfigs();
         InitializeMarkerTypeSelector();
+        InitializeFilterButtons();
+        InitializeEditMarkerTypeSelector();
         Loaded += MapEditorWindow_Loaded;
         Closed += MapEditorWindow_Closed;
         PreviewKeyDown += MapEditorWindow_KeyDown;
@@ -150,6 +161,9 @@ public partial class MapEditorWindow : Window
             ClearPointsButton.Visibility = Visibility.Collapsed;
             ClearMarkersButton.Visibility = Visibility.Visible;
             ExportMarkersButton.Visibility = Visibility.Visible;
+            ApiMarkersButton.Visibility = Visibility.Visible;
+            EditMarkersButton.Visibility = Visibility.Visible;
+            FilterBar.Visibility = Visibility.Visible;
             SaveButton.Visibility = Visibility.Collapsed;
             TxtMarkerControls.Visibility = Visibility.Visible;
             TxtMarkerDelete.Visibility = Visibility.Visible;
@@ -241,7 +255,7 @@ public partial class MapEditorWindow : Window
         }
     }
 
-    private void MapSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private async void MapSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (MapSelector.SelectedItem is MapConfig config)
         {
@@ -250,6 +264,19 @@ public partial class MapEditorWindow : Window
             LoadMap(config);
             UpdateMarkerCount();
             RedrawMarkers();
+
+            // Refresh left panel if it's open
+            if (MarkerListPanel.Visibility == Visibility.Visible)
+            {
+                UpdateEditFloorSelector();
+                RefreshMarkerList();
+            }
+
+            // Refresh API Markers panel if it's open
+            if (ApiMarkerPanel.Visibility == Visibility.Visible)
+            {
+                await LoadApiMarkersAsync();
+            }
         }
     }
 
@@ -1167,11 +1194,20 @@ public partial class MapEditorWindow : Window
         if (_currentMapConfig == null) return;
 
         var name = MarkerNameInput.Text.Trim();
+
+        // Auto-number for spawn types if name is empty
         if (string.IsNullOrEmpty(name))
         {
-            MessageBox.Show("Please enter a marker name.", "Name Required", MessageBoxButton.OK, MessageBoxImage.Warning);
-            MarkerNameInput.Focus();
-            return;
+            if (AutoNumberedTypes.Contains(_currentMarkerType))
+            {
+                name = GenerateMarkerName(_currentMarkerType, "");
+            }
+            else
+            {
+                MessageBox.Show("Please enter a marker name.", "Name Required", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MarkerNameInput.Focus();
+                return;
+            }
         }
 
         // Convert screen coordinates to game coordinates
@@ -1289,8 +1325,19 @@ public partial class MapEditorWindow : Window
         var inverseScale = 1.0 / _zoomLevel;
         var hasFloors = _sortedFloors != null && _sortedFloors.Count > 0;
 
-        // Filter markers for current map
-        var markersForMap = _mapMarkers.Where(m => m.MapKey == _currentMapConfig.Key).ToList();
+        // Filter markers for current map (apply type filter in marker mode)
+        List<MapMarker> markersForMap;
+        if (_isMarkerMode)
+        {
+            markersForMap = _mapMarkers
+                .Where(m => m.MapKey == _currentMapConfig.Key)
+                .Where(m => _activeFilters.Contains(m.MarkerType))
+                .ToList();
+        }
+        else
+        {
+            markersForMap = _mapMarkers.Where(m => m.MapKey == _currentMapConfig.Key).ToList();
+        }
 
         // In objective mode, need to load markers if not already loaded
         if (isReferenceMode && markersForMap.Count == 0)
@@ -1303,6 +1350,7 @@ public partial class MapEditorWindow : Window
         {
             var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(marker.X, marker.Z);
             var isSelected = marker == _selectedMarker;
+            var isEditing = marker == _editingMarker;
 
             // Determine opacity based on floor
             double opacity = 1.0;
@@ -1324,16 +1372,21 @@ public partial class MapEditorWindow : Window
             var markerSize = (isReferenceMode ? 24 : 48) * inverseScale;
             var iconImage = GetMarkerIcon(marker.MarkerType);
 
-            // Draw selection highlight (not in reference mode)
-            if (isSelected && !isReferenceMode)
+            // Draw selection/editing highlight (not in reference mode)
+            if ((isSelected || isEditing) && !isReferenceMode)
             {
+                // Editing marker gets a more prominent highlight
+                var highlightColor = isEditing
+                    ? Color.FromRgb(0x00, 0xE6, 0x76)  // Bright green for editing
+                    : Color.FromRgb(255, 215, 0);      // Gold for selection
+
                 var selectionSize = markerSize + 16 * inverseScale;
                 var selectionRing = new Ellipse
                 {
                     Width = selectionSize,
                     Height = selectionSize,
                     Fill = Brushes.Transparent,
-                    Stroke = new SolidColorBrush(Color.FromRgb(255, 215, 0)), // Gold
+                    Stroke = new SolidColorBrush(highlightColor),
                     StrokeThickness = 4 * inverseScale,
                     StrokeDashArray = new DoubleCollection { 4, 2 }
                 };
@@ -1341,6 +1394,24 @@ public partial class MapEditorWindow : Window
                 Canvas.SetLeft(selectionRing, sx - selectionSize / 2);
                 Canvas.SetTop(selectionRing, sy - selectionSize / 2);
                 MarkersCanvas.Children.Add(selectionRing);
+
+                // Add pulsing outer ring for editing marker
+                if (isEditing)
+                {
+                    var outerRingSize = markerSize + 32 * inverseScale;
+                    var outerRing = new Ellipse
+                    {
+                        Width = outerRingSize,
+                        Height = outerRingSize,
+                        Fill = Brushes.Transparent,
+                        Stroke = new SolidColorBrush(Color.FromArgb(128, 0, 230, 118)),
+                        StrokeThickness = 2 * inverseScale
+                    };
+
+                    Canvas.SetLeft(outerRing, sx - outerRingSize / 2);
+                    Canvas.SetTop(outerRing, sy - outerRingSize / 2);
+                    MarkersCanvas.Children.Add(outerRing);
+                }
             }
 
             if (iconImage != null)
@@ -1441,6 +1512,108 @@ public partial class MapEditorWindow : Window
                 MarkersCanvas.Children.Add(floorLabel);
             }
         }
+
+        // Draw API marker preview (checked markers in API panel)
+        if (_isMarkerMode && ApiMarkerPanel.Visibility == Visibility.Visible)
+        {
+            DrawApiMarkerPreviews(inverseScale, hasFloors);
+        }
+    }
+
+    private void DrawApiMarkerPreviews(double inverseScale, bool hasFloors)
+    {
+        if (_currentMapConfig == null) return;
+
+        // Get checked API markers
+        var checkedApiMarkers = _apiMarkerCheckboxes
+            .Where(kvp => kvp.Value.IsChecked == true)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        if (checkedApiMarkers.Count == 0) return;
+
+        var previewMarkerSize = 36 * inverseScale;
+
+        foreach (var apiMarker in checkedApiMarkers)
+        {
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(apiMarker.X, apiMarker.Z);
+
+            // Determine opacity based on floor
+            double opacity = 0.7; // Preview is slightly transparent
+            if (hasFloors && _currentFloorId != null && apiMarker.FloorId != null)
+            {
+                opacity = string.Equals(apiMarker.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) ? 0.7 : 0.25;
+            }
+
+            // Preview color: Purple/Magenta to distinguish from actual markers
+            var previewColor = Color.FromArgb((byte)(opacity * 255), 0x9C, 0x27, 0xB0); // Purple
+
+            // Draw dashed circle for preview
+            var previewCircle = new Ellipse
+            {
+                Width = previewMarkerSize,
+                Height = previewMarkerSize,
+                Fill = new SolidColorBrush(Color.FromArgb((byte)(opacity * 100), 0x9C, 0x27, 0xB0)),
+                Stroke = new SolidColorBrush(previewColor),
+                StrokeThickness = 3 * inverseScale,
+                StrokeDashArray = new DoubleCollection { 3, 2 }
+            };
+
+            Canvas.SetLeft(previewCircle, sx - previewMarkerSize / 2);
+            Canvas.SetTop(previewCircle, sy - previewMarkerSize / 2);
+            MarkersCanvas.Children.Add(previewCircle);
+
+            // Preview icon based on category
+            var iconText = GetApiMarkerIconText(apiMarker);
+            var icon = new TextBlock
+            {
+                Text = iconText,
+                Foreground = new SolidColorBrush(Color.FromArgb((byte)(opacity * 255), 255, 255, 255)),
+                FontSize = 18 * inverseScale,
+                FontWeight = FontWeights.Bold,
+                TextAlignment = TextAlignment.Center
+            };
+
+            icon.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
+            Canvas.SetLeft(icon, sx - icon.DesiredSize.Width / 2);
+            Canvas.SetTop(icon, sy - icon.DesiredSize.Height / 2);
+            MarkersCanvas.Children.Add(icon);
+
+            // Name label with "+" prefix to indicate it will be added
+            var nameLabel = new TextBlock
+            {
+                Text = $"+ {apiMarker.Name}",
+                Foreground = new SolidColorBrush(previewColor),
+                FontSize = 22 * inverseScale,
+                FontStyle = FontStyles.Italic
+            };
+
+            Canvas.SetLeft(nameLabel, sx + previewMarkerSize / 2 + 6 * inverseScale);
+            Canvas.SetTop(nameLabel, sy - 11 * inverseScale);
+            MarkersCanvas.Children.Add(nameLabel);
+        }
+
+        // Update status with preview count
+        StatusText.Text = $"Preview: {checkedApiMarkers.Count} markers selected";
+    }
+
+    private static string GetApiMarkerIconText(ApiMarker marker)
+    {
+        var category = marker.Category?.ToLower() ?? "";
+        var subCategory = marker.SubCategory?.ToLower() ?? "";
+
+        return (category, subCategory) switch
+        {
+            ("spawns", "pmc spawn") => "P",
+            ("spawns", "scav spawn") => "S",
+            ("spawns", "boss spawn") => "B",
+            ("spawns", "raider spawn") => "R",
+            ("spawns", _) => "P",
+            ("extractions", _) => "E",
+            ("keys", _) => "K",
+            ("levers", _) => "L",
+            _ => "?"
+        };
     }
 
     private void LoadMarkersForReferenceMode()
@@ -1722,6 +1895,899 @@ public partial class MapEditorWindow : Window
         Canvas.SetLeft(label, screenX - 4 * inverseScale);
         Canvas.SetTop(label, screenY - 5 * inverseScale);
         PlayerCanvas.Children.Add(label);
+    }
+
+    #endregion
+
+    #region API Markers Panel
+
+    private readonly ApiMarkerService _apiMarkerService = ApiMarkerService.Instance;
+    private List<ApiMarker> _apiMarkers = new();
+    private readonly Dictionary<ApiMarker, CheckBox> _apiMarkerCheckboxes = new();
+    private readonly Dictionary<string, CheckBox> _categoryCheckboxes = new(); // Category/SubCategory -> CheckBox
+
+    // Marker types that don't need custom names (auto-numbered)
+    private static readonly HashSet<MapMarkerType> AutoNumberedTypes = new()
+    {
+        MapMarkerType.PmcSpawn,
+        MapMarkerType.ScavSpawn,
+        MapMarkerType.BossSpawn,
+        MapMarkerType.RaiderSpawn
+    };
+
+    private void ToggleApiPanel_Click(object sender, RoutedEventArgs e)
+    {
+        if (ApiMarkerPanel.Visibility == Visibility.Visible)
+        {
+            CloseApiPanel();
+        }
+        else
+        {
+            OpenApiPanel();
+        }
+    }
+
+    private async void OpenApiPanel()
+    {
+        if (_currentMapConfig == null) return;
+
+        ApiMarkerPanel.Visibility = Visibility.Visible;
+        ApiPanelColumn.Width = new GridLength(320);
+
+        await LoadApiMarkersAsync();
+    }
+
+    private void CloseApiPanel()
+    {
+        ApiMarkerPanel.Visibility = Visibility.Collapsed;
+        ApiPanelColumn.Width = new GridLength(0);
+    }
+
+    private void CloseApiPanel_Click(object sender, RoutedEventArgs e)
+    {
+        CloseApiPanel();
+    }
+
+    private async Task LoadApiMarkersAsync()
+    {
+        if (_currentMapConfig == null) return;
+
+        try
+        {
+            StatusText.Text = "Loading API markers...";
+            _apiMarkers = await _apiMarkerService.GetByMapKeyAsync(_currentMapConfig.Key);
+            ApiMarkerCountText.Text = $"{_apiMarkers.Count} markers";
+
+            BuildCategoryList();
+            StatusText.Text = $"Loaded {_apiMarkers.Count} API markers for {_currentMapConfig.DisplayName}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Error loading API markers: {ex.Message}";
+            _apiMarkers.Clear();
+            ApiMarkerCountText.Text = "0 markers";
+        }
+    }
+
+    private void BuildCategoryList()
+    {
+        ApiCategoryList.Children.Clear();
+        _apiMarkerCheckboxes.Clear();
+        _categoryCheckboxes.Clear();
+
+        if (_apiMarkers.Count == 0)
+        {
+            var noDataText = new TextBlock
+            {
+                Text = "No API markers found for this map.\n\nUse Debug > Import Tarkov Market Data to import markers.",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(8)
+            };
+            ApiCategoryList.Children.Add(noDataText);
+            return;
+        }
+
+        // Group by Category, then SubCategory
+        var grouped = _apiMarkers
+            .GroupBy(m => m.Category)
+            .OrderBy(g => g.Key);
+
+        foreach (var categoryGroup in grouped)
+        {
+            var categoryKey = categoryGroup.Key;
+
+            // Category header with checkbox
+            var categoryHeader = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal };
+            var categoryCheckbox = new CheckBox
+            {
+                Content = $"{categoryKey} ({categoryGroup.Count()})",
+                Tag = categoryKey,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x88, 0x66)),
+                FontWeight = FontWeights.SemiBold,
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            categoryCheckbox.Checked += CategoryCheckbox_Changed;
+            categoryCheckbox.Unchecked += CategoryCheckbox_Changed;
+            categoryHeader.Children.Add(categoryCheckbox);
+            _categoryCheckboxes[$"cat:{categoryKey}"] = categoryCheckbox;
+
+            var categoryExpander = new Expander
+            {
+                Header = categoryHeader,
+                IsExpanded = true,
+                Margin = new Thickness(0, 4, 0, 0)
+            };
+
+            var categoryContent = new StackPanel();
+
+            // Group by SubCategory within category
+            var subGroups = categoryGroup
+                .GroupBy(m => m.SubCategory ?? "Other")
+                .OrderBy(g => g.Key);
+
+            foreach (var subGroup in subGroups)
+            {
+                var subCategoryKey = $"{categoryKey}|{subGroup.Key}";
+
+                // SubCategory header with checkbox
+                var subCheckbox = new CheckBox
+                {
+                    Content = $"{subGroup.Key} ({subGroup.Count()})",
+                    Tag = subCategoryKey,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xAA, 0xAA, 0xAA)),
+                    FontSize = 11,
+                    Margin = new Thickness(8, 6, 0, 2)
+                };
+                subCheckbox.Checked += SubCategoryCheckbox_Changed;
+                subCheckbox.Unchecked += SubCategoryCheckbox_Changed;
+                categoryContent.Children.Add(subCheckbox);
+                _categoryCheckboxes[$"sub:{subCategoryKey}"] = subCheckbox;
+
+                // Markers in subcategory
+                foreach (var marker in subGroup.OrderBy(m => m.Name))
+                {
+                    var checkbox = CreateMarkerCheckbox(marker);
+                    categoryContent.Children.Add(checkbox);
+                    _apiMarkerCheckboxes[marker] = checkbox;
+                }
+            }
+
+            categoryExpander.Content = categoryContent;
+            ApiCategoryList.Children.Add(categoryExpander);
+        }
+    }
+
+    private void CategoryCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox categoryCheckbox || categoryCheckbox.Tag is not string categoryKey) return;
+
+        var isChecked = categoryCheckbox.IsChecked == true;
+
+        // Check/uncheck all subcategory checkboxes in this category
+        foreach (var kvp in _categoryCheckboxes)
+        {
+            if (kvp.Key.StartsWith($"sub:{categoryKey}|"))
+            {
+                kvp.Value.IsChecked = isChecked;
+            }
+        }
+
+        // Check/uncheck all marker checkboxes in this category
+        foreach (var kvp in _apiMarkerCheckboxes)
+        {
+            if (kvp.Key.Category == categoryKey)
+            {
+                kvp.Value.IsChecked = isChecked;
+            }
+        }
+
+        RedrawApiMarkerPreview();
+    }
+
+    private void SubCategoryCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox subCheckbox || subCheckbox.Tag is not string subCategoryKey) return;
+
+        var isChecked = subCheckbox.IsChecked == true;
+        var parts = subCategoryKey.Split('|');
+        if (parts.Length != 2) return;
+
+        var categoryKey = parts[0];
+        var subCategory = parts[1];
+
+        // Check/uncheck all marker checkboxes in this subcategory
+        foreach (var kvp in _apiMarkerCheckboxes)
+        {
+            var markerSubCategory = kvp.Key.SubCategory ?? "Other";
+            if (kvp.Key.Category == categoryKey && markerSubCategory == subCategory)
+            {
+                kvp.Value.IsChecked = isChecked;
+            }
+        }
+
+        // Update parent category checkbox state
+        UpdateCategoryCheckboxState(categoryKey);
+        RedrawApiMarkerPreview();
+    }
+
+    private void UpdateCategoryCheckboxState(string categoryKey)
+    {
+        if (!_categoryCheckboxes.TryGetValue($"cat:{categoryKey}", out var categoryCheckbox)) return;
+
+        var markersInCategory = _apiMarkerCheckboxes.Where(kvp => kvp.Key.Category == categoryKey).ToList();
+        var checkedCount = markersInCategory.Count(kvp => kvp.Value.IsChecked == true);
+
+        if (checkedCount == 0)
+        {
+            categoryCheckbox.IsChecked = false;
+        }
+        else if (checkedCount == markersInCategory.Count)
+        {
+            categoryCheckbox.IsChecked = true;
+        }
+        else
+        {
+            categoryCheckbox.IsChecked = null; // Indeterminate state
+        }
+    }
+
+    private void UpdateSubCategoryCheckboxState(string categoryKey, string subCategory)
+    {
+        var subCategoryKey = $"{categoryKey}|{subCategory}";
+        if (!_categoryCheckboxes.TryGetValue($"sub:{subCategoryKey}", out var subCheckbox)) return;
+
+        var markersInSubCategory = _apiMarkerCheckboxes
+            .Where(kvp => kvp.Key.Category == categoryKey && (kvp.Key.SubCategory ?? "Other") == subCategory)
+            .ToList();
+        var checkedCount = markersInSubCategory.Count(kvp => kvp.Value.IsChecked == true);
+
+        if (checkedCount == 0)
+        {
+            subCheckbox.IsChecked = false;
+        }
+        else if (checkedCount == markersInSubCategory.Count)
+        {
+            subCheckbox.IsChecked = true;
+        }
+        else
+        {
+            subCheckbox.IsChecked = null; // Indeterminate state
+        }
+    }
+
+    private CheckBox CreateMarkerCheckbox(ApiMarker marker)
+    {
+        var displayName = marker.Name;
+        if (!string.IsNullOrEmpty(marker.NameKo))
+        {
+            displayName = $"{marker.Name} ({marker.NameKo})";
+        }
+
+        var checkbox = new CheckBox
+        {
+            Content = displayName,
+            Tag = marker,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xCC, 0xCC, 0xCC)),
+            Margin = new Thickness(24, 2, 0, 2),
+            ToolTip = $"X: {marker.X:F1}, Z: {marker.Z:F1}\nFloor: {marker.FloorId ?? "default"}"
+        };
+
+        checkbox.Checked += MarkerCheckbox_Changed;
+        checkbox.Unchecked += MarkerCheckbox_Changed;
+
+        return checkbox;
+    }
+
+    private void MarkerCheckbox_Changed(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox checkbox || checkbox.Tag is not ApiMarker marker) return;
+
+        // Update parent checkboxes state
+        UpdateSubCategoryCheckboxState(marker.Category, marker.SubCategory ?? "Other");
+        UpdateCategoryCheckboxState(marker.Category);
+
+        // Redraw preview
+        RedrawApiMarkerPreview();
+    }
+
+    private void RedrawApiMarkerPreview()
+    {
+        // Just call RedrawMarkers which will include preview markers
+        RedrawMarkers();
+    }
+
+    private void ApiSelectAll_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var checkbox in _apiMarkerCheckboxes.Values)
+        {
+            checkbox.IsChecked = true;
+        }
+        foreach (var checkbox in _categoryCheckboxes.Values)
+        {
+            checkbox.IsChecked = true;
+        }
+        RedrawApiMarkerPreview();
+    }
+
+    private void ApiDeselectAll_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var checkbox in _apiMarkerCheckboxes.Values)
+        {
+            checkbox.IsChecked = false;
+        }
+        foreach (var checkbox in _categoryCheckboxes.Values)
+        {
+            checkbox.IsChecked = false;
+        }
+        RedrawApiMarkerPreview();
+    }
+
+    private async void AddSelectedApiMarkers_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentMapConfig == null) return;
+
+        var selectedMarkers = _apiMarkerCheckboxes
+            .Where(kvp => kvp.Value.IsChecked == true)
+            .Select(kvp => kvp.Key)
+            .ToList();
+
+        if (selectedMarkers.Count == 0)
+        {
+            MessageBox.Show("Please select at least one marker to add.", "No Selection", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        int addedCount = 0;
+        int skippedCount = 0;
+
+        foreach (var apiMarker in selectedMarkers)
+        {
+            // Use UI-selected marker type instead of converting from API category
+            var mapMarkerType = _currentMarkerType;
+
+            // Check for duplicate (same position, same type)
+            var isDuplicate = _mapMarkers.Any(m =>
+                m.MapKey == _currentMapConfig.Key &&
+                m.MarkerType == mapMarkerType &&
+                Math.Abs(m.X - apiMarker.X) < 1.0 &&
+                Math.Abs(m.Z - apiMarker.Z) < 1.0);
+
+            if (isDuplicate)
+            {
+                skippedCount++;
+                continue;
+            }
+
+            // Generate name (auto-number for spawn types)
+            var markerName = GenerateMarkerName(mapMarkerType, apiMarker.Name);
+
+            var mapMarker = new MapMarker
+            {
+                Name = markerName,
+                NameKo = apiMarker.NameKo,
+                MarkerType = mapMarkerType,
+                MapKey = _currentMapConfig.Key,
+                X = apiMarker.X,
+                Y = apiMarker.Y ?? 0,
+                Z = apiMarker.Z,
+                FloorId = apiMarker.FloorId
+            };
+
+            _mapMarkers.Add(mapMarker);
+
+            try
+            {
+                await _markerService.SaveMarkerAsync(mapMarker);
+                addedCount++;
+            }
+            catch (Exception ex)
+            {
+                StatusText.Text = $"Error saving marker: {ex.Message}";
+            }
+        }
+
+        // Clear checkboxes
+        foreach (var checkbox in _apiMarkerCheckboxes.Values)
+        {
+            checkbox.IsChecked = false;
+        }
+
+        UpdateMarkerCount();
+        RedrawMarkers();
+
+        var message = $"Added {addedCount} markers";
+        if (skippedCount > 0)
+        {
+            message += $" ({skippedCount} skipped as duplicates)";
+        }
+        StatusText.Text = message;
+    }
+
+    private MapMarkerType? ConvertToMapMarkerType(ApiMarker apiMarker)
+    {
+        // Map API category/subcategory to MapMarkerType
+        var category = apiMarker.Category?.ToLower() ?? "";
+        var subCategory = apiMarker.SubCategory?.ToLower() ?? "";
+
+        return (category, subCategory) switch
+        {
+            ("spawns", "pmc spawn") => MapMarkerType.PmcSpawn,
+            ("spawns", "scav spawn") => MapMarkerType.ScavSpawn,
+            ("spawns", "boss spawn") => MapMarkerType.BossSpawn,
+            ("spawns", "raider spawn") => MapMarkerType.RaiderSpawn,
+            ("spawns", _) => MapMarkerType.PmcSpawn, // Default spawn type
+
+            ("extractions", "pmc extraction") => MapMarkerType.PmcExtraction,
+            ("extractions", "scav extraction") => MapMarkerType.ScavExtraction,
+            ("extractions", "shared extraction") => MapMarkerType.SharedExtraction,
+            ("extractions", "transit") => MapMarkerType.Transit,
+            ("extractions", _) => MapMarkerType.PmcExtraction, // Default extraction type
+
+            ("keys", _) => MapMarkerType.Keys,
+            ("levers", _) => MapMarkerType.Lever,
+
+            _ => null // Unknown category - skip
+        };
+    }
+
+    private string GenerateMarkerName(MapMarkerType markerType, string originalName)
+    {
+        // If not an auto-numbered type, use original name
+        if (!AutoNumberedTypes.Contains(markerType))
+        {
+            return originalName;
+        }
+
+        // Generate auto-numbered name: PMC_SPAWN_1, SCAV_SPAWN_2, etc.
+        var prefix = markerType switch
+        {
+            MapMarkerType.PmcSpawn => "PMC_SPAWN",
+            MapMarkerType.ScavSpawn => "SCAV_SPAWN",
+            MapMarkerType.BossSpawn => "BOSS_SPAWN",
+            MapMarkerType.RaiderSpawn => "RAIDER_SPAWN",
+            _ => "MARKER"
+        };
+
+        // Count existing markers of this type on current map
+        var existingCount = _mapMarkers.Count(m =>
+            m.MapKey == _currentMapConfig?.Key &&
+            m.MarkerType == markerType);
+
+        return $"{prefix}_{existingCount + 1}";
+    }
+
+    #endregion
+
+    #region Filter Bar
+
+    private void InitializeFilterButtons()
+    {
+        FilterButtonsPanel.Children.Clear();
+        _filterButtons.Clear();
+
+        // Initialize with all filters active
+        _activeFilters = new HashSet<MapMarkerType>(Enum.GetValues(typeof(MapMarkerType)).Cast<MapMarkerType>());
+
+        foreach (MapMarkerType markerType in Enum.GetValues(typeof(MapMarkerType)))
+        {
+            var (r, g, b) = MapMarker.GetMarkerColor(markerType);
+            var color = Color.FromRgb(r, g, b);
+
+            var btn = new System.Windows.Controls.Button
+            {
+                Content = MapMarker.GetMarkerTypeName(markerType),
+                Tag = markerType,
+                Padding = new Thickness(8, 4, 8, 4),
+                Margin = new Thickness(0, 0, 4, 0),
+                Background = new SolidColorBrush(color),
+                Foreground = Brushes.White,
+                BorderThickness = new Thickness(0)
+            };
+            btn.Click += FilterButton_Click;
+
+            _filterButtons[markerType] = btn;
+            FilterButtonsPanel.Children.Add(btn);
+        }
+
+        UpdateFilterAllButtonState();
+    }
+
+    private void FilterAll_Click(object sender, RoutedEventArgs e)
+    {
+        // Toggle all filters
+        if (_activeFilters.Count == Enum.GetValues(typeof(MapMarkerType)).Length)
+        {
+            // All active -> deactivate all
+            _activeFilters.Clear();
+        }
+        else
+        {
+            // Some or none active -> activate all
+            _activeFilters = new HashSet<MapMarkerType>(Enum.GetValues(typeof(MapMarkerType)).Cast<MapMarkerType>());
+        }
+
+        UpdateFilterButtonVisuals();
+        RefreshMarkerList();
+        RedrawMarkers();
+    }
+
+    private void FilterButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn || btn.Tag is not MapMarkerType markerType) return;
+
+        // Toggle this filter
+        if (_activeFilters.Contains(markerType))
+        {
+            _activeFilters.Remove(markerType);
+        }
+        else
+        {
+            _activeFilters.Add(markerType);
+        }
+
+        UpdateFilterButtonVisuals();
+        RefreshMarkerList();
+        RedrawMarkers();
+    }
+
+    private void UpdateFilterButtonVisuals()
+    {
+        foreach (var kvp in _filterButtons)
+        {
+            var markerType = kvp.Key;
+            var btn = kvp.Value;
+            var (r, g, b) = MapMarker.GetMarkerColor(markerType);
+
+            if (_activeFilters.Contains(markerType))
+            {
+                btn.Background = new SolidColorBrush(Color.FromRgb(r, g, b));
+                btn.Foreground = Brushes.White;
+            }
+            else
+            {
+                btn.Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
+                btn.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
+            }
+        }
+
+        UpdateFilterAllButtonState();
+    }
+
+    private void UpdateFilterAllButtonState()
+    {
+        var allCount = Enum.GetValues(typeof(MapMarkerType)).Length;
+        if (_activeFilters.Count == allCount)
+        {
+            BtnFilterAll.Background = new SolidColorBrush(Color.FromRgb(0x70, 0xA8, 0x00));
+            BtnFilterAll.Foreground = Brushes.White;
+        }
+        else
+        {
+            BtnFilterAll.Background = new SolidColorBrush(Color.FromRgb(0x44, 0x44, 0x44));
+            BtnFilterAll.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
+        }
+    }
+
+    private IEnumerable<MapMarker> GetFilteredMarkers()
+    {
+        if (_currentMapConfig == null) return Enumerable.Empty<MapMarker>();
+
+        return _mapMarkers
+            .Where(m => m.MapKey == _currentMapConfig.Key)
+            .Where(m => _activeFilters.Contains(m.MarkerType));
+    }
+
+    #endregion
+
+    #region Left Panel (Marker List & Editor)
+
+    private void InitializeEditMarkerTypeSelector()
+    {
+        EditMarkerType.Items.Clear();
+        foreach (MapMarkerType markerType in Enum.GetValues(typeof(MapMarkerType)))
+        {
+            var (r, g, b) = MapMarker.GetMarkerColor(markerType);
+            var item = new ComboBoxItem
+            {
+                Content = MapMarker.GetMarkerTypeName(markerType),
+                Tag = markerType,
+                Foreground = new SolidColorBrush(Color.FromRgb(r, g, b))
+            };
+            EditMarkerType.Items.Add(item);
+        }
+    }
+
+    private void UpdateEditFloorSelector()
+    {
+        EditMarkerFloor.Items.Clear();
+
+        if (_sortedFloors == null || _sortedFloors.Count == 0)
+        {
+            EditFloorLabel.Visibility = Visibility.Collapsed;
+            EditMarkerFloor.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        EditFloorLabel.Visibility = Visibility.Visible;
+        EditMarkerFloor.Visibility = Visibility.Visible;
+
+        // Add "None" option
+        EditMarkerFloor.Items.Add(new ComboBoxItem
+        {
+            Content = "(Default)",
+            Tag = (string?)null
+        });
+
+        foreach (var floor in _sortedFloors)
+        {
+            EditMarkerFloor.Items.Add(new ComboBoxItem
+            {
+                Content = floor.DisplayName,
+                Tag = floor.LayerId
+            });
+        }
+    }
+
+    private void ToggleLeftPanel_Click(object sender, RoutedEventArgs e)
+    {
+        if (MarkerListPanel.Visibility == Visibility.Visible)
+        {
+            CloseLeftPanel();
+        }
+        else
+        {
+            OpenLeftPanel();
+        }
+    }
+
+    private void CloseLeftPanel_Click(object sender, RoutedEventArgs e)
+    {
+        CloseLeftPanel();
+    }
+
+    private void OpenLeftPanel()
+    {
+        MarkerListPanel.Visibility = Visibility.Visible;
+        LeftPanelColumn.Width = new GridLength(300);
+        UpdateEditFloorSelector();
+        RefreshMarkerList();
+    }
+
+    private void CloseLeftPanel()
+    {
+        MarkerListPanel.Visibility = Visibility.Collapsed;
+        LeftPanelColumn.Width = new GridLength(0);
+        _editingMarker = null;
+        RedrawMarkers();
+    }
+
+    private void RefreshMarkerList()
+    {
+        var filteredMarkers = GetFilteredMarkers().OrderBy(m => m.MarkerType).ThenBy(m => m.Name).ToList();
+        MarkerListBox.ItemsSource = filteredMarkers;
+        LeftPanelMarkerCountText.Text = $"{filteredMarkers.Count} markers";
+
+        // Clear selection if editing marker is no longer in filtered list
+        if (_editingMarker != null && !filteredMarkers.Contains(_editingMarker))
+        {
+            _editingMarker = null;
+            MarkerListBox.SelectedItem = null;
+        }
+    }
+
+    private void MarkerListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (MarkerListBox.SelectedItem is MapMarker marker)
+        {
+            _editingMarker = marker;
+            _selectedMarker = marker;
+            LoadMarkerToEditor(marker);
+            RedrawMarkers();
+
+            // Pan to marker if not visible
+            if (_currentMapConfig != null)
+            {
+                var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(marker.X, marker.Z);
+                CenterMapOnPoint(sx, sy);
+            }
+        }
+        else
+        {
+            _editingMarker = null;
+            ClearEditor();
+            RedrawMarkers();
+        }
+    }
+
+    private void LoadMarkerToEditor(MapMarker marker)
+    {
+        _isUpdatingEditorFields = true;
+
+        EditMarkerName.Text = marker.Name;
+        EditMarkerNameKo.Text = marker.NameKo ?? "";
+        EditMarkerX.Text = marker.X.ToString("F1");
+        EditMarkerZ.Text = marker.Z.ToString("F1");
+
+        // Select marker type
+        for (int i = 0; i < EditMarkerType.Items.Count; i++)
+        {
+            if (EditMarkerType.Items[i] is ComboBoxItem item && item.Tag is MapMarkerType type && type == marker.MarkerType)
+            {
+                EditMarkerType.SelectedIndex = i;
+                break;
+            }
+        }
+
+        // Select floor
+        if (EditMarkerFloor.Visibility == Visibility.Visible)
+        {
+            var targetFloorId = marker.FloorId;
+            for (int i = 0; i < EditMarkerFloor.Items.Count; i++)
+            {
+                if (EditMarkerFloor.Items[i] is ComboBoxItem item)
+                {
+                    var floorId = item.Tag as string;
+                    if ((floorId == null && targetFloorId == null) ||
+                        (floorId != null && string.Equals(floorId, targetFloorId, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        EditMarkerFloor.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        }
+
+        _isUpdatingEditorFields = false;
+    }
+
+    private void ClearEditor()
+    {
+        _isUpdatingEditorFields = true;
+        EditMarkerName.Text = "";
+        EditMarkerNameKo.Text = "";
+        EditMarkerX.Text = "";
+        EditMarkerZ.Text = "";
+        EditMarkerType.SelectedIndex = -1;
+        EditMarkerFloor.SelectedIndex = -1;
+        _isUpdatingEditorFields = false;
+    }
+
+    private void CenterMapOnPoint(double screenX, double screenY)
+    {
+        var viewerWidth = MapViewerGrid.ActualWidth;
+        var viewerHeight = MapViewerGrid.ActualHeight;
+
+        if (viewerWidth <= 0 || viewerHeight <= 0) return;
+
+        // Calculate new translate to center on point
+        MapTranslate.X = viewerWidth / 2 - screenX * _zoomLevel;
+        MapTranslate.Y = viewerHeight / 2 - screenY * _zoomLevel;
+    }
+
+    private async void EditMarkerName_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingEditorFields || _editingMarker == null) return;
+
+        _editingMarker.Name = EditMarkerName.Text;
+        await SaveEditedMarkerAsync();
+        RefreshMarkerListItem();
+        RedrawMarkers();
+    }
+
+    private async void EditMarkerNameKo_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingEditorFields || _editingMarker == null) return;
+
+        _editingMarker.NameKo = string.IsNullOrWhiteSpace(EditMarkerNameKo.Text) ? null : EditMarkerNameKo.Text;
+        await SaveEditedMarkerAsync();
+    }
+
+    private async void EditMarkerType_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingEditorFields || _editingMarker == null) return;
+        if (EditMarkerType.SelectedItem is not ComboBoxItem item || item.Tag is not MapMarkerType markerType) return;
+
+        _editingMarker.MarkerType = markerType;
+        await SaveEditedMarkerAsync();
+        RefreshMarkerListItem();
+        RedrawMarkers();
+    }
+
+    private async void EditMarkerFloor_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingEditorFields || _editingMarker == null) return;
+        if (EditMarkerFloor.SelectedItem is not ComboBoxItem item) return;
+
+        _editingMarker.FloorId = item.Tag as string;
+        await SaveEditedMarkerAsync();
+        RedrawMarkers();
+    }
+
+    private async void EditMarkerCoord_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_isUpdatingEditorFields || _editingMarker == null) return;
+
+        if (double.TryParse(EditMarkerX.Text, out var x))
+        {
+            _editingMarker.X = x;
+        }
+
+        if (double.TryParse(EditMarkerZ.Text, out var z))
+        {
+            _editingMarker.Z = z;
+        }
+
+        await SaveEditedMarkerAsync();
+        RefreshMarkerListItem();
+        RedrawMarkers();
+    }
+
+    private void RefreshMarkerListItem()
+    {
+        // Force refresh the ListBox item display
+        if (_editingMarker != null && MarkerListBox.ItemsSource != null)
+        {
+            var items = MarkerListBox.ItemsSource as IList<MapMarker>;
+            if (items != null)
+            {
+                var index = items.IndexOf(_editingMarker);
+                if (index >= 0)
+                {
+                    // Force UI update by triggering property change
+                    MarkerListBox.Items.Refresh();
+                }
+            }
+        }
+    }
+
+    private async Task SaveEditedMarkerAsync()
+    {
+        if (_editingMarker == null) return;
+
+        try
+        {
+            await _markerService.SaveMarkerAsync(_editingMarker);
+            StatusText.Text = $"Saved: {_editingMarker.Name}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Error saving marker: {ex.Message}";
+        }
+    }
+
+    private async void DeleteSelectedMarker_Click(object sender, RoutedEventArgs e)
+    {
+        if (_editingMarker == null) return;
+
+        var result = MessageBox.Show(
+            $"Delete marker '{_editingMarker.Name}'?",
+            "Confirm Delete",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result != MessageBoxResult.Yes) return;
+
+        var markerToDelete = _editingMarker;
+
+        try
+        {
+            await _markerService.DeleteMarkerAsync(markerToDelete.Id);
+            _mapMarkers.Remove(markerToDelete);
+
+            _editingMarker = null;
+            _selectedMarker = null;
+            ClearEditor();
+            RefreshMarkerList();
+            UpdateMarkerCount();
+            RedrawMarkers();
+
+            StatusText.Text = $"Deleted: {markerToDelete.Name}";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Error deleting marker: {ex.Message}";
+        }
     }
 
     #endregion

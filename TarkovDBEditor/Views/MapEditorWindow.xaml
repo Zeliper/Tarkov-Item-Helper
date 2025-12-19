@@ -9,6 +9,7 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -93,13 +94,176 @@
                     <Button x:Name="ExportMarkersButton" Content="Export Markers" Click="ExportMarkers_Click"
                             Background="#2196F3" Foreground="White" BorderThickness="0"
                             Padding="15,5" Margin="10,0,0,0" Visibility="Collapsed"/>
+                    <Button x:Name="ApiMarkersButton" Content="API Markers" Click="ToggleApiPanel_Click"
+                            Background="#9C27B0" Foreground="White" BorderThickness="0"
+                            Padding="15,5" Margin="10,0,0,0" Visibility="Collapsed"
+                            ToolTip="Load and import markers from API"/>
+                    <Button x:Name="EditMarkersButton" Content="Edit Markers" Click="ToggleLeftPanel_Click"
+                            Background="#2196F3" Foreground="White" BorderThickness="0"
+                            Padding="15,5" Margin="10,0,0,0" Visibility="Collapsed"
+                            ToolTip="Open marker list and editor panel"/>
                 </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Map Container -->
-        <Border Grid.Row="1" Background="#0F0F10" ClipToBounds="True">
-            <Grid x:Name="MapViewerGrid"
+        <!-- Marker Type Filter Bar (shown in marker mode) -->
+        <Border x:Name="FilterBar" Grid.Row="1" Background="#252525" Padding="8,6" Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Filter:" Foreground="#9A8866" VerticalAlignment="Center" Margin="0,0,10,0" FontWeight="SemiBold"/>
+                <Button x:Name="BtnFilterAll" Content="All" Padding="8,4" Margin="0,0,4,0"
+                        Background="#70A800" Foreground="White" BorderThickness="0"
+                        Click="FilterAll_Click"/>
+                <WrapPanel x:Name="FilterButtonsPanel" Orientation="Horizontal"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Map Container with Optional Left and Right Panels -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftPanelColumn" Width="0"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="ApiPanelColumn" Width="0"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel: Marker List & Editor -->
+            <Border x:Name="MarkerListPanel" Grid.Column="0" Background="#1A1A1A"
+                    BorderBrush="#333" BorderThickness="0,0,1,0" Visibility="Collapsed">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Border Grid.Row="0" Background="#252525" Padding="10,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Markers" Foreground="#9A8866" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock x:Name="LeftPanelMarkerCountText" Text="0 markers" Foreground="#666" FontSize="11" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="X" Width="24" Height="24"
+                                    Background="#333" Foreground="#888" BorderThickness="0"
+                                    Click="CloseLeftPanel_Click" ToolTip="Close panel"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Marker List -->
+                    <ListBox x:Name="MarkerListBox" Grid.Row="1"
+                             Background="Transparent" BorderThickness="0"
+                             SelectionChanged="MarkerListBox_SelectionChanged"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="8,6"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#CCC"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                                    Padding="{TemplateBinding Padding}"
+                                                    BorderBrush="#333" BorderThickness="0,0,0,1">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#3A3A3A"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#2A2A2A"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" Foreground="#CCC"/>
+                                    <TextBlock Foreground="#888" FontSize="11">
+                                        <Run Text="{Binding MarkerType, Mode=OneWay}"/>
+                                        <Run Text=" | "/>
+                                        <Run Text="X:"/><Run Text="{Binding X, StringFormat='{}{0:F1}'}"/>
+                                        <Run Text=", Z:"/><Run Text="{Binding Z, StringFormat='{}{0:F1}'}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- Editor Panel -->
+                    <Border x:Name="MarkerEditorDetailPanel" Grid.Row="2" Background="#252525" Padding="10">
+                        <StackPanel>
+                            <TextBlock Text="Edit Marker" Foreground="#9A8866" FontWeight="Bold" Margin="0,0,0,10"/>
+
+                            <!-- Name -->
+                            <TextBlock Text="Name" Foreground="#888" FontSize="11" Margin="0,0,0,4"/>
+                            <TextBox x:Name="EditMarkerName" Height="28"
+                                     Background="#333" Foreground="#FFF" BorderThickness="1" BorderBrush="#555"
+                                     Padding="5,3" VerticalContentAlignment="Center"
+                                     TextChanged="EditMarkerName_TextChanged"/>
+
+                            <!-- Name (Korean) -->
+                            <TextBlock Text="Name (Korean)" Foreground="#888" FontSize="11" Margin="0,8,0,4"/>
+                            <TextBox x:Name="EditMarkerNameKo" Height="28"
+                                     Background="#333" Foreground="#FFF" BorderThickness="1" BorderBrush="#555"
+                                     Padding="5,3" VerticalContentAlignment="Center"
+                                     TextChanged="EditMarkerNameKo_TextChanged"/>
+
+                            <!-- Marker Type -->
+                            <TextBlock Text="Type" Foreground="#888" FontSize="11" Margin="0,8,0,4"/>
+                            <ComboBox x:Name="EditMarkerType" Height="28"
+                                      SelectionChanged="EditMarkerType_SelectionChanged"/>
+
+                            <!-- Floor -->
+                            <TextBlock x:Name="EditFloorLabel" Text="Floor" Foreground="#888" FontSize="11" Margin="0,8,0,4" Visibility="Collapsed"/>
+                            <ComboBox x:Name="EditMarkerFloor" Height="28" Visibility="Collapsed"
+                                      SelectionChanged="EditMarkerFloor_SelectionChanged"/>
+
+                            <!-- Coordinates -->
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="8"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="X" Foreground="#888" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="EditMarkerX" Height="28"
+                                             Background="#333" Foreground="#FFF" BorderThickness="1" BorderBrush="#555"
+                                             Padding="5,3" VerticalContentAlignment="Center"
+                                             TextChanged="EditMarkerCoord_TextChanged"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Z" Foreground="#888" FontSize="11" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="EditMarkerZ" Height="28"
+                                             Background="#333" Foreground="#FFF" BorderThickness="1" BorderBrush="#555"
+                                             Padding="5,3" VerticalContentAlignment="Center"
+                                             TextChanged="EditMarkerCoord_TextChanged"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Delete Button -->
+                            <Button x:Name="BtnDeleteSelectedMarker" Content="Delete Marker"
+                                    Margin="0,12,0,0" Padding="10,6"
+                                    Background="#C62828" Foreground="White" BorderThickness="0"
+                                    Click="DeleteSelectedMarker_Click"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <!-- Map Container -->
+            <Border Grid.Column="1" Background="#0F0F10" ClipToBounds="True">
+                <Grid x:Name="MapViewerGrid"
                   Background="Transparent"
                   MouseLeftButtonDown="MapViewer_MouseLeftButtonDown"
                   MouseLeftButtonUp="MapViewer_MouseLeftButtonUp"
@@ -168,8 +332,60 @@
             </Grid>
         </Border>
 
+            <!-- Right Panel: API Markers -->
+            <Border x:Name="ApiMarkerPanel" Grid.Column="2" Background="#1A1A1A"
+                    BorderBrush="#333" BorderThickness="1,0,0,0" Visibility="Collapsed">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Border Grid.Row="0" Background="#252525" Padding="10,8">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="API Markers" Foreground="#9A8866" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock x:Name="ApiMarkerCountText" Text="0 markers" Foreground="#666" FontSize="11" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="X" Width="24" Height="24"
+                                    Background="#333" Foreground="#888" BorderThickness="0"
+                                    Click="CloseApiPanel_Click" ToolTip="Close panel"/>
+                        </Grid>
+                    </Border>
+
+                    <!-- Category List -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="8">
+                        <StackPanel x:Name="ApiCategoryList"/>
+                    </ScrollViewer>
+
+                    <!-- Footer Actions -->
+                    <Border Grid.Row="2" Background="#252525" Padding="10,8">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Button Content="Select All" Padding="8,4" Margin="0,0,8,0"
+                                        Background="#333" Foreground="#9A8866" BorderThickness="0"
+                                        Click="ApiSelectAll_Click"/>
+                                <Button Content="Deselect All" Padding="8,4"
+                                        Background="#333" Foreground="#888" BorderThickness="0"
+                                        Click="ApiDeselectAll_Click"/>
+                            </StackPanel>
+                            <Button x:Name="BtnAddSelectedMarkers" Content="Add Selected to Map"
+                                    Padding="10,6" Background="#70A800" Foreground="White" BorderThickness="0"
+                                    Click="AddSelectedApiMarkers_Click"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+
         <!-- Status Bar -->
-        <Border Grid.Row="2" Background="#1A1A1A" Padding="10,5">
+        <Border Grid.Row="3" Background="#1A1A1A" Padding="10,5">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
