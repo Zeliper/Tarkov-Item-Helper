@@ -32,6 +32,11 @@ public sealed class EftRaidEventService : IDisposable
         @"Matching with group id: (\d*)",
         RegexOptions.Compiled);
 
+    // Local game matching cancelled: 매칭 취소
+    private static readonly Regex MatchingCancelledRegex = new(
+        @"Local game matching cancelled|Interrupted\. Interrupted by user",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     // TRACE-NetworkGameCreate: 레이드 정보
     private static readonly Regex TraceNetworkCreateRegex = new(
         @"TRACE-NetworkGameCreate profileStatus: 'Profileid: ([^,]+), Status: ([^,]+), RaidMode: ([^,]+), Ip: ([^,]+), Port: ([^,]+), Location: ([^,]+), Sid: ([^,]+), GameMode: ([^,]+), shortId: ([^']+)'",
@@ -80,6 +85,11 @@ public sealed class EftRaidEventService : IDisposable
     // Timestamp 추출 (로그 라인 시작)
     private static readonly Regex TimestampRegex = new(
         @"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3})",
+        RegexOptions.Compiled);
+
+    // Init: 새 게임 세션 시작 (이전 레이드 종료 감지용 fallback)
+    private static readonly Regex InitGameRegex = new(
+        @"Init: pstrGameVersion:",
         RegexOptions.Compiled);
 
     #endregion
@@ -587,6 +597,30 @@ public sealed class EftRaidEventService : IDisposable
     {
         var timestamp = ExtractTimestamp(line);
 
+        // Init: 새 게임 세션 시작 - 이전 레이드가 종료되었음을 의미 (network-connection 로그 없을 때 fallback)
+        if (InitGameRegex.IsMatch(line))
+        {
+            if (_currentRaid != null && _currentRaid.State != RaidState.Ended)
+            {
+                _log.Debug($"[Parse] Init detected - ending current raid (fallback). Previous state: {_currentRaid.State}");
+                _currentRaid.State = RaidState.Ended;
+                _currentRaid.EndTime ??= timestamp;
+
+                // 레이드 히스토리에 저장
+                Task.Run(() => SaveRaidHistoryAsync(_currentRaid));
+
+                RaidEvent?.Invoke(this, new EftRaidEventArgs
+                {
+                    EventType = EftRaidEventType.Disconnected,
+                    RaidInfo = _currentRaid,
+                    Timestamp = timestamp,
+                    Message = "Raid ended (detected from Init)"
+                });
+
+                _currentRaid = null;
+            }
+        }
+
         // Session mode
         var sessionMatch = SessionModeRegex.Match(line);
         if (sessionMatch.Success)
@@ -655,6 +689,18 @@ public sealed class EftRaidEventService : IDisposable
                 Timestamp = timestamp,
                 Message = string.IsNullOrEmpty(_pendingGroupId) ? "Solo" : $"Party (Leader: {_pendingGroupId})"
             });
+        }
+
+        // 매칭 취소 처리 - _currentRaid.State를 Ended로 설정하여 다음 매칭에서 새 레이드 생성 가능하게 함
+        if (MatchingCancelledRegex.IsMatch(line))
+        {
+            if (_currentRaid != null && _currentRaid.State == RaidState.Matching)
+            {
+                _log.Debug($"[Parse] Matching cancelled - resetting raid state from {_currentRaid.State} to Ended");
+                _currentRaid.State = RaidState.Ended;
+                _currentRaid = null; // 레이드 리셋
+            }
+            _pendingGroupId = null;
         }
 
         // TRACE-NetworkGameCreate
