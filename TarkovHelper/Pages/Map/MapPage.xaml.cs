@@ -518,7 +518,28 @@ public partial class MapPage : UserControl
 
             // Y 좌표(높이)를 기반으로 층 자동 전환
             TryAutoSwitchFloor(position);
+
+            // 자동 중앙 정렬이 활성화되어 있으면 플레이어 위치로 맵 이동
+            if (_trackerService?.Settings.AutoCenterOnPosition == true)
+            {
+                CenterOnPosition(position);
+            }
         });
+    }
+
+    /// <summary>
+    /// 플레이어 위치로 맵을 중앙 정렬합니다.
+    /// </summary>
+    private void CenterOnPosition(ScreenPosition position)
+    {
+        var viewerWidth = MapViewerGrid.ActualWidth;
+        var viewerHeight = MapViewerGrid.ActualHeight;
+
+        if (viewerWidth <= 0 || viewerHeight <= 0) return;
+
+        // 화면 중심을 플레이어 위치로 이동
+        MapTranslate.X = viewerWidth / 2 - position.X * _zoomLevel;
+        MapTranslate.Y = viewerHeight / 2 - position.Y * _zoomLevel;
     }
 
     /// <summary>
@@ -649,7 +670,7 @@ public partial class MapPage : UserControl
     /// <summary>
     /// 레이드 이벤트가 발생했을 때 호출됩니다.
     /// RaidStarted: 맵 자동 전환, 중앙 정렬, 맵별 줌 레벨 적용
-    /// RaidEnded/Disconnected: Trail 초기화
+    /// RaidEnded/Disconnected/NetworkTimeout/NetworkError: Trail 초기화
     /// </summary>
     private void OnRaidEvent(object? sender, EftRaidEventArgs e)
     {
@@ -663,6 +684,8 @@ public partial class MapPage : UserControl
 
                 case EftRaidEventType.RaidEnded:
                 case EftRaidEventType.Disconnected:
+                case EftRaidEventType.NetworkTimeout:
+                case EftRaidEventType.NetworkError:
                     HandleRaidEnded(e);
                     break;
             }
@@ -1676,6 +1699,18 @@ public partial class MapPage : UserControl
 
         // 플레이어 마커 업데이트
         UpdatePlayerMarkerScale(inverseScale);
+
+        // Trail 두께 업데이트 (줌 레벨에 상관없이 일정한 두께 유지)
+        UpdateTrailStrokeThickness(inverseScale);
+    }
+
+    /// <summary>
+    /// Trail의 두께를 줌 레벨에 맞게 업데이트합니다 (고정 크기 유지).
+    /// </summary>
+    private void UpdateTrailStrokeThickness(double inverseScale)
+    {
+        // 기본 두께 2에 역스케일 적용
+        TrailPath.StrokeThickness = 2.0 * inverseScale;
     }
 
     /// <summary>
@@ -1908,6 +1943,9 @@ public partial class MapPage : UserControl
 
         // 마커 새로고침
         _questMarkerManager.RefreshMarkers();
+
+        // 컴포넌트에서 계산된 현재 맵 목표를 동기화 (Drawer 표시용)
+        _currentMapObjectives = _questMarkerManager.GetCurrentMapObjectives();
     }
 
     /// <summary>
@@ -2187,8 +2225,9 @@ public partial class MapPage : UserControl
 
         if (location == null) return;
 
-        // TarkovDBEditor 방식: config.GameToScreen 직접 사용
-        var (screenX, screenY) = config.GameToScreen(location.X, location.Z ?? 0);
+        // TarkovDBEditor 방식: config.GameToScreenForPlayer 사용
+        // QuestObjectiveLocation: X = game X, Y = game Z (수평면), Z = game Y (높이)
+        var (screenX, screenY) = config.GameToScreenForPlayer(location.X, location.Y);
 
         // 맵 중심으로 이동 (현재 줌 레벨 고려)
         var viewerWidth = MapViewerGrid.ActualWidth;

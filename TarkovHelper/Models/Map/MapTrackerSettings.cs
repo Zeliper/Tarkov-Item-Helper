@@ -133,6 +133,11 @@ public sealed class MapTrackerSettings
     public bool HideCompletedObjectives { get; set; } = true;
 
     /// <summary>
+    /// 플레이어 위치 감지 시 맵 자동 중앙 정렬 여부
+    /// </summary>
+    public bool AutoCenterOnPosition { get; set; } = true;
+
+    /// <summary>
     /// 마지막으로 선택한 맵 키 (탭 전환 시 상태 유지용)
     /// </summary>
     public string? LastSelectedMapKey { get; set; }
