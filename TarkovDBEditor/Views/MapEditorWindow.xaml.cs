@@ -482,7 +482,7 @@ public partial class MapEditorWindow : Window
         if (_currentMapConfig == null) return;
 
         // Convert screen coordinates to game coordinates
-        var (gameX, gameZ) = _currentMapConfig.ScreenToGame(screenX, screenY);
+        var (gameX, gameZ) = _currentMapConfig.ScreenToGameForPlayer(screenX, screenY);
 
         // Add point with current floor info to the appropriate list
         var newPoint = new LocationPoint(gameX, 0, gameZ, _currentFloorId);
@@ -540,10 +540,10 @@ public partial class MapEditorWindow : Window
         if (_currentMapConfig == null) return;
         if (_locationPoints.Count == 0 && _optionalPoints.Count == 0) return;
 
-        System.Diagnostics.Debug.WriteLine($"[MapEditor.RedrawPoints] CurrentMap: Key={_currentMapConfig.Key}, Transform={string.Join(",", _currentMapConfig.CalibratedTransform ?? Array.Empty<double>())}");
+        System.Diagnostics.Debug.WriteLine($"[MapEditor.RedrawPoints] CurrentMap: Key={_currentMapConfig.Key}, Transform={string.Join(",", _currentMapConfig.PlayerMarkerTransform ?? Array.Empty<double>())}");
         foreach (var pt in _locationPoints)
         {
-            var (sx, sy) = _currentMapConfig.GameToScreen(pt.X, pt.Z);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(pt.X, pt.Z);
             System.Diagnostics.Debug.WriteLine($"  Point: Game({pt.X:F2}, {pt.Z:F2}) -> Screen({sx:F2}, {sy:F2}), Floor={pt.FloorId}");
         }
 
@@ -586,7 +586,7 @@ public partial class MapEditorWindow : Window
 
             foreach (var point in otherFloorPoints)
             {
-                var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+                var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
                 fadedPolygon.Points.Add(new Point(sx, sy));
             }
 
@@ -595,7 +595,7 @@ public partial class MapEditorWindow : Window
             // Add floor label at centroid of other floor polygon
             var centroidX = otherFloorPoints.Average(p => p.X);
             var centroidZ = otherFloorPoints.Average(p => p.Z);
-            var (labelX, labelY) = _currentMapConfig.GameToScreen(centroidX, centroidZ);
+            var (labelX, labelY) = _currentMapConfig.GameToScreenForPlayer(centroidX, centroidZ);
 
             // Get the floor name from the first point (they should all be on the same floor for this case)
             var otherFloorId = otherFloorPoints.First().FloorId;
@@ -620,8 +620,8 @@ public partial class MapEditorWindow : Window
         // Draw faded line for other floors if 2 points
         else if (otherFloorPoints.Count == 2)
         {
-            var (sx1, sy1) = _currentMapConfig.GameToScreen(otherFloorPoints[0].X, otherFloorPoints[0].Z);
-            var (sx2, sy2) = _currentMapConfig.GameToScreen(otherFloorPoints[1].X, otherFloorPoints[1].Z);
+            var (sx1, sy1) = _currentMapConfig.GameToScreenForPlayer(otherFloorPoints[0].X, otherFloorPoints[0].Z);
+            var (sx2, sy2) = _currentMapConfig.GameToScreenForPlayer(otherFloorPoints[1].X, otherFloorPoints[1].Z);
 
             var fadedLine = new Line
             {
@@ -647,7 +647,7 @@ public partial class MapEditorWindow : Window
 
             foreach (var point in currentFloorPoints)
             {
-                var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+                var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
                 polygon.Points.Add(new Point(sx, sy));
             }
 
@@ -656,8 +656,8 @@ public partial class MapEditorWindow : Window
         // Draw line if 2 points on current floor
         else if (currentFloorPoints.Count == 2)
         {
-            var (sx1, sy1) = _currentMapConfig.GameToScreen(currentFloorPoints[0].X, currentFloorPoints[0].Z);
-            var (sx2, sy2) = _currentMapConfig.GameToScreen(currentFloorPoints[1].X, currentFloorPoints[1].Z);
+            var (sx1, sy1) = _currentMapConfig.GameToScreenForPlayer(currentFloorPoints[0].X, currentFloorPoints[0].Z);
+            var (sx2, sy2) = _currentMapConfig.GameToScreenForPlayer(currentFloorPoints[1].X, currentFloorPoints[1].Z);
 
             var line = new Line
             {
@@ -677,7 +677,7 @@ public partial class MapEditorWindow : Window
         var index = 1;
         foreach (var point in _locationPoints)
         {
-            var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
             var opacity = GetOpacity(point);
             var isCurrentFloor = opacity > 0.5;
 
@@ -742,7 +742,7 @@ public partial class MapEditorWindow : Window
             var optIndex = 1;
             foreach (var point in _optionalPoints)
             {
-                var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+                var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
 
                 // Determine opacity based on floor
                 double optOpacity = 1.0;
@@ -1075,7 +1075,7 @@ public partial class MapEditorWindow : Window
         if (_currentMapConfig != null)
         {
             var canvasPos = e.GetPosition(MapCanvas);
-            var (gameX, gameZ) = _currentMapConfig.ScreenToGame(canvasPos.X, canvasPos.Y);
+            var (gameX, gameZ) = _currentMapConfig.ScreenToGameForPlayer(canvasPos.X, canvasPos.Y);
             GameCoordsText.Text = $"X: {gameX:F1}, Z: {gameZ:F1}";
             ScreenCoordsText.Text = $"X: {canvasPos.X:F0}, Y: {canvasPos.Y:F0}";
         }
@@ -1088,8 +1088,8 @@ public partial class MapEditorWindow : Window
             var deltaScreenY = (currentPoint.Y - _markerDragStartScreen.Y) / _zoomLevel;
 
             // Convert screen delta to game coordinate delta
-            var (startGameX, startGameZ) = _currentMapConfig.ScreenToGame(0, 0);
-            var (endGameX, endGameZ) = _currentMapConfig.ScreenToGame(deltaScreenX, deltaScreenY);
+            var (startGameX, startGameZ) = _currentMapConfig.ScreenToGameForPlayer(0, 0);
+            var (endGameX, endGameZ) = _currentMapConfig.ScreenToGameForPlayer(deltaScreenX, deltaScreenY);
             var deltaGameX = endGameX - startGameX;
             var deltaGameZ = endGameZ - startGameZ;
 
@@ -1175,7 +1175,7 @@ public partial class MapEditorWindow : Window
         }
 
         // Convert screen coordinates to game coordinates
-        var (gameX, gameZ) = _currentMapConfig.ScreenToGame(screenX, screenY);
+        var (gameX, gameZ) = _currentMapConfig.ScreenToGameForPlayer(screenX, screenY);
 
         var marker = new MapMarker
         {
@@ -1231,7 +1231,7 @@ public partial class MapEditorWindow : Window
 
         foreach (var marker in _mapMarkers.Where(m => m.MapKey == _currentMapConfig.Key))
         {
-            var (markerScreenX, markerScreenY) = _currentMapConfig.GameToScreen(marker.X, marker.Z);
+            var (markerScreenX, markerScreenY) = _currentMapConfig.GameToScreenForPlayer(marker.X, marker.Z);
             var distance = Math.Sqrt(Math.Pow(screenX - markerScreenX, 2) + Math.Pow(screenY - markerScreenY, 2));
 
             if (distance <= hitRadius)
@@ -1301,7 +1301,7 @@ public partial class MapEditorWindow : Window
 
         foreach (var marker in markersForMap)
         {
-            var (sx, sy) = _currentMapConfig.GameToScreen(marker.X, marker.Z);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(marker.X, marker.Z);
             var isSelected = marker == _selectedMarker;
 
             // Determine opacity based on floor
@@ -1646,12 +1646,11 @@ public partial class MapEditorWindow : Window
         var (screenX, screenY) = _currentMapConfig.GameToScreenForPlayer(position.X, position.Z);
 
         // Debug output
-        var usedTransform = _currentMapConfig.PlayerMarkerTransform ?? _currentMapConfig.CalibratedTransform;
         System.Diagnostics.Debug.WriteLine($"[DrawPlayerMarker] Map: {_currentMapConfig.Key}");
         System.Diagnostics.Debug.WriteLine($"  Game: X={position.X:F2}, Y={position.Y:F2}, Z={position.Z:F2}");
         System.Diagnostics.Debug.WriteLine($"  Screen: X={screenX:F2}, Y={screenY:F2}");
         System.Diagnostics.Debug.WriteLine($"  MapSize: {_currentMapConfig.ImageWidth}x{_currentMapConfig.ImageHeight}");
-        System.Diagnostics.Debug.WriteLine($"  PlayerMarkerTransform: [{string.Join(", ", usedTransform ?? Array.Empty<double>())}]");
+        System.Diagnostics.Debug.WriteLine($"  PlayerMarkerTransform: [{string.Join(", ", _currentMapConfig.PlayerMarkerTransform ?? Array.Empty<double>())}]");
 
         // Scale for current zoom level
         double inverseScale = 1.0 / _zoomLevel;

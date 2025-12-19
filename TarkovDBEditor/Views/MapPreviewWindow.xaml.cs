@@ -182,14 +182,27 @@ public partial class MapPreviewWindow : Window
             if (result == null) return;
 
             // Migrate OptionalPoints column if not exists
-            try
+            var columnCheckSql = "PRAGMA table_info(QuestObjectives)";
+            await using var columnCheckCmd = new SqliteCommand(columnCheckSql, connection);
+            await using var columnReader = await columnCheckCmd.ExecuteReaderAsync();
+            bool optionalPointsExists = false;
+            while (await columnReader.ReadAsync())
             {
-                using var alterCmd = new SqliteCommand(
+                if (columnReader.GetString(1) == "OptionalPoints")
+                {
+                    optionalPointsExists = true;
+                    break;
+                }
+            }
+            await columnReader.CloseAsync();
+
+            if (!optionalPointsExists)
+            {
+                await using var alterCmd = new SqliteCommand(
                     "ALTER TABLE QuestObjectives ADD COLUMN OptionalPoints TEXT",
                     connection);
                 await alterCmd.ExecuteNonQueryAsync();
             }
-            catch { /* Column already exists - ignore */ }
 
             // Load objectives with location points or optional points
             var sql = @"
@@ -217,9 +230,7 @@ public partial class MapPreviewWindow : Window
                 objective.LocationPointsJson = locationJson;
 
                 var optionalJson = reader.IsDBNull(6) ? null : reader.GetString(6);
-                System.Diagnostics.Debug.WriteLine($"[LoadQuestObjectivesAsync] Id={objective.Id}, optionalJson={optionalJson}");
                 objective.OptionalPointsJson = optionalJson;
-                System.Diagnostics.Debug.WriteLine($"[LoadQuestObjectivesAsync] After parse - OptionalPoints.Count={objective.OptionalPoints.Count}");
 
                 if (objective.HasCoordinates || objective.HasOptionalPoints)
                 {
@@ -580,7 +591,7 @@ public partial class MapPreviewWindow : Window
 
         foreach (var marker in markersForMap)
         {
-            var (sx, sy) = _currentMapConfig.GameToScreen(marker.X, marker.Z);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(marker.X, marker.Z);
 
             // Determine opacity based on floor
             double opacity = 1.0;
@@ -746,7 +757,7 @@ public partial class MapPreviewWindow : Window
 
                 foreach (var point in otherFloorPoints)
                 {
-                    var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+                    var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
                     fadedPolygon.Points.Add(new Point(sx, sy));
                 }
 
@@ -755,7 +766,7 @@ public partial class MapPreviewWindow : Window
                 // Add floor label at centroid
                 var centroidX = otherFloorPoints.Average(p => p.X);
                 var centroidZ = otherFloorPoints.Average(p => p.Z);
-                var (labelX, labelY) = _currentMapConfig.GameToScreen(centroidX, centroidZ);
+                var (labelX, labelY) = _currentMapConfig.GameToScreenForPlayer(centroidX, centroidZ);
 
                 var otherFloorId = otherFloorPoints.First().FloorId;
                 var floorDisplayName = _sortedFloors?
@@ -779,8 +790,8 @@ public partial class MapPreviewWindow : Window
             // Draw faded line for other floors if 2 points
             else if (otherFloorPoints.Count == 2)
             {
-                var (sx1, sy1) = _currentMapConfig.GameToScreen(otherFloorPoints[0].X, otherFloorPoints[0].Z);
-                var (sx2, sy2) = _currentMapConfig.GameToScreen(otherFloorPoints[1].X, otherFloorPoints[1].Z);
+                var (sx1, sy1) = _currentMapConfig.GameToScreenForPlayer(otherFloorPoints[0].X, otherFloorPoints[0].Z);
+                var (sx2, sy2) = _currentMapConfig.GameToScreenForPlayer(otherFloorPoints[1].X, otherFloorPoints[1].Z);
 
                 var fadedLine = new Line
                 {
@@ -807,7 +818,7 @@ public partial class MapPreviewWindow : Window
 
                 foreach (var point in currentFloorPoints)
                 {
-                    var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+                    var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
                     polygon.Points.Add(new Point(sx, sy));
                 }
 
@@ -816,15 +827,15 @@ public partial class MapPreviewWindow : Window
                 // Add label at centroid
                 var centroidX = currentFloorPoints.Average(p => p.X);
                 var centroidZ = currentFloorPoints.Average(p => p.Z);
-                var (labelX, labelY) = _currentMapConfig.GameToScreen(centroidX, centroidZ);
+                var (labelX, labelY) = _currentMapConfig.GameToScreenForPlayer(centroidX, centroidZ);
 
                 AddObjectiveLabel(objective, labelX, labelY, inverseScale, objectiveColor);
             }
             // Draw line if 2 points on current floor
             else if (currentFloorPoints.Count == 2)
             {
-                var (sx1, sy1) = _currentMapConfig.GameToScreen(currentFloorPoints[0].X, currentFloorPoints[0].Z);
-                var (sx2, sy2) = _currentMapConfig.GameToScreen(currentFloorPoints[1].X, currentFloorPoints[1].Z);
+                var (sx1, sy1) = _currentMapConfig.GameToScreenForPlayer(currentFloorPoints[0].X, currentFloorPoints[0].Z);
+                var (sx2, sy2) = _currentMapConfig.GameToScreenForPlayer(currentFloorPoints[1].X, currentFloorPoints[1].Z);
 
                 var line = new Line
                 {
@@ -846,7 +857,7 @@ public partial class MapPreviewWindow : Window
             else if (currentFloorPoints.Count == 1)
             {
                 var point = currentFloorPoints[0];
-                var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+                var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
                 var markerSize = 40 * inverseScale;
 
                 // Diamond shape for objectives
@@ -890,7 +901,7 @@ public partial class MapPreviewWindow : Window
             {
                 foreach (var point in otherFloorPoints)
                 {
-                    var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+                    var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
                     var fadedSize = 24 * inverseScale;
 
                     var fadedMarker = new Ellipse
@@ -932,7 +943,7 @@ public partial class MapPreviewWindow : Window
                 var optIndex = 1;
                 foreach (var point in objective.OptionalPoints)
                 {
-                    var (sx, sy) = _currentMapConfig.GameToScreen(point.X, point.Z);
+                    var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(point.X, point.Z);
 
                     // Determine opacity based on floor
                     double optOpacity = 1.0;
@@ -1286,7 +1297,7 @@ public partial class MapPreviewWindow : Window
         if (_currentMapConfig != null)
         {
             var canvasPos = e.GetPosition(MapCanvas);
-            var (gameX, gameZ) = _currentMapConfig.ScreenToGame(canvasPos.X, canvasPos.Y);
+            var (gameX, gameZ) = _currentMapConfig.ScreenToGameForPlayer(canvasPos.X, canvasPos.Y);
             GameCoordsText.Text = $"X: {gameX:F1}, Z: {gameZ:F1}";
         }
 

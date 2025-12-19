@@ -73,23 +73,6 @@ public class ApiMarkerService
         await using var indexCmd = new SqliteCommand(indexSql, connection);
         await indexCmd.ExecuteNonQueryAsync();
 
-        // Migration: Add IsApproved, ApprovedAt columns if not exist
-        try
-        {
-            await using var alterCmd1 = new SqliteCommand(
-                "ALTER TABLE ApiMarkers ADD COLUMN IsApproved INTEGER NOT NULL DEFAULT 0", connection);
-            await alterCmd1.ExecuteNonQueryAsync();
-        }
-        catch { /* Column already exists */ }
-
-        try
-        {
-            await using var alterCmd2 = new SqliteCommand(
-                "ALTER TABLE ApiMarkers ADD COLUMN ApprovedAt TEXT", connection);
-            await alterCmd2.ExecuteNonQueryAsync();
-        }
-        catch { /* Column already exists */ }
-
         // 스키마 메타 등록
         await RegisterSchemaMetaAsync(connection);
 

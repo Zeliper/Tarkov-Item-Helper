@@ -1,0 +1,286 @@
+# PRD: Map Coordinate System Migration to PlayerMarkerTransform
+
+## Overview
+
+| Field | Value |
+|-------|-------|
+| **PRD ID** | MAP-001 |
+| **Created** | 2025-12-19 |
+| **Status** | Planning |
+| **Priority** | High |
+| **Estimated Effort** | Medium |
+
+## Background
+
+TarkovDBEditor에서 맵 좌표 시스템이 `CalibratedTransform`에서 `PlayerMarkerTransform`으로 통일되었습니다. 이에 따라 TarkovHelper의 맵 기능들도 동일한 좌표 체계를 사용하도록 변경해야 합니다.
+
+### 변경 이유
+- `CalibratedTransform`이 일부 맵(특히 Reserve)에서 부정확한 좌표를 생성
+- `PlayerMarkerTransform`이 tarkov-market API와 호환되며 더 정확한 좌표 변환 제공
+- TarkovDBEditor에서 모든 마커 데이터(MapMarkers, QuestObjectives)가 `PlayerMarkerTransform` 체계로 마이그레이션됨
+
+### 참조 변경사항 (TarkovDBEditor)
+1. `MapTransferWindow.xaml.cs` - 모든 좌표 변환을 `GameToScreenForPlayer`/`ScreenToGameForPlayer`로 변경
+2. `MapEditorWindow.xaml.cs` - 동일
+3. `MapPreviewWindow.xaml.cs` - 동일
+4. `QuestObjectiveEditorWindow.xaml.cs` - 동일
+5. `MapMarkerService.cs` - DB 좌표 마이그레이션 기능 추가
+6. `SvgStylePreprocessor.cs` - `FixWrapperRect()` 메서드 및 `dimAllOtherFloors` 파라미터 추가
+
+## Problem Statement
+
+현재 TarkovHelper의 맵 마커 렌더링은 `MapConfig.GameToScreen()` 메서드를 사용하며, 이 메서드는 `CalibratedTransform`만 사용합니다. DB에 저장된 마커들이 `PlayerMarkerTransform` 체계로 변경되었으므로, 렌더링 시에도 동일한 체계를 사용해야 합니다.
+
+### 영향받는 기능
+1. **맵 페이지 (MapPage)** - 퀘스트 마커, 탈출구 마커 표시
+2. **오버레이 미니맵 (OverlayMiniMapWindow)** - 탈출구, 퀘스트 오브젝티브 표시
+3. **플레이어 위치** - 이미 `TryTransformPlayerPosition()`에서 `PlayerMarkerTransform` 사용 중 (변경 불필요)
+
+## Proposed Solution
+
+### Phase 1: MapConfig에 ForPlayer 메서드 추가
+
+**파일:** `Models/Map/MapConfig.cs`
+
+```csharp
+/// <summary>
+/// 게임 좌표를 플레이어 마커용 맵 픽셀 좌표로 변환.
+/// PlayerMarkerTransform이 있으면 사용하고, 없으면 CalibratedTransform 사용.
+/// </summary>
+public (double screenX, double screenY) GameToScreenForPlayer(double gameX, double gameZ)
+{
+    var transform = PlayerMarkerTransform ?? CalibratedTransform;
+
+    if (transform == null || transform.Length < 6)
+    {
+        return (ImageWidth / 2.0 + gameX, ImageHeight / 2.0 + gameZ);
+    }
+
+    var a = transform[0];
+    var b = transform[1];
+    var c = transform[2];
+    var d = transform[3];
+    var tx = transform[4];
+    var ty = transform[5];
+
+    var screenX = a * gameX + b * gameZ + tx;
+    var screenY = c * gameX + d * gameZ + ty;
+
+    return (screenX, screenY);
+}
+
+/// <summary>
+/// 맵 픽셀 좌표를 플레이어 좌표계 게임 좌표로 변환 (역행렬).
+/// </summary>
+public (double gameX, double gameZ) ScreenToGameForPlayer(double screenX, double screenY)
+{
+    var transform = PlayerMarkerTransform ?? CalibratedTransform;
+
+    if (transform == null || transform.Length < 6)
+    {
+        return (screenX - ImageWidth / 2.0, screenY - ImageHeight / 2.0);
+    }
+
+    var a = transform[0];
+    var b = transform[1];
+    var c = transform[2];
+    var d = transform[3];
+    var tx = transform[4];
+    var ty = transform[5];
+
+    var det = a * d - b * c;
+    if (Math.Abs(det) < 1e-10)
+    {
+        return (0, 0);
+    }
+
+    var invA = d / det;
+    var invB = -b / det;
+    var invC = -c / det;
+    var invD = a / det;
+
+    var dx = screenX - tx;
+    var dy = screenY - ty;
+
+    var gameX = invA * dx + invB * dy;
+    var gameZ = invC * dx + invD * dy;
+
+    return (gameX, gameZ);
+}
+```
+
+### Phase 2: 마커 렌더링 코드 수정
+
+#### 2.1 MapQuestMarkerManager.cs
+- `config.GameToScreen()` → `config.GameToScreenForPlayer()` 변경
+- 영향 라인: 191, 601
+
+#### 2.2 MapExtractMarkerManager.cs
+- `config.GameToScreen()` → `config.GameToScreenForPlayer()` 변경
+- 영향 라인: 140
+
+#### 2.3 OverlayMiniMapWindow.xaml.cs
+- `_currentMapConfig.GameToScreen()` → `_currentMapConfig.GameToScreenForPlayer()` 변경
+- 영향 라인: 441, 497
+
+### Phase 3: (선택) 기존 메서드 정리
+
+기존 `GameToScreen()`/`ScreenToGame()` 메서드는:
+- 옵션 A: 그대로 유지 (하위 호환성)
+- 옵션 B: `[Obsolete]` 마크 후 `GameToScreenForPlayer()` 호출하도록 변경
+- 옵션 C: 완전히 제거하고 `GameToScreenForPlayer()`로 통합
+
+**권장:** 옵션 B - 점진적 마이그레이션 지원
+
+### Phase 4: SvgStylePreprocessor 동기화
+
+TarkovDBEditor의 `SvgStylePreprocessor.cs`에 추가된 기능을 TarkovHelper에도 적용합니다.
+
+**파일:** `Services/Map/SvgStylePreprocessor.cs`
+
+#### 4.1 `dimAllOtherFloors` 파라미터 추가
+
+선택된 층 외의 모든 층을 반투명하게 표시하는 기능입니다.
+
+```csharp
+// 기존 메서드 시그니처 변경
+public string ProcessSvgFile(string svgFilePath, IEnumerable<string>? visibleFloorIds,
+    IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null,
+    double backgroundOpacity = 0.3, bool dimAllOtherFloors = false)
+
+public string ProcessSvgContent(string svgContent, IEnumerable<string>? visibleFloorIds,
+    IEnumerable<string>? allFloorIds = null, string? backgroundFloorId = null,
+    double backgroundOpacity = 0.3, bool dimAllOtherFloors = false)
+```
+
+`ProcessElementsWithClass` 내 층 필터링 로직 수정:
+```csharp
+// dimAllOtherFloors가 true이면 모든 비가시 층을 배경으로 표시
+// 그렇지 않으면 지정된 backgroundFloorId만 배경으로 표시
+var isBackgroundLayer = !isVisible && (dimAllOtherFloors ||
+    (!string.IsNullOrEmpty(backgroundFloorId) &&
+     string.Equals(elementId, backgroundFloorId, StringComparison.OrdinalIgnoreCase)));
+```
+
+#### 4.2 `FixWrapperRect()` 메서드 추가
+
+SharpVectors가 `fill:none`인 요소를 bounding box 계산에서 제외하는 문제를 해결합니다.
+
+```csharp
+/// <summary>
+/// wrapper 그룹 내의 rect 요소에서 fill:none을 fill:transparent로 변경합니다.
+/// SharpVectors가 fill:none인 요소를 bounding box 계산에서 제외하는 문제를 해결합니다.
+/// </summary>
+private void FixWrapperRect(XmlElement root)
+{
+    // id="wrapper"인 그룹 찾기
+    var wrapperGroups = root.GetElementsByTagName("g");
+
+    foreach (XmlNode node in wrapperGroups)
+    {
+        if (node is not XmlElement group) continue;
+
+        var groupId = group.GetAttribute("id");
+        if (groupId == "wrapper")
+        {
+            // wrapper 내의 모든 rect 요소 처리
+            var rects = group.GetElementsByTagName("rect");
+
+            foreach (XmlNode rectNode in rects)
+            {
+                if (rectNode is not XmlElement rect) continue;
+
+                var style = rect.GetAttribute("style");
+
+                if (!string.IsNullOrEmpty(style) && style.Contains("fill:none"))
+                {
+                    // fill:transparent는 SharpVectors bounding box에 포함되지 않음
+                    // fill-opacity:0인 색상을 사용해야 함
+                    rect.SetAttribute("style", style.Replace("fill:none", "fill:#000000;fill-opacity:0"));
+                }
+                else if (string.IsNullOrEmpty(style))
+                {
+                    // fill 속성이 직접 설정된 경우
+                    var fill = rect.GetAttribute("fill");
+                    if (fill == "none")
+                    {
+                        rect.SetAttribute("fill", "#000000");
+                        rect.SetAttribute("fill-opacity", "0");
+                    }
+                }
+            }
+            break;
+        }
+    }
+}
+```
+
+`ConvertClassesToInlineStyles` 메서드에서 호출:
+```csharp
+// wrapper rect의 fill:none을 fill:transparent로 변경 (bounding box 문제 해결)
+FixWrapperRect(doc.DocumentElement!);
+
+// class 속성이 있는 모든 요소 처리 + 층 필터링
+ProcessElementsWithClass(doc.DocumentElement!, styleRules, visibleFloors, allFloors, backgroundFloorId, backgroundOpacity, dimAllOtherFloors);
+```
+
+## Tasks
+
+### Phase 1: MapConfig 업데이트
+- [ ] `Models/Map/MapConfig.cs`에 `GameToScreenForPlayer()` 메서드 추가
+- [ ] `Models/Map/MapConfig.cs`에 `ScreenToGameForPlayer()` 메서드 추가
+
+### Phase 2: 마커 렌더링 수정
+- [ ] `Pages/Map/Components/MapQuestMarkerManager.cs` - `GameToScreen` → `GameToScreenForPlayer`
+- [ ] `Pages/Map/Components/MapExtractMarkerManager.cs` - `GameToScreen` → `GameToScreenForPlayer`
+- [ ] `Windows/OverlayMiniMapWindow.xaml.cs` - `GameToScreen` → `GameToScreenForPlayer`
+
+### Phase 3: 검증
+- [ ] MapPage에서 퀘스트 마커 위치 확인
+- [ ] MapPage에서 탈출구 마커 위치 확인
+- [ ] 오버레이 미니맵에서 마커 위치 확인
+- [ ] 플레이어 위치 마커가 정확히 표시되는지 확인
+
+### Phase 4: SvgStylePreprocessor 동기화
+- [ ] `Services/Map/SvgStylePreprocessor.cs`에 `dimAllOtherFloors` 파라미터 추가
+- [ ] `Services/Map/SvgStylePreprocessor.cs`에 `FixWrapperRect()` 메서드 추가
+- [ ] `ConvertClassesToInlineStyles()`에서 `FixWrapperRect()` 호출 추가
+- [ ] `ProcessElementsWithClass()`에 `dimAllOtherFloors` 파라미터 전달
+
+## Files to Modify
+
+| File | Change Type | Description |
+|------|-------------|-------------|
+| `Models/Map/MapConfig.cs` | Add | `GameToScreenForPlayer()`, `ScreenToGameForPlayer()` 메서드 추가 |
+| `Pages/Map/Components/MapQuestMarkerManager.cs` | Modify | `GameToScreen` → `GameToScreenForPlayer` (2개소) |
+| `Pages/Map/Components/MapExtractMarkerManager.cs` | Modify | `GameToScreen` → `GameToScreenForPlayer` (1개소) |
+| `Windows/OverlayMiniMapWindow.xaml.cs` | Modify | `GameToScreen` → `GameToScreenForPlayer` (2개소) |
+| `Services/Map/SvgStylePreprocessor.cs` | Modify | `dimAllOtherFloors` 파라미터 추가, `FixWrapperRect()` 메서드 추가 |
+
+## Testing Plan
+
+1. **단위 테스트**: 좌표 변환 결과가 TarkovDBEditor와 동일한지 확인
+2. **통합 테스트**:
+   - Reserve 맵에서 탈출구 마커 위치 확인 (가장 문제가 있었던 맵)
+   - 플레이어 위치와 마커가 동일한 좌표 체계 사용 확인
+3. **회귀 테스트**: 다른 맵들에서도 마커가 정확히 표시되는지 확인
+4. **SvgStylePreprocessor 테스트**:
+   - SVG 맵 로딩 시 wrapper rect의 bounding box가 정확하게 계산되는지 확인
+   - 다층 맵(Labs, Reserve 등)에서 층 전환 시 비가시 층이 반투명하게 표시되는지 확인
+   - `dimAllOtherFloors=true` 옵션이 올바르게 동작하는지 확인
+
+## Rollback Plan
+
+문제 발생 시:
+1. `GameToScreenForPlayer()` 대신 기존 `GameToScreen()` 사용으로 복구
+2. TarkovDBEditor에서 역방향 마이그레이션 실행 (PlayerMarkerTransform → CalibratedTransform)
+
+## Progress Log
+
+| Date | Status | Notes |
+|------|--------|-------|
+| 2025-12-19 | Created | PRD 초안 작성 |
+| 2025-12-19 | Updated | Phase 4: SvgStylePreprocessor 동기화 섹션 추가 |
+
+---
+*Generated by Claude Code*

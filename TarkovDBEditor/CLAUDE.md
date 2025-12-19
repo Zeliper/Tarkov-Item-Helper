@@ -506,7 +506,8 @@ Coordinate transform matrices and floor definitions for each map:
   "SvgFileName": "Customs.svg",
   "ImageWidth": 4096,
   "ImageHeight": 2867,
-  "CalibratedTransform": [a, b, c, d, tx, ty],
+  "PlayerMarkerTransform": [a, b, c, d, tx, ty],
+  "SvgBounds": [minX, maxX, minY, maxY],
   "Floors": [{ "LayerId": "main", "DisplayName": "Main", "Order": 0, "IsDefault": true }]
 }
 ```

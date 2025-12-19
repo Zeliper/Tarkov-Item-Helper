@@ -1118,23 +1118,31 @@ namespace TarkovDBEditor.Services
         /// </summary>
         private async Task MigrateItemsDogtagColumnsAsync(SqliteConnection connection, CancellationToken cancellationToken)
         {
-            var alterCommands = new[]
+            // 기존 컬럼 확인
+            var existingColumns = new HashSet<string>();
+            await using (var checkCmd = connection.CreateCommand())
             {
-                "ALTER TABLE Items ADD COLUMN IsDogtagItem INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Items ADD COLUMN DogtagFaction TEXT"
+                checkCmd.CommandText = "PRAGMA table_info(Items)";
+                await using var reader = await checkCmd.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    existingColumns.Add(reader.GetString(1));
+                }
+            }
+
+            var columnsToAdd = new Dictionary<string, string>
+            {
+                { "IsDogtagItem", "INTEGER NOT NULL DEFAULT 0" },
+                { "DogtagFaction", "TEXT" }
             };
 
-            foreach (var alterSql in alterCommands)
+            foreach (var (columnName, columnType) in columnsToAdd)
             {
-                try
+                if (!existingColumns.Contains(columnName))
                 {
                     await using var cmd = connection.CreateCommand();
-                    cmd.CommandText = alterSql;
+                    cmd.CommandText = $"ALTER TABLE Items ADD COLUMN {columnName} {columnType}";
                     await cmd.ExecuteNonQueryAsync(cancellationToken);
-                }
-                catch (SqliteException)
-                {
-                    // 컬럼이 이미 존재하면 무시
                 }
             }
         }
@@ -1671,23 +1679,6 @@ namespace TarkovDBEditor.Services
 
             using var cmd = new SqliteCommand(sql, connection, transaction);
             await cmd.ExecuteNonQueryAsync();
-
-            // 기존 테이블에 Dogtag 컬럼 마이그레이션
-            var newColumns = new[]
-            {
-                "ALTER TABLE Items ADD COLUMN IsDogtagItem INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Items ADD COLUMN DogtagFaction TEXT"
-            };
-
-            foreach (var alterSql in newColumns)
-            {
-                try
-                {
-                    using var alterCmd = new SqliteCommand(alterSql, connection, transaction);
-                    await alterCmd.ExecuteNonQueryAsync();
-                }
-                catch (SqliteException) { /* 컬럼이 이미 존재하면 무시 */ }
-            }
         }
 
         private async Task CreateQuestsTableIfNotExistsAsync(SqliteConnection connection, SqliteTransaction transaction)
@@ -1730,44 +1721,6 @@ namespace TarkovDBEditor.Services
 
             using var cmd = new SqliteCommand(sql, connection, transaction);
             await cmd.ExecuteNonQueryAsync();
-
-            // 기존 테이블에 새 컬럼 추가 (이미 있으면 무시)
-            var newColumns = new[]
-            {
-                "ALTER TABLE Quests ADD COLUMN MinLevel INTEGER",
-                "ALTER TABLE Quests ADD COLUMN MinLevelApproved INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN MinLevelApprovedAt TEXT",
-                "ALTER TABLE Quests ADD COLUMN MinScavKarma INTEGER",
-                "ALTER TABLE Quests ADD COLUMN MinScavKarmaApproved INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN MinScavKarmaApprovedAt TEXT",
-                "ALTER TABLE Quests ADD COLUMN Location TEXT",
-                "ALTER TABLE Quests ADD COLUMN KappaRequired INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN Faction TEXT",
-                "ALTER TABLE Quests ADD COLUMN RequiredEdition TEXT",
-                "ALTER TABLE Quests ADD COLUMN RequiredEditionApproved INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN RequiredEditionApprovedAt TEXT",
-                "ALTER TABLE Quests ADD COLUMN ExcludedEdition TEXT",
-                "ALTER TABLE Quests ADD COLUMN ExcludedEditionApproved INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN ExcludedEditionApprovedAt TEXT",
-                "ALTER TABLE Quests ADD COLUMN IsApproved INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN ApprovedAt TEXT",
-                "ALTER TABLE Quests ADD COLUMN RequiredDecodeCount INTEGER",
-                "ALTER TABLE Quests ADD COLUMN RequiredDecodeCountApproved INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN RequiredDecodeCountApprovedAt TEXT",
-                "ALTER TABLE Quests ADD COLUMN RequiredPrestigeLevel INTEGER",
-                "ALTER TABLE Quests ADD COLUMN RequiredPrestigeLevelApproved INTEGER NOT NULL DEFAULT 0",
-                "ALTER TABLE Quests ADD COLUMN RequiredPrestigeLevelApprovedAt TEXT"
-            };
-
-            foreach (var alterSql in newColumns)
-            {
-                try
-                {
-                    using var alterCmd = new SqliteCommand(alterSql, connection, transaction);
-                    await alterCmd.ExecuteNonQueryAsync();
-                }
-                catch { /* 이미 존재 */ }
-            }
         }
 
         private async Task CreateQuestRequirementsTableIfNotExistsAsync(SqliteConnection connection, SqliteTransaction transaction)
@@ -1895,22 +1848,33 @@ namespace TarkovDBEditor.Services
             using var indexCmd = new SqliteCommand(indexSql, connection, transaction);
             await indexCmd.ExecuteNonQueryAsync();
 
-            // 컬럼 마이그레이션 (기존 DB용)
-            var alterCommands = new[]
+            // 컬럼 마이그레이션 (기존 DB용) - 먼저 존재하는 컬럼 확인
+            var existingColumns = new HashSet<string>();
+            using (var checkCmd = new SqliteCommand("PRAGMA table_info(QuestObjectives)", connection, transaction))
+            using (var reader = await checkCmd.ExecuteReaderAsync())
             {
-                "ALTER TABLE QuestObjectives ADD COLUMN OptionalPoints TEXT",
-                "ALTER TABLE QuestObjectives ADD COLUMN DogtagMinLevel INTEGER",
-                "ALTER TABLE QuestObjectives ADD COLUMN DogtagFaction TEXT"
+                while (await reader.ReadAsync())
+                {
+                    existingColumns.Add(reader.GetString(1));
+                }
+            }
+
+            var columnsToAdd = new Dictionary<string, string>
+            {
+                { "OptionalPoints", "TEXT" },
+                { "DogtagMinLevel", "INTEGER" },
+                { "DogtagFaction", "TEXT" }
             };
 
-            foreach (var alterSql in alterCommands)
+            foreach (var (columnName, columnType) in columnsToAdd)
             {
-                try
+                if (!existingColumns.Contains(columnName))
                 {
-                    using var alterCmd = new SqliteCommand(alterSql, connection, transaction);
+                    using var alterCmd = new SqliteCommand(
+                        $"ALTER TABLE QuestObjectives ADD COLUMN {columnName} {columnType}",
+                        connection, transaction);
                     await alterCmd.ExecuteNonQueryAsync();
                 }
-                catch { /* 이미 존재하면 무시 */ }
             }
         }
 
@@ -2049,16 +2013,6 @@ namespace TarkovDBEditor.Services
                 CREATE INDEX IF NOT EXISTS idx_questreqitem_itemid ON QuestRequiredItems(ItemId)";
             using var indexCmd = new SqliteCommand(indexSql, connection, transaction);
             await indexCmd.ExecuteNonQueryAsync();
-
-            // DogtagFaction 컬럼 마이그레이션 (기존 DB용)
-            try
-            {
-                using var alterCmd = new SqliteCommand(
-                    "ALTER TABLE QuestRequiredItems ADD COLUMN DogtagFaction TEXT",
-                    connection, transaction);
-                await alterCmd.ExecuteNonQueryAsync();
-            }
-            catch { /* 이미 존재하면 무시 */ }
         }
 
         private async Task RegisterQuestRequiredItemsSchemaAsync(SqliteConnection connection, SqliteTransaction transaction)

@@ -715,23 +715,13 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
         // PlayerMarkerTransform으로 화면 좌표 계산
         var (screenX, screenY) = mapConfig.GameToScreenForPlayer(playerGameX, playerGameZ);
 
-        // CalibratedTransform이 없으면 스왑된 좌표만 반환
-        if (mapConfig.CalibratedTransform == null || mapConfig.CalibratedTransform.Length < 6)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] No CalibratedTransform for {apiMarker.MapKey}, using swapped coords");
-            return new LocationPoint(playerGameX, apiMarker.Y ?? 0, playerGameZ, apiMarker.FloorId);
-        }
-
-        // 화면 좌표를 CalibratedTransform 게임 좌표로 변환
-        var (calibratedGameX, calibratedGameZ) = mapConfig.ScreenToGame(screenX, screenY);
-
+        // PlayerMarkerTransform 체계로 통일되었으므로 스왑된 좌표를 직접 사용
         System.Diagnostics.Debug.WriteLine($"[ConvertApiMarkerToObjectiveCoordinates] Map={apiMarker.MapKey}");
         System.Diagnostics.Debug.WriteLine($"  API raw: X={apiMarker.X:F2}, Z={apiMarker.Z:F2}");
         System.Diagnostics.Debug.WriteLine($"  Player (swapped): gameX={playerGameX:F2}, gameZ={playerGameZ:F2}");
         System.Diagnostics.Debug.WriteLine($"  Screen: X={screenX:F2}, Y={screenY:F2}");
-        System.Diagnostics.Debug.WriteLine($"  Calibrated: gameX={calibratedGameX:F2}, gameZ={calibratedGameZ:F2}");
 
-        return new LocationPoint(calibratedGameX, apiMarker.Y ?? 0, calibratedGameZ, apiMarker.FloorId);
+        return new LocationPoint(playerGameX, apiMarker.Y ?? 0, playerGameZ, apiMarker.FloorId);
     }
 
     /// <summary>
@@ -1310,14 +1300,28 @@ public class QuestRequirementsViewModel : INotifyPropertyChanged
 
     private async Task MigrateOptionalPointsColumnAsync(SqliteConnection connection)
     {
-        try
+        // Check if OptionalPoints column exists using PRAGMA table_info
+        var columnCheckSql = "PRAGMA table_info(QuestObjectives)";
+        await using var columnCheckCmd = new SqliteCommand(columnCheckSql, connection);
+        await using var columnReader = await columnCheckCmd.ExecuteReaderAsync();
+        bool optionalPointsExists = false;
+        while (await columnReader.ReadAsync())
         {
-            using var alterCmd = new SqliteCommand(
+            if (columnReader.GetString(1) == "OptionalPoints")
+            {
+                optionalPointsExists = true;
+                break;
+            }
+        }
+        await columnReader.CloseAsync();
+
+        if (!optionalPointsExists)
+        {
+            await using var alterCmd = new SqliteCommand(
                 "ALTER TABLE QuestObjectives ADD COLUMN OptionalPoints TEXT",
                 connection);
             await alterCmd.ExecuteNonQueryAsync();
         }
-        catch { /* Column already exists - ignore */ }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

@@ -1029,7 +1029,7 @@ public partial class MapTransferWindow : Window
                 isModified = true;
             }
 
-            var (sx, sy) = _currentMapConfig.GameToScreen(gameX, gameZ);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(gameX, gameZ);
 
             double opacity = 1.0;
             if (hasFloors && _currentFloorId != null && marker.FloorId != null)
@@ -1199,7 +1199,7 @@ public partial class MapTransferWindow : Window
             // 변환이 적용되었으면 변환된 게임 좌표 사용
             if (marker.GameX.HasValue && marker.GameZ.HasValue)
             {
-                (sx, sy) = _currentMapConfig.GameToScreen(marker.GameX.Value, marker.GameZ.Value);
+                (sx, sy) = _currentMapConfig.GameToScreenForPlayer(marker.GameX.Value, marker.GameZ.Value);
             }
             else
             {
@@ -1408,12 +1408,12 @@ public partial class MapTransferWindow : Window
                 dbGameZ = modifiedPos.Z;
             }
 
-            var (dbSx, dbSy) = _currentMapConfig.GameToScreen(dbGameX, dbGameZ);
+            var (dbSx, dbSy) = _currentMapConfig.GameToScreenForPlayer(dbGameX, dbGameZ);
 
             double apiSx, apiSy;
             if (match.ApiMarker.GameX.HasValue && match.ApiMarker.GameZ.HasValue)
             {
-                (apiSx, apiSy) = _currentMapConfig.GameToScreen(match.ApiMarker.GameX.Value, match.ApiMarker.GameZ.Value);
+                (apiSx, apiSy) = _currentMapConfig.GameToScreenForPlayer(match.ApiMarker.GameX.Value, match.ApiMarker.GameZ.Value);
             }
             else
             {
@@ -1616,7 +1616,7 @@ public partial class MapTransferWindow : Window
         if (_isDraggingDbMarker && _draggingDbMarker != null && _currentMapConfig != null)
         {
             var canvasPos = e.GetPosition(MapCanvas);
-            var (newGameX, newGameZ) = _currentMapConfig.ScreenToGame(canvasPos.X, canvasPos.Y);
+            var (newGameX, newGameZ) = _currentMapConfig.ScreenToGameForPlayer(canvasPos.X, canvasPos.Y);
 
             // 수정된 위치 저장
             _modifiedDbPositions[_draggingDbMarker.Id] = (newGameX, newGameZ);
@@ -1642,7 +1642,7 @@ public partial class MapTransferWindow : Window
         if (_currentMapConfig != null)
         {
             var canvasPos = e.GetPosition(MapCanvas);
-            var (gameX, gameZ) = _currentMapConfig.ScreenToGame(canvasPos.X, canvasPos.Y);
+            var (gameX, gameZ) = _currentMapConfig.ScreenToGameForPlayer(canvasPos.X, canvasPos.Y);
             GameCoordsText.Text = $"X: {gameX:F1}, Z: {gameZ:F1}";
         }
 
@@ -1650,7 +1650,7 @@ public partial class MapTransferWindow : Window
         if (_isDraggingDbMarker && _draggingDbMarker != null && _currentMapConfig != null)
         {
             var canvasPos = e.GetPosition(MapCanvas);
-            var (newGameX, newGameZ) = _currentMapConfig.ScreenToGame(canvasPos.X, canvasPos.Y);
+            var (newGameX, newGameZ) = _currentMapConfig.ScreenToGameForPlayer(canvasPos.X, canvasPos.Y);
 
             // 임시로 수정된 위치 저장하고 다시 그리기
             _modifiedDbPositions[_draggingDbMarker.Id] = (newGameX, newGameZ);
@@ -1686,7 +1686,7 @@ public partial class MapTransferWindow : Window
 
         foreach (var match in _matchResults)
         {
-            var (dbSx, dbSy) = _currentMapConfig!.GameToScreen(match.DbMarker.X, match.DbMarker.Z);
+            var (dbSx, dbSy) = _currentMapConfig!.GameToScreenForPlayer(match.DbMarker.X, match.DbMarker.Z);
 
             var dist = Math.Sqrt(Math.Pow(pos.X - dbSx, 2) + Math.Pow(pos.Y - dbSy, 2));
             if (dist < 30 / _zoomLevel)

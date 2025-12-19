@@ -533,7 +533,7 @@ public partial class QuestObjectiveEditorWindow : Window
 
             foreach (var pt in currentFloorPoints)
             {
-                var (sx, sy) = _currentMapConfig.GameToScreen(pt.X, pt.Z);
+                var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(pt.X, pt.Z);
                 polygon.Points.Add(new Point(sx, sy));
             }
 
@@ -541,8 +541,8 @@ public partial class QuestObjectiveEditorWindow : Window
         }
         else if (currentFloorPoints.Count == 2)
         {
-            var (sx1, sy1) = _currentMapConfig.GameToScreen(currentFloorPoints[0].X, currentFloorPoints[0].Z);
-            var (sx2, sy2) = _currentMapConfig.GameToScreen(currentFloorPoints[1].X, currentFloorPoints[1].Z);
+            var (sx1, sy1) = _currentMapConfig.GameToScreenForPlayer(currentFloorPoints[0].X, currentFloorPoints[0].Z);
+            var (sx2, sy2) = _currentMapConfig.GameToScreenForPlayer(currentFloorPoints[1].X, currentFloorPoints[1].Z);
 
             var line = new Line
             {
@@ -558,7 +558,7 @@ public partial class QuestObjectiveEditorWindow : Window
         else if (currentFloorPoints.Count == 1)
         {
             var pt = currentFloorPoints[0];
-            var (sx, sy) = _currentMapConfig.GameToScreen(pt.X, pt.Z);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(pt.X, pt.Z);
             var size = 16 * inverseScale;
 
             var diamond = new Polygon
@@ -592,7 +592,7 @@ public partial class QuestObjectiveEditorWindow : Window
                 opacity = string.Equals(pt.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.3;
             }
 
-            var (sx, sy) = _currentMapConfig.GameToScreen(pt.X, pt.Z);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(pt.X, pt.Z);
 
             var ellipse = new Ellipse
             {
@@ -668,7 +668,7 @@ public partial class QuestObjectiveEditorWindow : Window
 
             foreach (var pt in currentFloorPoints)
             {
-                var (sx, sy) = _currentMapConfig.GameToScreen(pt.X, pt.Z);
+                var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(pt.X, pt.Z);
                 polygon.Points.Add(new Point(sx, sy));
             }
 
@@ -676,8 +676,8 @@ public partial class QuestObjectiveEditorWindow : Window
         }
         else if (currentFloorPoints.Count == 2)
         {
-            var (sx1, sy1) = _currentMapConfig.GameToScreen(currentFloorPoints[0].X, currentFloorPoints[0].Z);
-            var (sx2, sy2) = _currentMapConfig.GameToScreen(currentFloorPoints[1].X, currentFloorPoints[1].Z);
+            var (sx1, sy1) = _currentMapConfig.GameToScreenForPlayer(currentFloorPoints[0].X, currentFloorPoints[0].Z);
+            var (sx2, sy2) = _currentMapConfig.GameToScreenForPlayer(currentFloorPoints[1].X, currentFloorPoints[1].Z);
 
             var line = new Line
             {
@@ -700,7 +700,7 @@ public partial class QuestObjectiveEditorWindow : Window
                 opacity = string.Equals(pt.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.3;
             }
 
-            var (sx, sy) = _currentMapConfig.GameToScreen(pt.X, pt.Z);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(pt.X, pt.Z);
 
             var ellipse = new Ellipse
             {
@@ -746,7 +746,7 @@ public partial class QuestObjectiveEditorWindow : Window
                 opacity = string.Equals(pt.FloorId, _currentFloorId, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.3;
             }
 
-            var (sx, sy) = _currentMapConfig.GameToScreen(pt.X, pt.Z);
+            var (sx, sy) = _currentMapConfig.GameToScreenForPlayer(pt.X, pt.Z);
 
             var ellipse = new Ellipse
             {
@@ -907,7 +907,7 @@ public partial class QuestObjectiveEditorWindow : Window
         if (_currentMapConfig != null)
         {
             var canvasPos = e.GetPosition(MapCanvas);
-            var (gameX, gameZ) = _currentMapConfig.ScreenToGame(canvasPos.X, canvasPos.Y);
+            var (gameX, gameZ) = _currentMapConfig.ScreenToGameForPlayer(canvasPos.X, canvasPos.Y);
             GameCoordsText.Text = $"X: {gameX:F1}, Z: {gameZ:F1}";
             ScreenCoordsText.Text = $"X: {canvasPos.X:F0}, Y: {canvasPos.Y:F0}";
         }
@@ -950,7 +950,7 @@ public partial class QuestObjectiveEditorWindow : Window
     {
         if (_currentMapConfig == null || _viewModel.SelectedObjective == null) return;
 
-        var (gameX, gameZ) = _currentMapConfig.ScreenToGame(screenX, screenY);
+        var (gameX, gameZ) = _currentMapConfig.ScreenToGameForPlayer(screenX, screenY);
 
         if (_viewModel.IsEditingLocationPoints)
         {
