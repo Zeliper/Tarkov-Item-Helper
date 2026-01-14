@@ -692,7 +692,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <TextBlock x:Name="TxtQuestNameSizeLabel" Text="Quest Name:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
-                            <Slider x:Name="SliderQuestNameTextSize" Width="120" Minimum="0" Maximum="100"
+                            <Slider x:Name="SliderQuestNameTextSize" Width="120" Minimum="1" Maximum="100"
                                     Value="20" ValueChanged="SliderQuestNameTextSize_ValueChanged"/>
                             <TextBlock x:Name="TxtQuestNameTextSize" Text="20" Width="30"
                                        Foreground="{StaticResource TextPrimaryBrush}"
@@ -703,7 +703,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <TextBlock x:Name="TxtQuestMarkerSizeLabel" Text="Quest Marker:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
-                            <Slider x:Name="SliderMarkerSize" Width="120" Minimum="0" Maximum="100"
+                            <Slider x:Name="SliderMarkerSize" Width="120" Minimum="1" Maximum="100"
                                     Value="18" ValueChanged="SliderMarkerSize_ValueChanged"/>
                             <TextBlock x:Name="TxtMarkerSize" Text="18" Width="30"
                                        Foreground="{StaticResource TextPrimaryBrush}"
@@ -714,7 +714,7 @@
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,24">
                             <TextBlock x:Name="TxtPlayerMarkerSizeLabel" Text="Player Marker:" Foreground="{StaticResource TextSecondaryBrush}"
                                        VerticalAlignment="Center" Width="100"/>
-                            <Slider x:Name="SliderPlayerMarkerSize" Width="120" Minimum="0" Maximum="100"
+                            <Slider x:Name="SliderPlayerMarkerSize" Width="120" Minimum="1" Maximum="100"
                                     Value="18" ValueChanged="SliderPlayerMarkerSize_ValueChanged"/>
                             <TextBlock x:Name="TxtPlayerMarkerSize" Text="18" Width="30"
                                        Foreground="{StaticResource TextPrimaryBrush}"
